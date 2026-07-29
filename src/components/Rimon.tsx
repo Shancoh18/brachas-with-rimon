@@ -11,12 +11,12 @@ import { useEffect, useRef, useState } from 'react';
 export type RimonPose = 'hello' | 'thinking' | 'pointing' | 'teaching' | 'idle' | 'celebrate';
 
 const STILL: Record<RimonPose, string> = {
-  hello: '/mascot/rimon-hello.png',
-  thinking: '/mascot/rimon-thinking.png',
-  pointing: '/mascot/rimon-pointing.png',
-  teaching: '/mascot/rimon-teaching.png',
-  idle: '/mascot/rimon-hello.png',
-  celebrate: '/mascot/rimon-hello.png',
+  hello: '/mascot/rimon-hello.webp',
+  thinking: '/mascot/rimon-thinking.webp',
+  pointing: '/mascot/rimon-pointing.webp',
+  teaching: '/mascot/rimon-teaching.webp',
+  idle: '/mascot/rimon-hello.webp',
+  celebrate: '/mascot/rimon-hello.webp',
 };
 
 const VIDEO: Partial<Record<RimonPose, string>> = {

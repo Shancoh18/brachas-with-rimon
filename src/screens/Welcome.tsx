@@ -2,15 +2,22 @@
 import { useRef, useState } from 'react';
 import { NUSACHIM, type NusachId } from '../data/texts';
 import { useBracha } from '../store';
+import { LESSONS } from '../data/learn';
+import { streakAlive } from '../lib/progress';
 import { Rimon } from '../components/Rimon';
 import { Eyebrow, PillButton, ScreenShell } from '../components/ui';
 import { analyzePhoto, demoMeal, resizeImage } from '../lib/analyze';
 import { toMealItems } from '../lib/classify';
 
 export function Welcome() {
-  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched } = useBracha();
+  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, progress, setTab } =
+    useBracha();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+
+  const alive = streakAlive(progress);
+  // Rimon's tip of the day — rotates through the Learn library by date
+  const tip = LESSONS[new Date().getDate() % LESSONS.length];
 
   const runAnalysis = async (file?: File) => {
     setBusy(true);
@@ -46,6 +53,12 @@ export function Welcome() {
         </div>
 
         <header className="rise-in rise-in-1 space-y-4">
+          {progress.totalBrachos > 0 && (
+            <div className="flex items-center justify-center gap-2">
+              <span className="rounded-full bg-rimon/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-rimon">🔥 {alive ? progress.streakCurrent : 0}-day streak</span>
+              <span className="rounded-full bg-espresso/[0.05] px-3.5 py-1.5 text-[12px] font-bold text-espresso-soft">{progress.totalBrachos} brachos</span>
+            </div>
+          )}
           <Eyebrow>Blessings, beautifully guided</Eyebrow>
           <h1 className="font-display text-[44px] font-black leading-[1.05] tracking-tight text-espresso">
             Brachas <span className="text-rimon">with Rimon</span>
@@ -100,6 +113,15 @@ export function Welcome() {
             }}
           />
         </div>
+
+        <button
+          onClick={() => setTab('learn')}
+          className="rise-in rise-in-4 mx-auto max-w-[320px] rounded-[1.5rem] border border-gold/20 bg-gold/[0.05] px-5 py-4 text-left transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-gold/40"
+        >
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">Rimon’s tip of the day</p>
+          <p className="mt-1.5 font-display text-[14.5px] italic leading-snug text-espresso">{tip.emoji} {tip.hook}</p>
+          <p className="mt-1 text-[10.5px] text-mocha">read the {tip.minutes}-minute lesson →</p>
+        </button>
       </div>
     </ScreenShell>
   );

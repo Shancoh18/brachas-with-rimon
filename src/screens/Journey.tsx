@@ -46,6 +46,30 @@ export function Journey() {
           <p className="pt-2 text-[12px] font-bold uppercase tracking-[0.2em] text-mocha">
             day streak {alive ? '' : '— say a bracha today to begin'}
           </p>
+          {/* last-7-days activity strip */}
+          <div className="mt-5 flex items-center justify-center gap-2.5">
+            {Array.from({ length: 7 }, (_, i) => {
+              const d = new Date();
+              d.setDate(d.getDate() - (6 - i));
+              const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              const entry = progress.history.find((h) => h.day === day);
+              const initial = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
+              return (
+                <div key={day} className="flex flex-col items-center gap-1.5">
+                  <span
+                    className={`flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-bold transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                      entry
+                        ? 'bg-rimon text-cream shadow-[0_6px_16px_-4px_rgba(161,51,39,0.5)]'
+                        : 'bg-espresso/[0.06] text-mocha'
+                    }`}
+                  >
+                    {entry ? entry.brachos : '·'}
+                  </span>
+                  <span className="text-[8.5px] font-bold uppercase text-mocha">{initial}</span>
+                </div>
+              );
+            })}
+          </div>
           <div className="mt-5 grid grid-cols-3 gap-2 border-t border-espresso/[0.07] pt-5">
             <div>
               <p className="font-display text-[24px] font-bold text-espresso">{progress.totalBrachos}</p>

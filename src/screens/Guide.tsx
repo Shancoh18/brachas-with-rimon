@@ -4,14 +4,40 @@
  * items note what the single recitation covers.
  */
 import { useMemo } from 'react';
-import { BRACHA_LABEL } from '../data/foods';
+import { BRACHA_LABEL, type Bracha } from '../data/foods';
 import { NUSACHIM } from '../data/texts';
 import { groupForRecitation } from '../lib/kedima';
 import { useBracha, type TextMode } from '../store';
+import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
+
+/** the educational one-liner under each blessing — the "why" in one breath */
+const WHY_LINE: Record<Bracha, string> = {
+  Hamotzi:
+    'Bread is the staff of life — the one food human hands complete. Its blessing covers nearly the whole meal.',
+  Mezonos:
+    '“Sustenance” — for the five grains in every form but bread. Grain is honored because it truly sustains.',
+  Hagafen:
+    'Wine gladdens and elevates, so it keeps a blessing of its own — even in the middle of a bread meal.',
+  Haetz:
+    'For fruit of the tree — a giver that returns year after year from the same trunk.',
+  Haadama:
+    'For what the earth itself yields — vegetables, and plants that give their fruit once.',
+  Shehakol:
+    '“By Whose word all things came to be” — the widest blessing, covering everything the others don’t.',
+};
+
+const AUDIO_FILE: Record<Bracha, string> = {
+  Hamotzi: 'hamotzi',
+  Mezonos: 'mezonos',
+  Hagafen: 'hagafen',
+  Haetz: 'haetz',
+  Haadama: 'haadama',
+  Shehakol: 'shehakol',
+};
 
 export function Guide() {
   const { items, nusach, textMode, setTextMode, guideIndex, setGuideIndex, setScreen } = useBracha();
@@ -111,6 +137,10 @@ export function Guide() {
         {textMode === 'english' && (
           <p className="text-[17px] leading-relaxed text-espresso">{liturgy.english}</p>
         )}
+        <div className="mt-6 flex items-center justify-between gap-3 border-t border-espresso/[0.07] pt-5">
+          <HearIt src={`${import.meta.env.BASE_URL}audio/${AUDIO_FILE[group.bracha]}.mp3`} />
+          <p className="text-right text-[10.5px] leading-snug text-mocha">{WHY_LINE[group.bracha]}</p>
+        </div>
       </Bezel>
 
       {others.length > 0 && (

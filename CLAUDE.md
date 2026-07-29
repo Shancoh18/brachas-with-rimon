@@ -1,4 +1,4 @@
-# Bracha App — Project Guide for Claude Code
+# Brachas with Rimon — Project Guide for Claude Code
 
 ## What this is
 A mobile-first PWA that photographs a meal, uses the Anthropic Claude vision
@@ -46,12 +46,11 @@ per-entry source citation). Liturgy in `src/data/texts/{ari,index}.ts`.
 Both algorithms carry a node test harness — run:
 `node --experimental-strip-types` (see the T1–T10 cases in the build log).
 
-## Nusach
-Ship Nusach Ari (Chabad) complete (from chabad.org — the only nusach the
-approved sites publish in full). Ashkenaz and Edot Hamizrach selectors exist
-but reuse the shared Hebrew with a "verify against a licensed siddur" flag
-(`src/data/texts/index.ts`). Do not scrape nusach variants from elsewhere;
-license a proper siddur when the time comes.
+## Nusach — all three COMPLETE
+- ari: verbatim from chabad.org.
+- ashkenaz: Hebrew from the public-domain Daat Siddur Ashkenaz (Sefaria API, license field verified).
+- edot: Me'ein Shalosh from the CC0 Shaliehsaboo Edition (Sefaria API).
+Sefaria is used SOLELY for public-domain liturgical text; halachic RULES still come only from the three approved sites. Transliterations for ashkenaz/edot are auto-generated and flagged.
 
 ## Rimon (the mascot)
 `src/components/Rimon.tsx`. Gen-AI character (Higgsfield): stills in
@@ -69,3 +68,13 @@ cards (`<Bezel>`), island pill CTAs with nested trailing icons
 cubic-bezier(0.32,0.72,0,1) motion only — no linear/ease-in-out, no harsh
 shadows, no Inter/Roboto. Hebrew blocks: `dir="rtl" lang="he"` + `.hebrew`
 (line-height 1.9 for nikud).
+
+## Gamification (adult Duolingo tone — friendly, never childish)
+- src/lib/progress.ts — streaks (day-rollover logic), per-bracha counts, CHALLENGES registry, badges. Persisted in the zustand store (key brachas-with-rimon).
+- Tabs (src/components/TabBar.tsx): Bless / Learn / Journey / Friends. The bar hides mid-flow.
+- src/data/learn.ts — the Learn library: educational cards teaching WHY (sources cited to the three approved sites). Adding a lesson: update the scholar challenge target.
+- Reminders: Notification API ticker in App.tsx (fires while open/installed); background push needs accounts — do not fake it.
+- Friends v1 is LOCAL-first: league card with Rimon pacing the user (+3 until 25 brachos, then 80%), navigator.share invite. Real shared leagues need a backend — keep the UI honest about that.
+
+## Deploy
+GitHub Pages: repo Shancoh18/brachas-with-rimon, LIVE at https://shancoh18.github.io/brachas-with-rimon/ — deployed by pushing dist to gh-pages via the git-data API (scratchpad deploy-pages.mjs pattern; git push HANGS on this machine and the token lacks workflow scope, so neither plain push nor Actions works). Build with: npm run build -- --base=/brachas-with-rimon/. The static deploy runs demo-mode vision (no /api); real vision needs a serverless host + ANTHROPIC_API_KEY.

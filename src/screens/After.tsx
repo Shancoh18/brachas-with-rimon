@@ -11,6 +11,7 @@ import { resolveAfterBrachos } from '../lib/afterBracha';
 import { groupForRecitation } from '../lib/kedima';
 import { streakAlive } from '../lib/progress';
 import { useBracha, type TextMode } from '../store';
+import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
@@ -243,6 +244,9 @@ export function After() {
             {textMode === 'english' && (
               <p className="text-[14px] leading-relaxed text-espresso">{pack.boreiNefashos.english}</p>
             )}
+            <div className="mt-5 border-t border-espresso/[0.07] pt-4">
+              <HearIt src={`${import.meta.env.BASE_URL}audio/borei-nefashos.mp3`} />
+            </div>
           </Bezel>
         )}
 
