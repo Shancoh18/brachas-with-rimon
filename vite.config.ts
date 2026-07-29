@@ -13,6 +13,7 @@ export default defineConfig({
       // manifest.webmanifest is authored by hand in public/
       manifest: false,
       workbox: {
+        importScripts: ['push-sw.js'],
         globPatterns: ['**/*.{js,css,html,webp,png,svg,mp3,mp4,webmanifest}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },

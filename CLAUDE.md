@@ -77,4 +77,7 @@ shadows, no Inter/Roboto. Hebrew blocks: `dir="rtl" lang="he"` + `.hebrew`
 - Friends v1 is LOCAL-first: league card with Rimon pacing the user (+3 until 25 brachos, then 80%), navigator.share invite. Real shared leagues need a backend — keep the UI honest about that.
 
 ## Deploy
-GitHub Pages: repo Shancoh18/brachas-with-rimon, LIVE at https://shancoh18.github.io/brachas-with-rimon/ — deployed by pushing dist to gh-pages via the git-data API (scratchpad deploy-pages.mjs pattern; git push HANGS on this machine and the token lacks workflow scope, so neither plain push nor Actions works). Build with: npm run build -- --base=/brachas-with-rimon/. The static deploy runs demo-mode vision (no /api); real vision needs a serverless host + ANTHROPIC_API_KEY.
+GitHub Pages: repo Shancoh18/brachas-with-rimon, LIVE at https://shancoh18.github.io/brachas-with-rimon/ — deployed by pushing dist to gh-pages via the git-data API (scripts/deploy-pages.mjs — and scripts/sync-master.mjs for source; git push HANGS on this machine and the token lacks workflow scope, so neither plain push nor Actions works). Build with: npm run build -- --base=/brachas-with-rimon/. The static deploy runs demo-mode vision (no /api); real vision needs a serverless host + ANTHROPIC_API_KEY.
+
+## Audio (hear-it)
+scripts/generate-bracha-audio.mjs — ElevenLabs Hebrew (eleven_v3, voice Daniel) for the six brachos + Borei Nefashos, loudnormed, STT round-trip verified (scribe_v1). Labeled beta in the UI (src/components/HearIt.tsx); a native recording pass replaces public/audio/*.mp3 one-to-one.

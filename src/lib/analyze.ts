@@ -6,6 +6,7 @@
  * DEMO MODE: when the proxy is unreachable (local dev without a key) the
  * caller can fall back to `demoMeal()` so the whole flow stays testable.
  */
+import { API_BASE } from './api';
 import type { IdentifiedItem } from './classify';
 
 const MAX_EDGE = 1568;
@@ -39,7 +40,7 @@ export interface AnalyzeResult {
 }
 
 export async function analyzePhoto(base64: string, mediaType: string): Promise<AnalyzeResult> {
-  const res = await fetch('/api/analyze', {
+  const res = await fetch(`${API_BASE}/api/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: base64, media_type: mediaType }),

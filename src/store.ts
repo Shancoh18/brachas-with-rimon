@@ -54,6 +54,10 @@ interface BrachaState {
   displayName: string;
   setDisplayName: (n: string) => void;
 
+  serverToken: string | null;
+  friendCode: string | null;
+  setServerAccount: (token: string, code: string) => void;
+
   reset: () => void;
 }
 
@@ -111,6 +115,10 @@ export const useBracha = create<BrachaState>()(
       displayName: '',
       setDisplayName: (displayName) => set({ displayName }),
 
+      serverToken: null,
+      friendCode: null,
+      setServerAccount: (serverToken, friendCode) => set({ serverToken, friendCode }),
+
       reset: () =>
         set({
           screen: 'welcome',
@@ -129,6 +137,8 @@ export const useBracha = create<BrachaState>()(
         progress: s.progress,
         reminders: s.reminders,
         displayName: s.displayName,
+        serverToken: s.serverToken,
+        friendCode: s.friendCode,
       }),
     },
   ),

@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react';
 import { AFTER_LABEL } from '../data/foods';
 import { NUSACHIM } from '../data/texts';
+import { apiSync } from '../lib/api';
 import { resolveAfterBrachos } from '../lib/afterBracha';
 import { groupForRecitation } from '../lib/kedima';
 import { streakAlive } from '../lib/progress';
@@ -98,6 +99,9 @@ export function After() {
               const sevenSpecies = items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length;
               completeMeal(said, sevenSpecies);
               setConfirmed(true);
+              // fire-and-forget league sync (offline-safe)
+              const { serverToken, progress: p } = useBracha.getState();
+              if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
             }}
           >
             Show my after-blessings
