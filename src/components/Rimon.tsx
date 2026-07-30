@@ -10,18 +10,19 @@ import { useEffect, useRef, useState } from 'react';
 
 export type RimonPose = 'hello' | 'thinking' | 'pointing' | 'teaching' | 'idle' | 'celebrate';
 
+const BASE = import.meta.env.BASE_URL;
 const STILL: Record<RimonPose, string> = {
-  hello: '/mascot/rimon-hello.webp',
-  thinking: '/mascot/rimon-thinking.webp',
-  pointing: '/mascot/rimon-pointing.webp',
-  teaching: '/mascot/rimon-teaching.webp',
-  idle: '/mascot/rimon-hello.webp',
-  celebrate: '/mascot/rimon-hello.webp',
+  hello: `${BASE}mascot/rimon-hello.webp`,
+  thinking: `${BASE}mascot/rimon-thinking.webp`,
+  pointing: `${BASE}mascot/rimon-pointing.webp`,
+  teaching: `${BASE}mascot/rimon-teaching.webp`,
+  idle: `${BASE}mascot/rimon-hello.webp`,
+  celebrate: `${BASE}mascot/rimon-hello.webp`,
 };
 
 const VIDEO: Partial<Record<RimonPose, string>> = {
-  idle: '/mascot/rimon-idle.mp4',
-  celebrate: '/mascot/rimon-celebrate.mp4',
+  idle: `${BASE}mascot/rimon-idle.mp4`,
+  celebrate: `${BASE}mascot/rimon-celebrate.mp4`,
 };
 
 export function Rimon({

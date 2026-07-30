@@ -7,6 +7,10 @@ import { execFileSync } from 'child_process';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
+// Build first — IN-PROCESS args, because Git Bash mangles leading-slash args
+// (--base=/x/ became a Windows path once and shipped a blank site).
+execFileSync('node', ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { cwd: 'D:/Claude GROUP APP/bracha-app', stdio: 'inherit' });
+
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
 const DIST = 'D:/Claude GROUP APP/bracha-app/dist';
 
