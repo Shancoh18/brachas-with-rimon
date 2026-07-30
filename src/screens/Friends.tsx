@@ -12,7 +12,7 @@ import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 export function Friends() {
-  const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount } =
+  const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount, setUserEmail, setTab, setScreen } =
     useBracha();
   const [league, setLeague] = useState<LeagueRow[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'busy' | 'offline'>('idle');
@@ -55,13 +55,14 @@ export function Friends() {
     try {
       const r = await apiRegister(name, mail);
       setServerAccount(r.token, r.code);
+      setUserEmail(mail);
       const s = await apiSync(r.token, progress, name);
       setLeague(s.league);
       setStatus('idle');
       setNotice(null);
     } catch (e) {
       if ((e as { status?: number }).status === 409) {
-        setNotice('That email already has a league account. Account recovery is coming soon — use a different email for now.');
+        setNotice('That email already has a league account — sign in from the Account screen (top of Home) with your RIMON code.');
         setStatus('idle');
       } else setStatus('offline');
     }
@@ -174,8 +175,17 @@ export function Friends() {
                 </PillButton>
               </div>
               <p className="mt-2 text-[10px] leading-snug text-mocha">
-                Friends can add you by email or code. We never send mail (yet) — verification and
-                account recovery arrive with it.
+                Friends can add you by email or code. Already have an account?{' '}
+                <button
+                  onClick={() => {
+                    setTab('bless');
+                    setScreen('account');
+                  }}
+                  className="font-bold text-gold underline-offset-2 hover:underline"
+                >
+                  Sign in here
+                </button>
+                .
               </p>
             </>
           )}

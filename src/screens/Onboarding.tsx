@@ -71,7 +71,7 @@ const SLIDES: Slide[] = [
 ];
 
 export function Onboarding() {
-  const { setOnboarded, displayName, setDisplayName, setServerAccount } = useBracha();
+  const { setOnboarded, displayName, setDisplayName, setServerAccount, setUserEmail, serverToken } = useBracha();
   const [idx, setIdx] = useState(0);
   const [email, setEmail] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -109,6 +109,7 @@ export function Onboarding() {
     try {
       const r = await apiRegister(name, mail);
       setServerAccount(r.token, r.code);
+      setUserEmail(mail);
       setOnboarded(true);
     } catch (e) {
       setNotice(
@@ -129,6 +130,7 @@ export function Onboarding() {
       const r = await apiSignIn(mail, codeIn.trim());
       setServerAccount(r.token, r.code);
       setDisplayName(r.name);
+      setUserEmail(r.email);
       setOnboarded(true);
     } catch (e) {
       setNotice(
@@ -247,6 +249,33 @@ export function Onboarding() {
             className="pointer-events-none absolute inset-0"
             style={{ background: 'radial-gradient(ellipse 90% 62% at 50% 26%, rgba(161,51,39,0.08) 0%, rgba(0,0,0,0) 70%)' }}
           />
+          {serverToken ? (
+            /* replaying the intro while signed in — no forms, just a bow */
+            <>
+              <div className={atAccount ? 'rise-in' : ''}>
+                <Rimon
+                  pose="celebrate"
+                  say={`Good to see you again${displayName ? `, ${displayName}` : ''}! Everything is already yours.`}
+                  size={170}
+                />
+              </div>
+              <header className={`space-y-2.5 ${atAccount ? 'rise-in rise-in-1' : ''}`}>
+                <Eyebrow>All set</Eyebrow>
+                <h1 className="font-display text-[36px] font-black leading-[1.05] tracking-tight text-espresso">
+                  You’re signed in.
+                </h1>
+                <p className="mx-auto max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
+                  Streaks, league, reminders — all synced to your account.
+                </p>
+              </header>
+              <div className={atAccount ? 'rise-in rise-in-2' : ''}>
+                <PillButton variant="rimon" icon="→" onClick={() => setOnboarded(true)}>
+                  Back to the app
+                </PillButton>
+              </div>
+            </>
+          ) : (
+            <>
           <div className={atAccount ? 'rise-in' : ''}>
             <Rimon
               pose="pointing"
@@ -343,6 +372,8 @@ export function Onboarding() {
               maybe later — take me to the app
             </button>
           </div>
+            </>
+          )}
         </section>
       </div>
 

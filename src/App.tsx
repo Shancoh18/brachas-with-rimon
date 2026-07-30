@@ -11,6 +11,7 @@ import { Learn } from './screens/Learn';
 import { Journey } from './screens/Journey';
 import { Onboarding } from './screens/Onboarding';
 import { Reference } from './screens/Reference';
+import { Account } from './screens/Account';
 import { Friends } from './screens/Friends';
 
 /** In-app reminder ticker: fires a notification when a set mealtime passes
@@ -69,6 +70,9 @@ export default function App() {
         break;
       case 'reference':
         body = <Reference />;
+        break;
+      case 'account':
+        body = <Account />;
         break;
       default:
         body = <Welcome />;

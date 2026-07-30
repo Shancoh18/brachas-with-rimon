@@ -6,7 +6,7 @@ import { badges, EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/pr
 import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
-export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference';
+export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference' | 'account';
 export type Tab = 'bless' | 'learn' | 'journey' | 'friends';
 export type TextMode = 'hebrew' | 'translit' | 'english';
 
@@ -78,6 +78,8 @@ interface BrachaState {
 
   serverToken: string | null;
   friendCode: string | null;
+  userEmail: string | null;
+  setUserEmail: (e: string | null) => void;
   setServerAccount: (token: string, code: string) => void;
   clearServerAccount: () => void;
 
@@ -179,8 +181,10 @@ export const useBracha = create<BrachaState>()(
 
       serverToken: null,
       friendCode: null,
+      userEmail: null,
+      setUserEmail: (userEmail) => set({ userEmail }),
       setServerAccount: (serverToken, friendCode) => set({ serverToken, friendCode }),
-      clearServerAccount: () => set({ serverToken: null, friendCode: null }),
+      clearServerAccount: () => set({ serverToken: null, friendCode: null, userEmail: null }),
 
       reset: () =>
         set({
@@ -202,6 +206,7 @@ export const useBracha = create<BrachaState>()(
         displayName: s.displayName,
         serverToken: s.serverToken,
         friendCode: s.friendCode,
+        userEmail: s.userEmail,
         starredLessons: s.starredLessons,
         remoteLessons: s.remoteLessons,
         parsha: s.parsha,

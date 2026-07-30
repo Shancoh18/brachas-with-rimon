@@ -267,9 +267,32 @@ const server = createServer(async (req, res) => {
       const { progress, name } = await readBody(req);
       if (progress) a.user.progress = { totalBrachos: progress.totalBrachos ?? 0, streakCurrent: progress.streakCurrent ?? 0, history: (progress.history ?? []).slice(-30) };
       if (name) a.user.name = String(name).trim().slice(0, 20);
-      const { email } = await Promise.resolve({ email: undefined }); // body already read above
       save();
       return json(res, 200, { league: leagueFor(a.user), code: a.user.code, email: a.user.email ?? null });
+    }
+
+    // Who am I — lets a device restore its profile card from just the token.
+    if (url.pathname === '/api/me') {
+      return json(res, 200, { name: a.user.name, email: a.user.email ?? null, code: a.user.code });
+    }
+
+    // Account settings: change name and/or email (email stays unique).
+    if (url.pathname === '/api/account' && req.method === 'POST') {
+      const { name, email } = await readBody(req);
+      if (name != null) {
+        const n = String(name).trim().slice(0, 20);
+        if (!n) return json(res, 400, { error: 'name_required' });
+        a.user.name = n;
+      }
+      if (email != null) {
+        const mail = String(email).trim().toLowerCase().slice(0, 254);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return json(res, 400, { error: 'email_invalid' });
+        const taken = Object.entries(users).some(([t, u]) => u.email === mail && t !== a.token);
+        if (taken) return json(res, 409, { error: 'email_taken' });
+        a.user.email = mail;
+      }
+      save();
+      return json(res, 200, { name: a.user.name, email: a.user.email ?? null, code: a.user.code });
     }
 
     if (url.pathname === '/api/league') return json(res, 200, { league: leagueFor(a.user), code: a.user.code });

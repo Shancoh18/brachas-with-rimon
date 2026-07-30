@@ -47,6 +47,17 @@ export function Welcome() {
 
   return (
     <ScreenShell>
+      {/* account — top-right, out of the vertical rhythm */}
+      <button
+        onClick={() => setScreen('account')}
+        aria-label="account and sign in"
+        className="fixed right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-espresso-soft ring-1 ring-espresso/[0.08] transition-[background-color,transform] duration-150 ease-out hover:bg-white active:scale-95"
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="8" r="4" />
+          <path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5" />
+        </svg>
+      </button>
       <div className="flex flex-1 flex-col items-center justify-center gap-5 pb-44 pt-8 text-center">
         <div className="rise-in">
           <Rimon pose="idle" say="Shalom! I’m Rimon. Show me your meal — we’ll learn its brachos together, and keep your streak alive." size={128} />
