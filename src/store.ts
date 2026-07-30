@@ -62,6 +62,7 @@ interface BrachaState {
   serverToken: string | null;
   friendCode: string | null;
   setServerAccount: (token: string, code: string) => void;
+  clearServerAccount: () => void;
 
   reset: () => void;
 }
@@ -133,6 +134,7 @@ export const useBracha = create<BrachaState>()(
       serverToken: null,
       friendCode: null,
       setServerAccount: (serverToken, friendCode) => set({ serverToken, friendCode }),
+      clearServerAccount: () => set({ serverToken: null, friendCode: null }),
 
       reset: () =>
         set({

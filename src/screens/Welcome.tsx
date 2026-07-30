@@ -47,9 +47,9 @@ export function Welcome() {
 
   return (
     <ScreenShell>
-      <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-40 pt-10 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-5 pb-44 pt-8 text-center">
         <div className="rise-in">
-          <Rimon pose="idle" say="Shalom! I’m Rimon. Show me your meal — we’ll learn its brachos together, and keep your streak alive." size={150} />
+          <Rimon pose="idle" say="Shalom! I’m Rimon. Show me your meal — we’ll learn its brachos together, and keep your streak alive." size={128} />
         </div>
 
         <header className="rise-in rise-in-1 space-y-4">

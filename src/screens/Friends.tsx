@@ -12,7 +12,7 @@ import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 export function Friends() {
-  const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount } =
+  const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount } =
     useBracha();
   const [league, setLeague] = useState<LeagueRow[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'busy' | 'offline'>('idle');
@@ -30,7 +30,12 @@ export function Friends() {
         setLeague(r.league);
         setStatus('idle');
       })
-      .catch(() => setStatus('offline'));
+      .catch((e) => {
+        if ((e as { status?: number }).status === 401) {
+          clearServerAccount(); // server no longer knows us — re-join cleanly
+          setStatus('idle');
+        } else setStatus('offline');
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverToken]);
 

@@ -213,7 +213,7 @@ await clickText('Join', 2200);
 t = await text();
 const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
 check('league join returns friend code', !!codeMatch, codeMatch?.[0]);
-await page.type('input[placeholder="RIMON-XXXX"]', 'RIMON-GC6G');
+await page.type('input[placeholder="RIMON-XXXX"]', 'RIMON-HM8V');
 await clickText('Add', 2200);
 t = await text();
 check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');
