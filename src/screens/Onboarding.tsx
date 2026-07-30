@@ -248,7 +248,15 @@ export function Onboarding() {
             style={{ background: 'radial-gradient(ellipse 90% 62% at 50% 26%, rgba(161,51,39,0.08) 0%, rgba(0,0,0,0) 70%)' }}
           />
           <div className={atAccount ? 'rise-in' : ''}>
-            <Rimon pose="pointing" say="Last thing — a name and email so friends can find you." size={150} />
+            <Rimon
+              pose="pointing"
+              say={
+                mode === 'create'
+                  ? 'Last thing — a name and email so friends can find you.'
+                  : 'Welcome back! Your email + code, and your streaks come home.'
+              }
+              size={150}
+            />
           </div>
           <header className={`space-y-2.5 ${atAccount ? 'rise-in rise-in-1' : ''}`}>
             <Eyebrow>{mode === 'create' ? 'Join the league' : 'Welcome back'}</Eyebrow>
