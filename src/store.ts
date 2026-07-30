@@ -6,7 +6,7 @@ import { badges, EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/pr
 import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
-export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after';
+export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference';
 export type Tab = 'bless' | 'learn' | 'journey' | 'friends';
 export type TextMode = 'hebrew' | 'translit' | 'english';
 
@@ -67,6 +67,8 @@ interface BrachaState {
   clearCelebration: () => void;
   partyTime: boolean;
   setPartyTime: (v: boolean) => void;
+  onboarded: boolean;
+  setOnboarded: (v: boolean) => void;
 
   reminders: ReminderSettings;
   setReminders: (r: ReminderSettings) => void;
@@ -154,6 +156,8 @@ export const useBracha = create<BrachaState>()(
       clearCelebration: () => set({ celebration: null, partyTime: false }),
       partyTime: false,
       setPartyTime: (partyTime) => set({ partyTime }),
+      onboarded: false,
+      setOnboarded: (onboarded) => set({ onboarded }),
 
       starredLessons: [],
       toggleStar: (id) =>
@@ -201,6 +205,7 @@ export const useBracha = create<BrachaState>()(
         starredLessons: s.starredLessons,
         remoteLessons: s.remoteLessons,
         parsha: s.parsha,
+        onboarded: s.onboarded,
       }),
     },
   ),

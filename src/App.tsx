@@ -9,6 +9,8 @@ import { Guide } from './screens/Guide';
 import { After } from './screens/After';
 import { Learn } from './screens/Learn';
 import { Journey } from './screens/Journey';
+import { Onboarding } from './screens/Onboarding';
+import { Reference } from './screens/Reference';
 import { Friends } from './screens/Friends';
 
 /** In-app reminder ticker: fires a notification when a set mealtime passes
@@ -38,8 +40,11 @@ function useReminderTicker() {
 
 export default function App() {
   const tab = useBracha((s) => s.tab);
+  const onboarded = useBracha((s) => s.onboarded);
   const screen = useBracha((s) => s.screen);
   useReminderTicker();
+
+  if (!onboarded) return <Onboarding />;
 
   // Bless flow occupies the whole screen mid-flow; the tab bar shows on roots.
   const inFlow = tab === 'bless' && screen !== 'welcome';
@@ -61,6 +66,9 @@ export default function App() {
         break;
       case 'after':
         body = <After />;
+        break;
+      case 'reference':
+        body = <Reference />;
         break;
       default:
         body = <Welcome />;

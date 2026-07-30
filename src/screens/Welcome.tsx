@@ -94,6 +94,9 @@ export function Welcome() {
           <PillButton variant="rimon" icon="📷" onClick={() => fileRef.current?.click()} disabled={busy}>
             Photograph my meal
           </PillButton>
+          <PillButton icon="📖" onClick={() => setScreen('reference')}>
+            Quick blessing guide
+          </PillButton>
           <button
             onClick={() => runAnalysis()}
             className="text-[12px] font-medium text-mocha underline-offset-4 transition-colors hover:text-espresso hover:underline"

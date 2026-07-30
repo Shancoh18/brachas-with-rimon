@@ -37,8 +37,24 @@ const text = async () => (await page.evaluate(() => document.body.innerText)).to
 await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60_000 });
 await sleep(2500);
 
-// ---------------------------------------------------------------- WELCOME
+// ------------------------------------------------------------- ONBOARDING
 let t = await text();
+check('tutorial shows on first open', t.includes('i’m rimon.') || t.includes('i’m rimon'));
+check('tutorial has motion (dance loop)', await page.evaluate(() => [...document.querySelectorAll('video source')].some((s) => s.src.includes('dance'))));
+await clickText('Nice to meet you', 900);
+t = await text();
+check('tutorial step 2 (photograph)', t.includes('show me your meal'));
+await clickText('Next', 900);
+t = await text();
+check('tutorial step 3 has walker demo', t.includes('walk the blessings') && (await page.evaluate(() => [...document.querySelectorAll('video source')].some((s) => s.src.includes('walk')))));
+await clickText('Next', 900);
+await clickText('Next', 900);
+t = await text();
+check('tutorial ends at account creation', t.includes('make it yours') && (await page.evaluate(() => !!document.querySelector('input[type="email"]'))));
+await clickText('maybe later', 1200);
+
+// ---------------------------------------------------------------- WELCOME
+t = await text();
 check('welcome renders title', t.includes('brachas with rimon'));
 check('nusach selector present', t.includes('ashkenaz') && t.includes('edot hamizrach'));
 check('disclaimer present', t.includes('consult a qualified rabbi'));
@@ -74,6 +90,16 @@ await clickText('Ashkenaz', 600);
 const nusachStored = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.nusach);
 check('nusach switch persists', nusachStored === 'ashkenaz', nusachStored);
 await clickText('Nusach Ari', 600);
+
+// ------------------------------------------------------------ QUICK GUIDE
+await clickText('Quick blessing guide', 1300);
+t = await text();
+check('quick guide lists all six in order', ['hamotzi','mezonos','hagafen','ha’etz','ha’adama','shehakol'].every((x) => t.includes(x)));
+check('rimon eats the food groups', await page.evaluate(() => document.querySelectorAll('img[src*="eats-"]').length === 6));
+await clickText('Hamotzi', 700);
+t = await text();
+check('quick guide expands with full text + audio', t.includes('wash hands first') && t.includes('hear it'));
+await clickText('← home', 1000);
 
 // ---------------------------------------------------------------- CONFIRM
 await clickText('demo meal', 1600);
