@@ -165,6 +165,15 @@ const celebrateVideo = await page.evaluate(() => {
 });
 check('celebrate video mounted', celebrateVideo);
 
+// the party: Finish meal → dancing Rimon + streak count-up + congratulation
+await clickText('Finish meal', 1600);
+t = await text();
+check('celebration overlay shows', t.includes('day') && (t.includes('in a row') || t.includes('challenge complete')));
+const danceMounted = await page.evaluate(() => [...document.querySelectorAll('video source')].some((s) => s.src.includes('dance')));
+check('Rimon dances in celebration', danceMounted);
+check('congratulation line present', t.includes('rimon is proud') || t.includes('whole secret') || t.includes('consistency') || t.includes('keep going') || t.includes('kol hakavod') || t.includes('savoring') || t.includes('intention'));
+await clickText('Continue', 1200);
+
 // persistence across reload
 await page.reload({ waitUntil: 'networkidle2' });
 await sleep(2000);
@@ -209,11 +218,12 @@ check('starring pins a lesson', t.includes('starred'));
 await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());
 await sleep(1000);
 await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
+await page.type('input[placeholder="you@example.com"]', 'e2e-' + Math.floor(Math.random()*1e9) + '@example.com');
 await clickText('Join', 2200);
 t = await text();
 const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
 check('league join returns friend code', !!codeMatch, codeMatch?.[0]);
-await page.type('input[placeholder="RIMON-XXXX"]', 'RIMON-HM8V');
+await page.type('input[placeholder="RIMON-XXXX or friend@email.com"]', 'rimon-test-friend@example.com');
 await clickText('Add', 2200);
 t = await text();
 check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');

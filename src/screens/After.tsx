@@ -19,7 +19,7 @@ import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
 
 export function After() {
-  const { items, updateItem, nusach, textMode, setTextMode, reset, completeMeal, progress, setScreen } =
+  const { items, updateItem, nusach, textMode, setTextMode, reset, completeMeal, progress, setScreen, setPartyTime, celebration } =
     useBracha();
   const pack = NUSACHIM[nusach];
   /** ask → enjoy the meal first; shiur → how much; done → the after-brachos */
@@ -44,6 +44,22 @@ export function After() {
       ),
     [items],
   );
+
+  const recordThisMeal = (withAfter: boolean) => {
+    const groups = groupForRecitation(
+      items.map((i) => ({ id: i.id, bracha: i.bracha, shivaKey: i.entry.shivaKey, whole: i.whole, chaviv: i.chaviv })),
+    );
+    const said: string[] = groups.map((g) => g.bracha);
+    if (withAfter) {
+      if (result.birkatHamazon) said.push('BirkatHamazon');
+      if (result.meeinInserts.length) said.push('MeeinShalosh');
+      if (result.boreiNefashos) said.push('BoreiNefashos');
+    }
+    const sevenSpecies = items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length;
+    completeMeal(said, sevenSpecies);
+    const { serverToken, progress: p } = useBracha.getState();
+    if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
+  };
 
   // ------------------------------------------------------------- ASK phase
   // Never abrupt: the blessings are said, the meal is HAPPENING. Rimon waits.
@@ -77,6 +93,15 @@ export function After() {
               className="text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
             >
               ← back to the blessings
+            </button>
+            <button
+              onClick={() => {
+                recordThisMeal(false);
+                setPartyTime(true);
+              }}
+              className="text-[11px] font-medium text-mocha/70 underline-offset-4 transition-colors duration-150 hover:text-espresso hover:underline"
+            >
+              finish without after-blessings
             </button>
           </div>
         </div>
@@ -122,27 +147,8 @@ export function After() {
           <PillButton
             variant="rimon"
             onClick={() => {
-              // record the completed meal: every before-bracha group said in
-              // the guide + every after-bracha shown next
-              const groups = groupForRecitation(
-                items.map((i) => ({
-                  id: i.id,
-                  bracha: i.bracha,
-                  shivaKey: i.entry.shivaKey,
-                  whole: i.whole,
-                  chaviv: i.chaviv,
-                })),
-              );
-              const said: string[] = groups.map((g) => g.bracha);
-              if (result.birkatHamazon) said.push('BirkatHamazon');
-              if (result.meeinInserts.length) said.push('MeeinShalosh');
-              if (result.boreiNefashos) said.push('BoreiNefashos');
-              const sevenSpecies = items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length;
-              completeMeal(said, sevenSpecies);
+              recordThisMeal(true);
               setPhase('done');
-              // fire-and-forget league sync (offline-safe)
-              const { serverToken, progress: p } = useBracha.getState();
-              if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
             }}
           >
             Show my after-blessings
@@ -311,8 +317,12 @@ export function After() {
       </div>
 
       <div className="flex justify-center py-10">
-        <PillButton onClick={reset} icon="↺">
-          New meal
+        <PillButton
+          variant="rimon"
+          icon="🎉"
+          onClick={() => (celebration ? setPartyTime(true) : reset())}
+        >
+          Finish meal
         </PillButton>
       </div>
     </ScreenShell>

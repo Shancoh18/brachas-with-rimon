@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useBracha } from './store';
+import { Celebration } from './components/Celebration';
 import { TabBar } from './components/TabBar';
 import { Welcome } from './screens/Welcome';
 import { Identify } from './screens/Identify';
@@ -70,6 +71,7 @@ export default function App() {
     <>
       {body}
       {!inFlow && <TabBar />}
+      <Celebration />
     </>
   );
 }

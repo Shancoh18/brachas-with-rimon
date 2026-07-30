@@ -1,13 +1,13 @@
 #!/bin/bash
 # deploy-railway.sh — Brachas with Rimon API on Railway.
-# Mirrors group-app-cloud/deploy-railway.sh (same project, new service).
+# Dedicated Railway project "brachas-with-rimon" (moved out of the Group App project 2026-07-29).
 # Prereq: RAILWAY_API_TOKEN in group-app-ad/.env (already present).
 set -euo pipefail
 # Git-Bash mangles leading-slash args (DATA_DIR=/data became a Windows path
 # and silently pointed the server at ephemeral storage) — disable conversion.
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*"
 
-PROJECT_ID="331f49c9-5435-4e1a-9a23-5dbe56924910"
+PROJECT_ID="e011920b-2bcd-4456-9ec7-95faabe243be"  # dedicated project: brachas-with-rimon
 SERVICE_NAME="brachas-rimon-api"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$DIR/../../group-app-ad/.env"

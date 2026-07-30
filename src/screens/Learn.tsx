@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LESSONS, type Lesson } from '../data/learn';
 import { apiLessons } from '../lib/api';
+import { fetchDailyParsha, parshaIsFresh } from '../lib/parsha';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
@@ -47,12 +48,16 @@ function Star({ on, onClick }: { on: boolean; onClick: () => void }) {
 }
 
 export function Learn() {
-  const { progress, markLessonRead, starredLessons, toggleStar, remoteLessons, setRemoteLessons } =
+  const { progress, markLessonRead, starredLessons, toggleStar, remoteLessons, setRemoteLessons, parsha, setParsha } =
     useBracha();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [showParsha, setShowParsha] = useState(false);
 
   // auto-update: merge remote lessons (cached offline via the store)
   useEffect(() => {
+    if (!parshaIsFresh(parsha)) {
+      fetchDailyParsha().then(setParsha).catch(() => undefined); // offline → yesterday's stays
+    }
     apiLessons()
       .then((r) => Array.isArray(r.lessons) && setRemoteLessons(r.lessons))
       .catch(() => undefined); // offline → cached copy stands
@@ -107,6 +112,53 @@ export function Learn() {
       </button>
     );
   };
+
+  // ------------------------------------------------------- Parsha reader
+  if (showParsha && parsha) {
+    return (
+      <ScreenShell wide>
+        <div className="pb-24">
+          <button
+            onClick={() => setShowParsha(false)}
+            className="rise-in pb-5 text-[12.5px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+          >
+            ← back to Learn
+          </button>
+          <header className="rise-in flex items-start justify-between gap-3 pb-6">
+            <div className="space-y-3">
+              <Eyebrow>
+                📜 Daily Torah · {parsha.aliyahName} ({parsha.aliyahNumber} of 7)
+              </Eyebrow>
+              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
+                {parsha.parsha}
+              </h2>
+              <p className="text-[12px] text-mocha">{parsha.ref} — today’s portion of the weekly parsha</p>
+            </div>
+            <Rimon pose="teaching" size={76} className="shrink-0" />
+          </header>
+          <Bezel className="rise-in rise-in-1" innerClassName="px-6 py-7">
+            <div className="flex flex-col gap-6">
+              {parsha.hebrew.map((he, i) => (
+                <div key={i}>
+                  <p dir="rtl" lang="he" className="hebrew text-[21px] text-espresso">
+                    {he}
+                  </p>
+                  {parsha.english[i] && (
+                    <p className="mt-1.5 text-[13px] leading-relaxed text-espresso-soft">
+                      {parsha.english[i]}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-6 border-t border-espresso/[0.07] pt-4 text-[10.5px] italic text-mocha">
+              Torah text: {parsha.license}. One aliyah a day — by Shabbat you’ve met the whole parsha.
+            </p>
+          </Bezel>
+        </div>
+      </ScreenShell>
+    );
+  }
 
   if (lesson) {
     const starredNow = starredLessons.includes(lesson.id);
@@ -174,6 +226,28 @@ export function Learn() {
           </div>
           <Rimon pose="teaching" size={88} />
         </header>
+
+        {/* daily Parsha — refreshed every day, one aliyah at a time */}
+        {parsha && (
+          <button onClick={() => setShowParsha(true)} className="mb-6 w-full text-left">
+            <Bezel className="rise-in" innerClassName="px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-rimon">
+                    📜 Daily Torah — {parsha.aliyahName}
+                  </p>
+                  <p className="mt-1 font-display text-[19px] font-bold text-espresso">{parsha.parsha}</p>
+                  <p className="mt-0.5 text-[11.5px] text-mocha">
+                    {parsha.ref} · today’s slice of the weekly parsha
+                  </p>
+                </div>
+                <span className="hebrew shrink-0 text-[26px] text-gold" dir="rtl" lang="he">
+                  {parsha.hebrew[0]?.split(' ').slice(0, 2).join(' ')}…
+                </span>
+              </div>
+            </Bezel>
+          </button>
+        )}
 
         {starred.length > 0 && (
           <>

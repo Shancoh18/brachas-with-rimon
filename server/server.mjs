@@ -225,14 +225,20 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/health') return json(res, 200, { ok: true, users: Object.keys(users).length, vision: !!process.env.ANTHROPIC_API_KEY });
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
-      const { name } = await readBody(req);
+      const { name, email } = await readBody(req);
       if (!name || String(name).trim().length < 1) return json(res, 400, { error: 'name_required' });
+      let mail = null;
+      if (email != null && String(email).trim() !== '') {
+        mail = String(email).trim().toLowerCase().slice(0, 254);
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return json(res, 400, { error: 'email_invalid' });
+        if (Object.values(users).some((u) => u.email === mail)) return json(res, 409, { error: 'email_taken' });
+      }
       const token = randomBytes(24).toString('hex');
       let code = friendCode();
       while (Object.values(users).some((u) => u.code === code)) code = friendCode();
-      users[token] = { name: String(name).trim().slice(0, 20), code, friends: [], progress: null, push: null, created: Date.now() };
+      users[token] = { name: String(name).trim().slice(0, 20), email: mail, code, friends: [], progress: null, push: null, created: Date.now() };
       save();
-      return json(res, 200, { token, code });
+      return json(res, 200, { token, code, email: mail });
     }
 
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
@@ -250,16 +256,19 @@ const server = createServer(async (req, res) => {
       const { progress, name } = await readBody(req);
       if (progress) a.user.progress = { totalBrachos: progress.totalBrachos ?? 0, streakCurrent: progress.streakCurrent ?? 0, history: (progress.history ?? []).slice(-30) };
       if (name) a.user.name = String(name).trim().slice(0, 20);
+      const { email } = await Promise.resolve({ email: undefined }); // body already read above
       save();
-      return json(res, 200, { league: leagueFor(a.user), code: a.user.code });
+      return json(res, 200, { league: leagueFor(a.user), code: a.user.code, email: a.user.email ?? null });
     }
 
     if (url.pathname === '/api/league') return json(res, 200, { league: leagueFor(a.user), code: a.user.code });
 
     if (url.pathname === '/api/friends/add' && req.method === 'POST') {
       const { code } = await readBody(req);
-      const norm = String(code || '').trim().toUpperCase();
-      const other = Object.values(users).find((u) => u.code === norm);
+      const raw = String(code || '').trim();
+      const other = raw.includes('@')
+        ? Object.values(users).find((u) => u.email === raw.toLowerCase())
+        : Object.values(users).find((u) => u.code === raw.toUpperCase());
       if (!other) return json(res, 404, { error: 'code_not_found' });
       if (other.code === a.user.code) return json(res, 400, { error: 'thats_you' });
       if (!a.user.friends.includes(other.code)) a.user.friends.push(other.code);

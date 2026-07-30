@@ -17,6 +17,7 @@ export function Friends() {
   const [league, setLeague] = useState<LeagueRow[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'busy' | 'offline'>('idle');
   const [codeInput, setCodeInput] = useState('');
+  const [email, setEmail] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const alive = streakAlive(progress);
@@ -45,16 +46,24 @@ export function Friends() {
       setNotice('Pick a league name first.');
       return;
     }
+    const mail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) {
+      setNotice('Enter a valid email — friends find you with it.');
+      return;
+    }
     setStatus('busy');
     try {
-      const r = await apiRegister(name);
+      const r = await apiRegister(name, mail);
       setServerAccount(r.token, r.code);
       const s = await apiSync(r.token, progress, name);
       setLeague(s.league);
       setStatus('idle');
       setNotice(null);
-    } catch {
-      setStatus('offline');
+    } catch (e) {
+      if ((e as { status?: number }).status === 409) {
+        setNotice('That email already has a league account. Account recovery is coming soon — use a different email for now.');
+        setStatus('idle');
+      } else setStatus('offline');
     }
   };
 
@@ -70,7 +79,7 @@ export function Friends() {
     } catch (e) {
       setNotice(
         (e as { status?: number }).status === 404
-          ? 'No one has that code — check the letters.'
+          ? 'No league member has that code or email yet — invite them below!'
           : 'Couldn’t reach the league — try again in a moment.',
       );
       setStatus('idle');
@@ -138,20 +147,38 @@ export function Friends() {
           <label className="text-[10px] font-bold uppercase tracking-[0.18em] text-mocha">
             Your league name
           </label>
-          <div className="mt-1 flex items-center gap-3">
-            <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. Shan"
-              maxLength={20}
-              className="w-full bg-transparent text-[16px] font-semibold text-espresso outline-none placeholder:text-mocha/50"
-            />
-            {!serverToken && (
-              <PillButton variant="rimon" icon="→" onClick={() => void join()} disabled={status === 'busy'}>
-                Join
-              </PillButton>
-            )}
-          </div>
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="e.g. Shan"
+            maxLength={20}
+            className="mt-1 w-full bg-transparent text-[16px] font-semibold text-espresso outline-none placeholder:text-mocha/50"
+          />
+          {!serverToken && (
+            <>
+              <label className="mt-3 block border-t border-espresso/[0.07] pt-3 text-[10px] font-bold uppercase tracking-[0.18em] text-mocha">
+                Your email
+              </label>
+              <div className="mt-1 flex items-center gap-3">
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="w-full bg-transparent text-[15px] font-medium text-espresso outline-none placeholder:text-mocha/40"
+                />
+                <PillButton variant="rimon" icon="→" onClick={() => void join()} disabled={status === 'busy'}>
+                  Join
+                </PillButton>
+              </div>
+              <p className="mt-2 text-[10px] leading-snug text-mocha">
+                Friends can add you by email or code. We never send mail (yet) — verification and
+                account recovery arrive with it.
+              </p>
+            </>
+          )}
           {friendCode && (
             <div className="mt-3 flex items-center justify-between border-t border-espresso/[0.07] pt-3">
               <div>
@@ -175,15 +202,15 @@ export function Friends() {
         {serverToken && (
           <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
             <label className="text-[10px] font-bold uppercase tracking-[0.18em] text-mocha">
-              Add a friend by code
+              Add a friend — code or email
             </label>
             <div className="mt-1 flex items-center gap-3">
               <input
                 value={codeInput}
-                onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                placeholder="RIMON-XXXX"
-                maxLength={10}
-                className="w-full bg-transparent font-display text-[18px] font-bold tracking-wide text-espresso outline-none placeholder:text-mocha/40"
+                onChange={(e) => setCodeInput(e.target.value.includes('@') ? e.target.value.toLowerCase() : e.target.value.toUpperCase())}
+                placeholder="RIMON-XXXX or friend@email.com"
+                maxLength={254}
+                className="w-full bg-transparent font-display text-[16px] font-bold tracking-wide text-espresso outline-none placeholder:text-[12px] placeholder:text-mocha/40"
               />
               <PillButton icon="+" onClick={() => void addFriend()} disabled={status === 'busy' || !codeInput.trim()}>
                 Add

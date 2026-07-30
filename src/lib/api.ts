@@ -7,7 +7,7 @@ import type { ProgressState } from './progress';
 
 export const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
-  'https://brachas-rimon-api-production.up.railway.app';
+  'https://brachas-rimon-api-production-46ae.up.railway.app';
 
 export interface LeagueRow {
   name: string;
@@ -31,10 +31,10 @@ const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Pr
   return (await res.json()) as T;
 };
 
-export const apiRegister = (name: string) =>
-  call<{ token: string; code: string }>('/api/register', {
+export const apiRegister = (name: string, email: string) =>
+  call<{ token: string; code: string; email: string | null }>('/api/register', {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, email }),
   });
 
 export const apiSync = (token: string, progress: ProgressState, name?: string) =>

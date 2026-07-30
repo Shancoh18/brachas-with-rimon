@@ -76,6 +76,11 @@ export function Journey() {
           <Rimon pose={alive && progress.streakCurrent >= 3 ? 'celebrate' : 'idle'} size={88} />
         </header>
 
+        {/* cinematic banner — a different aspect of Rimon, literally */}
+        {alive && progress.streakCurrent >= 3 && (
+          <Rimon variant="wide" pose="dance" className="rise-in rise-in-1 pb-4" say={"" + progress.streakCurrent + " days strong — keep the flame."} />
+        )}
+
         {/* streak hero */}
         <Bezel className="rise-in rise-in-1" innerClassName="px-6 py-7 text-center">
           <p className="font-display text-[64px] font-black leading-none text-rimon">

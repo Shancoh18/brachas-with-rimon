@@ -2,12 +2,21 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
 import type { NusachId } from './data/texts';
-import { EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/progress';
+import { badges, EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/progress';
 import type { Lesson } from './data/learn';
+import type { ParshaReading } from './lib/parsha';
 
 export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after';
 export type Tab = 'bless' | 'learn' | 'journey' | 'friends';
 export type TextMode = 'hebrew' | 'translit' | 'english';
+
+export interface Celebration {
+  kind: 'meal' | 'lesson';
+  streak: number;
+  streakExtended: boolean;
+  brachosSaid: number;
+  newBadges: { id: string; label: string }[];
+}
 
 export interface ReminderSettings {
   enabled: boolean;
@@ -49,9 +58,15 @@ interface BrachaState {
   toggleStar: (id: string) => void;
   remoteLessons: Lesson[];
   setRemoteLessons: (l: Lesson[]) => void;
+  parsha: ParshaReading | null;
+  setParsha: (p: ParshaReading) => void;
   /** guards double-counting when the After screen re-renders */
   mealRecorded: boolean;
   setMealRecorded: (v: boolean) => void;
+  celebration: Celebration | null;
+  clearCelebration: () => void;
+  partyTime: boolean;
+  setPartyTime: (v: boolean) => void;
 
   reminders: ReminderSettings;
   setReminders: (r: ReminderSettings) => void;
@@ -98,22 +113,47 @@ export const useBracha = create<BrachaState>()(
 
       progress: EMPTY_PROGRESS,
       completeMeal: (brachosSaid, sevenSpecies) =>
-        set((s) =>
-          s.mealRecorded
-            ? s
-            : {
-                progress: recordMeal(s.progress, brachosSaid, sevenSpecies),
-                mealRecorded: true,
-              },
-        ),
+        set((s) => {
+          if (s.mealRecorded) return s;
+          const before = badges(s.progress);
+          const progress = recordMeal(s.progress, brachosSaid, sevenSpecies);
+          const after = badges(progress);
+          const newBadges = after
+            .filter((b) => b.earned && !before.find((x) => x.id === b.id)?.earned)
+            .map((b) => ({ id: b.id, label: b.label }));
+          return {
+            progress,
+            mealRecorded: true,
+            celebration: {
+              kind: 'meal',
+              streak: progress.streakCurrent,
+              streakExtended: progress.streakCurrent > s.progress.streakCurrent || s.progress.lastActiveDay == null,
+              brachosSaid: brachosSaid.length,
+              newBadges,
+            },
+          };
+        }),
       markLessonRead: (id) =>
-        set((s) =>
-          s.progress.lessonsRead.includes(id)
-            ? s
-            : { progress: { ...s.progress, lessonsRead: [...s.progress.lessonsRead, id] } },
-        ),
+        set((s) => {
+          if (s.progress.lessonsRead.includes(id)) return s;
+          const before = badges(s.progress);
+          const progress = { ...s.progress, lessonsRead: [...s.progress.lessonsRead, id] };
+          const newBadges = badges(progress)
+            .filter((b) => b.earned && !before.find((x) => x.id === b.id)?.earned)
+            .map((b) => ({ id: b.id, label: b.label }));
+          return {
+            progress,
+            ...(newBadges.length
+              ? { celebration: { kind: 'lesson', streak: progress.streakCurrent, streakExtended: false, brachosSaid: 0, newBadges } }
+              : {}),
+          };
+        }),
       mealRecorded: false,
       setMealRecorded: (mealRecorded) => set({ mealRecorded }),
+      celebration: null,
+      clearCelebration: () => set({ celebration: null, partyTime: false }),
+      partyTime: false,
+      setPartyTime: (partyTime) => set({ partyTime }),
 
       starredLessons: [],
       toggleStar: (id) =>
@@ -124,6 +164,8 @@ export const useBracha = create<BrachaState>()(
         })),
       remoteLessons: [],
       setRemoteLessons: (remoteLessons) => set({ remoteLessons }),
+      parsha: null,
+      setParsha: (parsha) => set({ parsha }),
 
       reminders: { enabled: false, times: ['08:00', '13:00', '19:00'] },
       setReminders: (reminders) => set({ reminders }),
@@ -158,6 +200,7 @@ export const useBracha = create<BrachaState>()(
         friendCode: s.friendCode,
         starredLessons: s.starredLessons,
         remoteLessons: s.remoteLessons,
+        parsha: s.parsha,
       }),
     },
   ),
