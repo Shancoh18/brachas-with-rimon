@@ -2,8 +2,8 @@
 
 /* ------------------------------------------------------------------ theme */
 @theme {
-  --color-cream: #fdfbf7;
-  --color-cream-deep: #f6f1e7;
+  --color-cream: #faf7e9;
+  --color-cream-deep: #f2eddc;
   --color-espresso: #2b211a;
   --color-espresso-soft: #57493e;
   --color-mocha: #8a7a6d;
@@ -103,4 +103,53 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(43, 33, 26, 0.15) transparent;
+}
+
+/* ---------------------------------------------------------- Rimon life */
+/* seamless blend: exact-cream assets + a wide feather, no visible disc */
+.rimon-blend {
+  border-radius: 9999px;
+  -webkit-mask-image: radial-gradient(circle, black 52%, transparent 76%);
+  mask-image: radial-gradient(circle, black 52%, transparent 76%);
+}
+
+@keyframes rimon-enter {
+  0% { opacity: 0; transform: translateY(18px) scale(0.82); filter: blur(5px); }
+  60% { opacity: 1; filter: blur(0); }
+  80% { transform: translateY(-3px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.rimon-enter { animation: rimon-enter 0.7s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* tap reaction — squash and stretch, like pressing a clay toy */
+@keyframes rimon-boop {
+  0% { transform: scale(1, 1); }
+  30% { transform: scale(1.14, 0.84) translateY(5px); }
+  55% { transform: scale(0.92, 1.1) translateY(-7px); }
+  75% { transform: scale(1.05, 0.96) translateY(1px); }
+  100% { transform: scale(1, 1) translateY(0); }
+}
+.rimon-boop { animation: rimon-boop 0.55s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+@keyframes bubble-pop {
+  0% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  70% { transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bubble-pop { animation: bubble-pop 0.45s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* typing dots for the identifying state */
+@keyframes dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+.typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: dot-bounce 1.2s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* ------------------------------------------------ reduced motion (a11y) */
+@media (prefers-reduced-motion: reduce) {
+  .rise-in, .rimon-enter, .bubble-pop, .float-soft, .rimon-boop, .typing-dot { animation: none !important; }
+  .pulse-ring::before { animation: none !important; display: none; }
+  * { transition-duration: 0.01ms !important; }
 }

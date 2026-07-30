@@ -9,7 +9,7 @@ import { NUSACHIM } from '../data/texts';
 import { groupForRecitation } from '../lib/kedima';
 import { useBracha, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
-import { Rimon } from '../components/Rimon';
+import { Rimon, RimonWalker } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
@@ -80,16 +80,19 @@ export function Guide() {
 
   return (
     <ScreenShell>
-      {/* progress dots */}
-      <div className="rise-in flex items-center justify-center gap-2 pb-6">
-        {groups.map((g, i) => (
-          <span
-            key={g.bracha}
-            className={`h-1.5 rounded-full transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-              i === step ? 'w-8 bg-rimon' : i < step ? 'w-3 bg-gold' : 'w-3 bg-espresso/15'
-            }`}
-          />
-        ))}
+      {/* Rimon walks the meal's blessings with you */}
+      <div className="rise-in pb-2">
+        <RimonWalker progress={groups.length > 1 ? step / (groups.length - 1) : 1} done={false} />
+        <div className="flex items-center justify-center gap-2 pt-1">
+          {groups.map((g2, i) => (
+            <span
+              key={g2.bracha}
+              className={`h-1.5 rounded-full transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                i === step ? 'w-8 bg-rimon' : i < step ? 'w-3 bg-gold' : 'w-3 bg-espresso/15'
+              }`}
+            />
+          ))}
+        </div>
       </div>
 
       <header className="rise-in flex items-start justify-between gap-4 pb-4">
@@ -105,7 +108,7 @@ export function Guide() {
             {rep.chaviv ? ' ★' : ''}
           </p>
         </div>
-        <Rimon pose="pointing" say={sayLine} size={80} />
+        <Rimon pose="pointing" say={sayLine} size={92} />
       </header>
 
       {/* text-mode toggle */}

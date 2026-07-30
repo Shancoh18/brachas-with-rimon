@@ -17,8 +17,9 @@ export function Identify() {
           <span className="pulse-ring absolute inset-0 rounded-full" />
           <Rimon pose="thinking" say="Hmm… let me look closely at what’s on your plate." size={140} float={false} />
         </div>
-        <p className="rise-in rise-in-2 text-[12px] font-medium uppercase tracking-[0.2em] text-mocha">
-          identifying your meal…
+        <p className="rise-in rise-in-2 flex items-center gap-2 text-[12px] font-medium uppercase tracking-[0.2em] text-mocha">
+          identifying your meal
+          <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
         </p>
       </div>
     </ScreenShell>

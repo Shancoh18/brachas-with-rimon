@@ -20,7 +20,8 @@ export function Learn() {
           >
             ← all lessons
           </button>
-          <header className="rise-in space-y-3 pb-6">
+          <header className="rise-in flex items-start justify-between gap-3 pb-6">
+            <div className="space-y-3">
             <Eyebrow>
               {lesson.emoji} {lesson.minutes} min read
             </Eyebrow>
@@ -28,6 +29,8 @@ export function Learn() {
               {lesson.title}
             </h2>
             <p className="font-display text-[16px] italic leading-relaxed text-gold">{lesson.hook}</p>
+            </div>
+            <Rimon pose="teaching" size={76} className="shrink-0" />
           </header>
           <div className="rise-in rise-in-1 space-y-5">
             {lesson.body.map((p, i) => (
