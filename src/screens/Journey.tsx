@@ -1,6 +1,7 @@
 /** Journey tab — streak, stats, challenges, badges, reminders. */
 import { useState } from 'react';
 import { apiPushKey, apiPushSubscribe, vapidKeyToBytes } from '../lib/api';
+import { cancelNativeReminders, isNative, scheduleNativeReminders } from '../lib/native';
 import { badges, CHALLENGES, streakAlive } from '../lib/progress';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
@@ -37,6 +38,15 @@ export function Journey() {
   };
 
   const enableReminders = async () => {
+    // Native app: iOS local notifications — on-device, daily, app closed or not.
+    if (isNative()) {
+      const ok = await scheduleNativeReminders(reminders.times);
+      setNotifState(ok ? 'granted' : 'denied');
+      if (!ok) return;
+      setReminders({ ...reminders, enabled: true });
+      setPushMode('background');
+      return;
+    }
     if (typeof Notification === 'undefined') return;
     const perm = await Notification.requestPermission();
     setNotifState(perm);
@@ -56,6 +66,7 @@ export function Journey() {
   const disableReminders = async () => {
     setReminders({ ...reminders, enabled: false });
     setPushMode(null);
+    if (isNative()) return void cancelNativeReminders();
     if (serverToken) {
       try {
         await apiPushSubscribe(serverToken, null, []);
@@ -214,7 +225,10 @@ export function Journey() {
                     const times = [...reminders.times];
                     times[i] = e.target.value;
                     setReminders({ ...reminders, times });
-                    if (reminders.enabled) void subscribePush(times).then(setPushMode);
+                    if (reminders.enabled) {
+                      if (isNative()) void scheduleNativeReminders(times);
+                      else void subscribePush(times).then(setPushMode);
+                    }
                   }}
                   className="rounded-full bg-espresso/[0.05] px-3 py-1.5 text-[12px] font-semibold text-espresso outline-none"
                 />
@@ -223,16 +237,19 @@ export function Journey() {
           )}
           {notifState === 'denied' && (
             <p className="mt-3 text-[10.5px] text-rimon">
-              Notifications are blocked in your browser settings — enable them for this site to get
-              nudges.
+              {isNative()
+                ? 'Notifications are off for this app — enable them in Settings → Brachas with Rimon.'
+                : 'Notifications are blocked in your browser settings — enable them for this site to get nudges.'}
             </p>
           )}
           <p className="mt-3 text-[10px] leading-snug text-mocha">
             {pushMode === 'background'
-              ? 'Background push is ON — reminders arrive even when the app is closed.'
-              : serverToken
-                ? 'Reminders fire while the app is open; enable the toggle to register background push.'
-                : 'Join the league on the Friends tab to unlock background push — otherwise reminders fire while the app is open.'}
+              ? 'Reminders are ON — they arrive even when the app is closed.'
+              : isNative()
+                ? 'Flip the toggle and reminders fire right on this device, app open or closed.'
+                : serverToken
+                  ? 'Reminders fire while the app is open; enable the toggle to register background push.'
+                  : 'Join the league on the Friends tab to unlock background push — otherwise reminders fire while the app is open.'}
           </p>
         </Bezel>
       </div>

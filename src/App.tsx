@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isNative } from './lib/native';
 import { useBracha } from './store';
 import { Celebration } from './components/Celebration';
 import { TabBar } from './components/TabBar';
@@ -20,7 +21,7 @@ function useReminderTicker() {
   const { reminders } = useBracha();
   const fired = useRef<string>('');
   useEffect(() => {
-    if (!reminders.enabled) return;
+    if (!reminders.enabled || isNative()) return; // native: iOS local notifications own this
     const tick = () => {
       if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
       const now = new Date();

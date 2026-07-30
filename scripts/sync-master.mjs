@@ -4,12 +4,25 @@
  * node_modules, dist) as a child of the current remote master head.
  */
 import { execFileSync } from 'child_process';
+import { createHash } from 'crypto';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
 const ROOT = 'D:/Claude GROUP APP/bracha-app';
 const SKIP = new Set(['.git', '.github', 'node_modules', 'dist']);
+// generated iOS artifacts (also git-ignored); the exFAT drive can wedge these
+const SKIP_PATHS = new Set([
+  'ios/App/App/public',
+  'ios/capacitor-cordova-ios-plugins',
+  'ios/App/Pods',
+  'ios/App/build',
+  'ios/App/output',
+  'ios/DerivedData',
+  'ios/App/App/capacitor.config.json',
+  'ios/App/App/config.xml',
+  'ios-wedged',
+]);
 
 const gh = (args, input) => {
   const out = execFileSync('gh', ['api', ...args], {
@@ -25,7 +38,15 @@ const walk = (dir) => {
   for (const name of readdirSync(dir)) {
     if (SKIP.has(name)) continue;
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p);
+    if (SKIP_PATHS.has(relative(ROOT, p).replace(/\\/g, '/'))) continue;
+    let st;
+    try {
+      st = statSync(p);
+    } catch {
+      console.warn(`skip unreadable: ${p}`);
+      continue;
+    }
+    if (st.isDirectory()) walk(p);
     else files.push(p);
   }
 };
@@ -35,21 +56,40 @@ console.log(`${files.length} files`);
 const head = gh([`${REPO}/git/refs/heads/master`]);
 console.log('remote master:', head.object.sha);
 
+// Incremental: git blob sha = sha1("blob <len>\0" + content). Anything whose
+// sha already exists in the remote tree needs NO upload — this keeps the run
+// to a handful of POSTs instead of ~1500 (which trips secondary rate limits).
+const headCommit = gh([`${REPO}/git/commits/${head.object.sha}`]);
+const remoteTree = gh([`${REPO}/git/trees/${headCommit.tree.sha}?recursive=1`]);
+const remoteShas = new Set((remoteTree.tree ?? []).map((e) => e.sha));
+
 const treeEntries = [];
+let uploaded = 0;
 for (const p of files) {
   const rel = relative(ROOT, p).replace(/\\/g, '/');
-  const blob = gh(['-X', 'POST', `${REPO}/git/blobs`, '--input', '-'], {
-    content: readFileSync(p).toString('base64'),
-    encoding: 'base64',
-  });
-  treeEntries.push({ path: rel, mode: '100644', type: 'blob', sha: blob.sha });
+  const buf = readFileSync(p);
+  const sha = createHash('sha1')
+    .update(`blob ${buf.length}\0`)
+    .update(buf)
+    .digest('hex');
+  if (!remoteShas.has(sha)) {
+    const blob = gh(['-X', 'POST', `${REPO}/git/blobs`, '--input', '-'], {
+      content: buf.toString('base64'),
+      encoding: 'base64',
+    });
+    if (blob.sha !== sha) throw new Error(`sha mismatch for ${rel}`);
+    uploaded++;
+  }
+  treeEntries.push({ path: rel, mode: '100644', type: 'blob', sha });
 }
-console.log('blobs done');
+console.log(`blobs done (${uploaded} uploaded, ${files.length - uploaded} reused)`);
 
 const tree = gh(['-X', 'POST', `${REPO}/git/trees`, '--input', '-'], { tree: treeEntries });
+const message = execFileSync('git', ['-C', ROOT, 'log', '-1', '--pretty=%B'], {
+  encoding: 'utf8',
+}).trim();
 const commit = gh(['-X', 'POST', `${REPO}/git/commits`, '--input', '-'], {
-  message:
-    'Polish pass: hear-it audio, webp mascots, PWA offline, streak welcome, activity strip; licensed nusach texts; gamification\n\nCo-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>',
+  message,
   tree: tree.sha,
   parents: [head.object.sha],
 });

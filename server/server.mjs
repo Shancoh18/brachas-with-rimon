@@ -295,6 +295,18 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { name: a.user.name, email: a.user.email ?? null, code: a.user.code });
     }
 
+    // Full account deletion (App Store guideline 5.1.1(v)): removes the user
+    // and unlinks them from every friend list. Irreversible.
+    if (url.pathname === '/api/account/delete' && req.method === 'POST') {
+      const gone = a.user.code;
+      delete users[a.token];
+      for (const u of Object.values(users)) {
+        u.friends = (u.friends ?? []).filter((c) => c !== gone);
+      }
+      save();
+      return json(res, 200, { ok: true });
+    }
+
     if (url.pathname === '/api/league') return json(res, 200, { league: leagueFor(a.user), code: a.user.code });
 
     if (url.pathname === '/api/friends/add' && req.method === 'POST') {

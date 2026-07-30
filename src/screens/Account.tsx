@@ -11,7 +11,7 @@
  * Email verification / recovery ships when a mail provider exists.
  */
 import { useEffect, useState } from 'react';
-import { apiMe, apiRegister, apiSignIn, apiUpdateAccount } from '../lib/api';
+import { apiDeleteAccount, apiMe, apiRegister, apiSignIn, apiUpdateAccount } from '../lib/api';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
@@ -40,6 +40,7 @@ export function Account() {
   const [notice, setNotice] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // restore the profile card from the server (also self-heals a stale token)
   useEffect(() => {
@@ -235,6 +236,51 @@ export function Account() {
                 Signing out keeps your local streaks on this device; your league account stays safe
                 on the server — sign back in any time with email + code.
               </p>
+
+              {/* permanent deletion — inline two-step confirm */}
+              {!confirmDelete ? (
+                <button
+                  onClick={() => setConfirmDelete(true)}
+                  className="pt-2 text-[11px] font-medium text-mocha/70 transition-colors duration-150 hover:text-rimon"
+                >
+                  delete my account permanently
+                </button>
+              ) : (
+                <div className="mt-2 w-full max-w-[320px] rounded-[1.25rem] bg-rimon/[0.06] px-5 py-4 ring-1 ring-rimon/20">
+                  <p className="text-[12px] font-semibold text-espresso">Delete your account?</p>
+                  <p className="mt-1 text-[10.5px] leading-snug text-espresso-soft">
+                    This erases your league account, friends, and synced progress from the server —
+                    permanently. There is no undo, and your friend code stops working.
+                  </p>
+                  <div className="mt-3 flex items-center justify-end gap-4">
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      className="text-[11.5px] font-semibold text-espresso-soft hover:text-espresso"
+                    >
+                      keep my account
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!serverToken) return;
+                        setBusy(true);
+                        try {
+                          await apiDeleteAccount(serverToken);
+                          clearServerAccount();
+                          setConfirmDelete(false);
+                          setNotice('Your account has been deleted. Local streaks on this device remain yours.');
+                        } catch {
+                          setNotice('Couldn’t reach the server — try again in a moment.');
+                        }
+                        setBusy(false);
+                      }}
+                      disabled={busy}
+                      className="rounded-full bg-rimon px-4 py-2 text-[11.5px] font-bold text-cream transition-transform duration-150 ease-out active:scale-95"
+                    >
+                      {busy ? 'Deleting…' : 'Delete forever'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -315,6 +361,17 @@ export function Account() {
             </div>
           </>
         )}
+
+        <p className="pt-8 text-center">
+          <a
+            href="https://shancoh18.github.io/brachas-with-rimon/privacy.html"
+            target="_blank"
+            rel="noreferrer"
+            className="text-[10.5px] font-medium text-mocha/70 underline-offset-2 hover:text-espresso hover:underline"
+          >
+            privacy policy
+          </a>
+        </p>
       </div>
     </ScreenShell>
   );

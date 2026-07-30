@@ -103,6 +103,9 @@ export const apiUpdateAccount = (token: string, patch: { name?: string; email?: 
     token,
   );
 
+export const apiDeleteAccount = (token: string) =>
+  call<{ ok: boolean }>('/api/account/delete', { method: 'POST' }, token);
+
 export const apiSignIn = (email: string, code: string) =>
   call<{ token: string; code: string; name: string; email: string }>('/api/signin', {
     method: 'POST',
