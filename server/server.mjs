@@ -241,6 +241,17 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { token, code, email: mail });
     }
 
+    // Sign in on a new device: email + friend code is the key pair (no
+    // passwords by design; email verification arrives with a mail provider).
+    if (url.pathname === '/api/signin' && req.method === 'POST') {
+      const { email, code } = await readBody(req);
+      const mail = String(email || '').trim().toLowerCase();
+      const c = String(code || '').trim().toUpperCase();
+      const entry = Object.entries(users).find(([, u]) => u.email === mail && u.code === c);
+      if (!entry) return json(res, 404, { error: 'no_match' });
+      return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
+    }
+
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
       const body = await readBody(req);
       if (!body.image) return json(res, 400, { error: 'no_image' });

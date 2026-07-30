@@ -163,9 +163,13 @@ body {
   mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);
 }
 
+/* stories-style progress fill (duration set inline per slide) */
+@keyframes story-fill { from { width: 0%; } to { width: 100%; } }
+.story-fill { animation-name: story-fill; animation-timing-function: linear; animation-fill-mode: forwards; }
+
 /* ------------------------------------------------ reduced motion (a11y) */
 @media (prefers-reduced-motion: reduce) {
-  .rise-in, .rimon-enter, .bubble-pop, .float-soft, .rimon-boop, .rimon-wiggle, .typing-dot { animation: none !important; }
+  .rise-in, .rimon-enter, .bubble-pop, .float-soft, .rimon-boop, .rimon-wiggle, .typing-dot, .story-fill { animation: none !important; }
   .pulse-ring::before { animation: none !important; display: none; }
   * { transition-duration: 0.01ms !important; }
 }

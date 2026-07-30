@@ -92,3 +92,9 @@ export function vapidKeyToBytes(base64: string): Uint8Array {
 }
 
 export const apiLessons = () => call<{ lessons: Lesson[] }>('/api/lessons');
+
+export const apiSignIn = (email: string, code: string) =>
+  call<{ token: string; code: string; name: string; email: string }>('/api/signin', {
+    method: 'POST',
+    body: JSON.stringify({ email, code }),
+  });
