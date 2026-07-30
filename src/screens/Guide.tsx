@@ -117,7 +117,7 @@ export function Guide() {
           <button
             key={m}
             onClick={() => setTextMode(m)}
-            className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
               textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
             }`}
           >

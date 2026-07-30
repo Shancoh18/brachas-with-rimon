@@ -75,7 +75,7 @@ export function Welcome() {
             <button
               key={id}
               onClick={() => setNusach(id)}
-              className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
                 nusach === id ? 'bg-espresso text-cream shadow-sm' : 'text-espresso-soft'
               }`}
             >

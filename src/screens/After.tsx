@@ -19,10 +19,12 @@ import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
 
 export function After() {
-  const { items, updateItem, nusach, textMode, setTextMode, reset, completeMeal, progress } =
+  const { items, updateItem, nusach, textMode, setTextMode, reset, completeMeal, progress, setScreen } =
     useBracha();
   const pack = NUSACHIM[nusach];
-  const [confirmed, setConfirmed] = useState(false);
+  /** ask → enjoy the meal first; shiur → how much; done → the after-brachos */
+  const [phase, setPhase] = useState<'ask' | 'shiur' | 'done'>('ask');
+  const confirmed = phase === 'done';
 
   const result = useMemo(
     () =>
@@ -42,6 +44,45 @@ export function After() {
       ),
     [items],
   );
+
+  // ------------------------------------------------------------- ASK phase
+  // Never abrupt: the blessings are said, the meal is HAPPENING. Rimon waits.
+  if (phase === 'ask') {
+    return (
+      <ScreenShell>
+        <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-16 text-center">
+          <div className="rise-in">
+            <Rimon
+              pose="idle"
+              say="Beautiful — every blessing said. Now enjoy your meal! I'll be right here when you're done."
+              size={150}
+            />
+          </div>
+          <header className="rise-in rise-in-1 space-y-3">
+            <Eyebrow>B’teavon — enjoy</Eyebrow>
+            <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">
+              Savor it.
+            </h2>
+            <p className="mx-auto max-w-[300px] text-[13.5px] leading-relaxed text-espresso-soft">
+              When you’ve finished eating, we’ll close the meal properly with the after-blessings.
+              No rush.
+            </p>
+          </header>
+          <div className="rise-in rise-in-2 flex flex-col items-center gap-3">
+            <PillButton variant="rimon" icon="✓" onClick={() => setPhase('shiur')}>
+              I’m done eating — after-blessings
+            </PillButton>
+            <button
+              onClick={() => setScreen('guide')}
+              className="text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+            >
+              ← back to the blessings
+            </button>
+          </div>
+        </div>
+      </ScreenShell>
+    );
+  }
 
   if (!confirmed) {
     return (
@@ -63,7 +104,7 @@ export function After() {
           {items.map((i, idx) => (
             <label
               key={i.id}
-              className={`rise-in rise-in-${Math.min(idx + 1, 4)} flex cursor-pointer items-center justify-between rounded-[1.25rem] bg-white/70 px-5 py-3.5 ring-1 ring-espresso/[0.07] transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              className={`rise-in rise-in-${Math.min(idx + 1, 4)} flex cursor-pointer items-center justify-between rounded-[1.25rem] bg-white/70 px-5 py-3.5 ring-1 ring-espresso/[0.07] transition-[background-color,color,transform] duration-150 ease-out ${
                 i.shiurMet ? '' : 'opacity-50'
               }`}
             >
@@ -98,7 +139,7 @@ export function After() {
               if (result.boreiNefashos) said.push('BoreiNefashos');
               const sevenSpecies = items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length;
               completeMeal(said, sevenSpecies);
-              setConfirmed(true);
+              setPhase('done');
               // fire-and-forget league sync (offline-safe)
               const { serverToken, progress: p } = useBracha.getState();
               if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
@@ -147,7 +188,7 @@ export function After() {
             <button
               key={m}
               onClick={() => setTextMode(m)}
-              className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
                 textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
               }`}
             >

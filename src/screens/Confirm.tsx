@@ -86,7 +86,7 @@ export function Confirm() {
                     <button
                       key={s}
                       onClick={() => updateItem(item.id, setItemState(item, s))}
-                      className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-[background-color,color,transform] duration-150 ease-out ${
                         item.state === s
                           ? 'bg-espresso text-cream'
                           : 'bg-espresso/[0.05] text-espresso-soft hover:bg-espresso/10'

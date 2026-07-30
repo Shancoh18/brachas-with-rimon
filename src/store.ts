@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
 import type { NusachId } from './data/texts';
 import { EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/progress';
+import type { Lesson } from './data/learn';
 
 export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after';
 export type Tab = 'bless' | 'learn' | 'journey' | 'friends';
@@ -44,6 +45,10 @@ interface BrachaState {
   /** called once per completed meal from the After screen */
   completeMeal: (brachosSaid: string[], sevenSpecies: number) => void;
   markLessonRead: (id: string) => void;
+  starredLessons: string[];
+  toggleStar: (id: string) => void;
+  remoteLessons: Lesson[];
+  setRemoteLessons: (l: Lesson[]) => void;
   /** guards double-counting when the After screen re-renders */
   mealRecorded: boolean;
   setMealRecorded: (v: boolean) => void;
@@ -109,6 +114,16 @@ export const useBracha = create<BrachaState>()(
       mealRecorded: false,
       setMealRecorded: (mealRecorded) => set({ mealRecorded }),
 
+      starredLessons: [],
+      toggleStar: (id) =>
+        set((s) => ({
+          starredLessons: s.starredLessons.includes(id)
+            ? s.starredLessons.filter((x) => x !== id)
+            : [...s.starredLessons, id],
+        })),
+      remoteLessons: [],
+      setRemoteLessons: (remoteLessons) => set({ remoteLessons }),
+
       reminders: { enabled: false, times: ['08:00', '13:00', '19:00'] },
       setReminders: (reminders) => set({ reminders }),
 
@@ -139,6 +154,8 @@ export const useBracha = create<BrachaState>()(
         displayName: s.displayName,
         serverToken: s.serverToken,
         friendCode: s.friendCode,
+        starredLessons: s.starredLessons,
+        remoteLessons: s.remoteLessons,
       }),
     },
   ),

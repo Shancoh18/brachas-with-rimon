@@ -2,6 +2,7 @@
  * Client for the Brachas with Rimon backend (Railway).
  * Everything degrades gracefully: no account / offline → local-only mode.
  */
+import type { Lesson } from '../data/learn';
 import type { ProgressState } from './progress';
 
 export const API_BASE =
@@ -89,3 +90,5 @@ export function vapidKeyToBytes(base64: string): Uint8Array {
   const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
+
+export const apiLessons = () => call<{ lessons: Lesson[] }>('/api/lessons');

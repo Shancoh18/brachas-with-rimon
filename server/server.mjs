@@ -11,7 +11,7 @@
  *  - Storage: JSON on the Railway volume (DATA_DIR). Small-scale by design.
  */
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { join } from 'path';
 import webpush from 'web-push';
@@ -213,6 +213,15 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
 
   try {
+    // Learn library auto-update: extra lessons live in DATA_DIR/lessons.json on
+    // the volume — updatable any time (admin push / future daily generator)
+    // without redeploying. Client merges by id with its built-in library.
+    if (url.pathname === '/api/lessons') {
+      const f = join(DATA_DIR, 'lessons.json');
+      const lessons = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : [];
+      return json(res, 200, { lessons, updated: existsSync(f) ? statSync(f).mtimeMs : null });
+    }
+
     if (url.pathname === '/health') return json(res, 200, { ok: true, users: Object.keys(users).length, vision: !!process.env.ANTHROPIC_API_KEY });
 
     if (url.pathname === '/api/register' && req.method === 'POST') {

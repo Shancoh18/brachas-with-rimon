@@ -141,7 +141,10 @@ check(
   order.join(' → '),
 );
 
-// ---------------------------------------------------------------- SHIUR + AFTER
+// ------------------------------------------------------------- ASK + SHIUR + AFTER
+t = await text();
+check('ask phase shows (never abrupt)', t.includes('savor it') && t.includes('no rush'));
+await clickText('done eating', 1200);
 t = await text();
 check('shiur screen shows', t.includes('how much did you eat'));
 // untick the cucumber (only tasted)
@@ -191,6 +194,16 @@ check('lesson opens', t.includes('berachot 35'));
 await clickText('Mark as read', 900);
 const lessonsRead = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.progress.lessonsRead);
 check('lesson marked read', lessonsRead.includes('why-bless'));
+await sleep(600);
+t = await text();
+check('learn has daily rotation', t.includes("today's study") && t.includes('fresh today'));
+await page.evaluate(() => {
+  const s = [...document.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || '').includes('star lesson'));
+  s?.click();
+});
+await sleep(600);
+t = await text();
+check('starring pins a lesson', t.includes('starred'));
 
 // ---------------------------------------------------------------- FRIENDS (live server)
 await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());

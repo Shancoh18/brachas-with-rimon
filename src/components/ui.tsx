@@ -5,7 +5,7 @@
  */
 import type { ReactNode } from 'react';
 
-const EASE = 'transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]';
+const EASE = 'transition-[background-color,color,transform,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]';
 
 /** Double-bezel: outer shell tray + inner core with concentric radii. */
 export function Bezel({
