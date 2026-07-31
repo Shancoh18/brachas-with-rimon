@@ -10,7 +10,7 @@ import { join, relative } from 'path';
 
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
 const ROOT = 'D:/Claude GROUP APP/bracha-app';
-const SKIP = new Set(['.git', '.github', 'node_modules', 'dist']);
+const SKIP = new Set(['.git', '.github', 'node_modules', 'dist', '.env', '.env.local']);
 // generated iOS artifacts (also git-ignored); the exFAT drive can wedge these
 const SKIP_PATHS = new Set([
   'ios/App/App/public',

@@ -18,7 +18,6 @@ workflows:
     environment:
       node: 22
       xcode: latest
-      cocoapods: default
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.shancoh.brachaswithrimon
@@ -29,13 +28,13 @@ workflows:
         script: npm run build
       - name: Sync Capacitor iOS
         script: npx cap sync ios
-      - name: Install CocoaPods
-        script: cd ios/App && pod install
       - name: Build signed IPA
+        # Capacitor is integrated via SPM (ios/App/CapApp-SPM) — no Podfile,
+        # no .xcworkspace; build the .xcodeproj directly.
         script: |
           xcode-project use-profiles
           xcode-project build-ipa \
-            --workspace ios/App/App.xcworkspace \
+            --project ios/App/App.xcodeproj \
             --scheme App
     artifacts:
       - build/ios/ipa/*.ipa
