@@ -14,7 +14,8 @@ import { streakAlive } from '../lib/progress';
 import { useBracha, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
-import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
+import { Bezel, Eyebrow, PillButton, ScreenShell, WhyDropdown } from '../components/ui';
+import { WHY_AFTER } from '../data/why';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
 
@@ -238,6 +239,7 @@ export function After() {
                 </li>
               ))}
             </ul>
+            <WhyDropdown className="mt-5" entry={WHY_AFTER.birkatHamazon} />
           </Bezel>
         )}
 
@@ -273,6 +275,7 @@ export function After() {
                 {pack.meeinShalosh.seals[result.meeinInserts[0]].english}
               </p>
             )}
+            <WhyDropdown className="mt-5" entry={WHY_AFTER.meeinShalosh} />
           </Bezel>
         )}
 
@@ -298,6 +301,7 @@ export function After() {
             <div className="mt-5 border-t border-espresso/[0.07] pt-4">
               <HearIt src={`${import.meta.env.BASE_URL}audio/borei-nefashos.mp3`} />
             </div>
+            <WhyDropdown className="mt-5" entry={WHY_AFTER.boreiNefashos} />
           </Bezel>
         )}
 

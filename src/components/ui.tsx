@@ -3,7 +3,8 @@
  * nested trailing icons, eyebrow tags. (See the design-system rules in
  * CLAUDE.md — no raw gray borders, no harsh shadows, custom easing only.)
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { WhyEntry } from '../data/why';
 
 const EASE = 'transition-[background-color,color,transform,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]';
 
@@ -75,6 +76,89 @@ export function PillButton({
         {icon}
       </span>
     </button>
+  );
+}
+
+/**
+ * "Why" disclosure — the click-to-open explainer on each bracha page.
+ * Collapsed: a single quiet gold line. Open: labeled sections + the
+ * chabad.org source link. Animates with the grid-rows trick so height is
+ * fully fluid, on the house easing only.
+ */
+export function WhyDropdown({
+  entry,
+  intro,
+  className = '',
+}: {
+  entry: WhyEntry;
+  intro?: { text: string; sourceTitle: string; sourceUrl: string };
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`rounded-2xl bg-gold/[0.05] ring-1 ring-gold/20 ${className}`} data-why>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left ${EASE}`}
+      >
+        <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-gold">
+          Why this bracha?
+        </span>
+        <span
+          className={`flex h-6 w-6 items-center justify-center rounded-full bg-gold/10 text-[11px] text-gold transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+            open ? 'rotate-180' : ''
+          }`}
+        >
+          ▾
+        </span>
+      </button>
+      <div
+        className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+          open ? 'max-h-[44rem] opacity-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        <div>
+          <div className="space-y-4 px-4 pb-4 pt-1">
+            {intro && (
+              <p className="text-[12px] italic leading-relaxed text-mocha">{intro.text}</p>
+            )}
+            {entry.sections.map((s) => (
+              <div key={s.label}>
+                <p className="pb-1 text-[10px] font-bold uppercase tracking-[0.2em] text-espresso-soft">
+                  {s.label}
+                </p>
+                <p className="text-[12.5px] leading-relaxed text-espresso">{s.text}</p>
+              </div>
+            ))}
+            <p className="border-t border-gold/15 pt-3 text-[10.5px] leading-snug text-mocha">
+              Learn more:{' '}
+              <a
+                href={entry.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline decoration-gold/40 underline-offset-2 hover:text-espresso"
+              >
+                {entry.sourceTitle}
+              </a>
+              {intro && (
+                <>
+                  {' · '}
+                  <a
+                    href={intro.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline decoration-gold/40 underline-offset-2 hover:text-espresso"
+                  >
+                    {intro.sourceTitle}
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

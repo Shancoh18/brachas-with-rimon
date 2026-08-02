@@ -10,7 +10,8 @@ import { groupForRecitation } from '../lib/kedima';
 import { useBracha, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon, RimonWalker } from '../components/Rimon';
-import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
+import { Bezel, Eyebrow, PillButton, ScreenShell, WhyDropdown } from '../components/ui';
+import { WHY_BRACHA, WHY_INTRO, WHY_INTRO_SOURCE } from '../data/why';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
 
@@ -145,6 +146,16 @@ export function Guide() {
           <p className="text-right text-[10.5px] leading-snug text-mocha">{WHY_LINE[group.bracha]}</p>
         </div>
       </Bezel>
+
+      <WhyDropdown
+        className="rise-in rise-in-3 mt-3"
+        entry={WHY_BRACHA[group.bracha]}
+        intro={{
+          text: WHY_INTRO,
+          sourceTitle: WHY_INTRO_SOURCE.title,
+          sourceUrl: WHY_INTRO_SOURCE.url,
+        }}
+      />
 
       {others.length > 0 && (
         <p className="rise-in rise-in-3 pt-4 text-center text-[12px] leading-relaxed text-mocha">

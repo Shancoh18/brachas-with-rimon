@@ -155,6 +155,27 @@ for (let i = 0; i < 6; i++) {
   check(`step ${m[1]}/${m[2]} ${m[3].trim()} has Hebrew`, heb.length > 20);
   const hasAudio = t.includes('hear it') || t.includes('playing');
   check(`step ${m[1]} has hear-it`, hasAudio);
+  // Why dropdown (sourced from chabad.org) — assert once, on step 1
+  if (m[1] === '1') {
+    const why = await page.evaluate(async () => {
+      const el = document.querySelector('[data-why]');
+      if (!el) return { err: 'missing' };
+      const btn = el.querySelector('button');
+      const panel = el.children[1];
+      const closedH = panel.getBoundingClientRect().height;
+      btn.click();
+      await new Promise((r) => setTimeout(r, 800));
+      const openH = panel.getBoundingClientRect().height;
+      const link = [...panel.querySelectorAll('a')].some((a) => a.href.includes('chabad.org'));
+      const hasOrder = /why (this order|it comes)/i.test(panel.innerText);
+      btn.click();
+      await new Promise((r) => setTimeout(r, 800));
+      const reclosedH = panel.getBoundingClientRect().height;
+      return { closedH, openH, reclosedH, link, hasOrder };
+    });
+    check('why dropdown opens with sourced content', !why.err && why.closedH === 0 && why.openH > 100 && why.link, why.err || `closed=${why.closedH} open=${Math.round(why.openH)} chabadLink=${why.link}`);
+    check('why dropdown explains the order + re-collapses', why.hasOrder === true && why.reclosedH === 0);
+  }
   if (m[1] === m[2]) {
     await clickText('finish the meal', 1400);
     break;
@@ -183,6 +204,7 @@ await clickText('Show my after-blessings', 1500);
 t = await text();
 check('combined Me’ein Shalosh (3 inserts)', t.includes('al hamichya + al hagefen + al ha’etz'));
 check('Borei Nefashos required (carrots)', t.includes('borei nefashos'));
+check('after-blessing why dropdowns present', (await page.evaluate(() => document.querySelectorAll('[data-why]').length)) >= 2);
 check('coverage note lists carrots', /borei nefashos.*carrots/s.test(t));
 check('streak day 1 celebrated', t.includes('day 1 of your streak') || t.includes('🔥'));
 const celebrateVideo = await page.evaluate(() => {
