@@ -20,8 +20,19 @@ export interface Celebration {
 
 export interface ReminderSettings {
   enabled: boolean;
-  times: string[]; // "HH:MM" local
+  /** "HH:MM" local. Index 0/1/2 are breakfast/lunch/dinner — see MEAL_SLOTS. */
+  times: string[];
+  /** True once the user has actually set their own mealtimes (vs the defaults).
+   *  Drives the home-page nudge copy; absent on stores saved before 2026-08-02. */
+  configured?: boolean;
 }
+
+/** The three mealtime slots, in `times` index order. */
+export const MEAL_SLOTS = [
+  { key: 'breakfast', label: 'Breakfast', emoji: '🌅', hint: 'when you usually eat in the morning' },
+  { key: 'lunch', label: 'Lunch', emoji: '☀️', hint: 'your midday meal' },
+  { key: 'dinner', label: 'Dinner', emoji: '🌙', hint: 'your evening meal' },
+] as const;
 
 interface BrachaState {
   nusach: NusachId;

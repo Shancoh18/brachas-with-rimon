@@ -1,80 +1,18 @@
 /** Journey tab — streak, stats, challenges, badges, reminders. */
-import { useState } from 'react';
-import { apiPushKey, apiPushSubscribe, vapidKeyToBytes } from '../lib/api';
-import { cancelNativeReminders, isNative, scheduleNativeReminders } from '../lib/native';
+import { isNative } from '../lib/native';
 import { badges, CHALLENGES, streakAlive } from '../lib/progress';
-import { useBracha } from '../store';
+import { useReminders } from '../lib/useReminders';
+import { MEAL_SLOTS, useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, ScreenShell } from '../components/ui';
 
 export function Journey() {
-  const { progress, reminders, setReminders, serverToken } = useBracha();
+  const { progress, serverToken } = useBracha();
   const alive = streakAlive(progress);
   const earned = badges(progress).filter((b) => b.earned);
-  const [notifState, setNotifState] = useState<string>(
-    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-  );
-  const [pushMode, setPushMode] = useState<'background' | 'in-app' | null>(null);
-
-  /** Register a real Web-Push subscription with the backend (background
-   *  reminders, even with the app closed). Falls back to the in-app ticker
-   *  when there's no account or push is unsupported. */
-  const subscribePush = async (times: string[]): Promise<'background' | 'in-app'> => {
-    if (!serverToken || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'in-app';
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const { key } = await apiPushKey(serverToken);
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: vapidKeyToBytes(key) as BufferSource,
-        }));
-      await apiPushSubscribe(serverToken, sub, times);
-      return 'background';
-    } catch {
-      return 'in-app';
-    }
-  };
-
-  const enableReminders = async () => {
-    // Native app: iOS local notifications — on-device, daily, app closed or not.
-    if (isNative()) {
-      const ok = await scheduleNativeReminders(reminders.times);
-      setNotifState(ok ? 'granted' : 'denied');
-      if (!ok) return;
-      setReminders({ ...reminders, enabled: true });
-      setPushMode('background');
-      return;
-    }
-    if (typeof Notification === 'undefined') return;
-    const perm = await Notification.requestPermission();
-    setNotifState(perm);
-    if (perm !== 'granted') return;
-    setReminders({ ...reminders, enabled: true });
-    const mode = await subscribePush(reminders.times);
-    setPushMode(mode);
-    new Notification('Brachas with Rimon 🍎', {
-      body:
-        mode === 'background'
-          ? 'Reminders are on — Rimon will nudge you at mealtimes, even when the app is closed.'
-          : 'Reminders are on! Rimon will nudge you around mealtimes while the app is open.',
-      icon: './icon-192.png',
-    });
-  };
-
-  const disableReminders = async () => {
-    setReminders({ ...reminders, enabled: false });
-    setPushMode(null);
-    if (isNative()) return void cancelNativeReminders();
-    if (serverToken) {
-      try {
-        await apiPushSubscribe(serverToken, null, []);
-      } catch {
-        /* offline — server clears on next expired push */
-      }
-    }
-  };
+  // shared with the home-page nudge — see src/lib/useReminders.ts
+  const { reminders, notifState, pushMode, enableReminders, disableReminders, setTime } =
+    useReminders();
 
   return (
     <ScreenShell>
@@ -201,7 +139,7 @@ export function Journey() {
               </p>
             </div>
             <button
-              onClick={() => (reminders.enabled ? void disableReminders() : void enableReminders())}
+              onClick={() => void (reminders.enabled ? disableReminders() : enableReminders())}
               className={`relative h-7 w-12 shrink-0 rounded-full transition-colors duration-500 ${
                 reminders.enabled ? 'bg-sage' : 'bg-espresso/15'
               }`}
@@ -215,23 +153,20 @@ export function Journey() {
             </button>
           </div>
           {reminders.enabled && (
-            <div className="mt-4 flex flex-wrap gap-2 border-t border-espresso/[0.07] pt-4">
+            <div className="mt-4 flex flex-col gap-2 border-t border-espresso/[0.07] pt-4">
               {reminders.times.map((t, i) => (
-                <input
-                  key={i}
-                  type="time"
-                  value={t}
-                  onChange={(e) => {
-                    const times = [...reminders.times];
-                    times[i] = e.target.value;
-                    setReminders({ ...reminders, times });
-                    if (reminders.enabled) {
-                      if (isNative()) void scheduleNativeReminders(times);
-                      else void subscribePush(times).then(setPushMode);
-                    }
-                  }}
-                  className="rounded-full bg-espresso/[0.05] px-3 py-1.5 text-[12px] font-semibold text-espresso outline-none"
-                />
+                <label key={i} className="flex items-center justify-between gap-3">
+                  <span className="text-[12px] font-medium text-espresso-soft">
+                    {MEAL_SLOTS[i] ? `${MEAL_SLOTS[i].emoji} ${MEAL_SLOTS[i].label}` : `Reminder ${i + 1}`}
+                  </span>
+                  <input
+                    type="time"
+                    aria-label={MEAL_SLOTS[i]?.label ?? `Reminder ${i + 1}`}
+                    value={t}
+                    onChange={(e) => setTime(i, e.target.value)}
+                    className="rounded-full bg-espresso/[0.05] px-3 py-1.5 text-[12px] font-semibold text-espresso outline-none"
+                  />
+                </label>
               ))}
             </div>
           )}

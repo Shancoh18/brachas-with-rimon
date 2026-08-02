@@ -5,6 +5,7 @@ import { useBracha } from '../store';
 import { LESSONS } from '../data/learn';
 import { streakAlive } from '../lib/progress';
 import { Rimon } from '../components/Rimon';
+import { ReminderNudge } from '../components/ReminderNudge';
 import { Eyebrow, PillButton, ScreenShell } from '../components/ui';
 import { analyzePhoto, demoMeal, resizeImage } from '../lib/analyze';
 import { toMealItems } from '../lib/classify';
@@ -136,6 +137,9 @@ export function Welcome() {
           <p className="mt-1.5 font-display text-[14.5px] italic leading-snug text-espresso">{tip.emoji} {tip.hook}</p>
           <p className="mt-1 text-[10.5px] text-mocha">read the {tip.minutes}-minute lesson →</p>
         </button>
+
+        {/* mealtime reminders — set breakfast / lunch / dinner in one sheet */}
+        <ReminderNudge />
       </div>
     </ScreenShell>
   );

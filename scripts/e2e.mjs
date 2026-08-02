@@ -17,6 +17,7 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--disable-gpu', '--autoplay-policy=no-user-gesture-required'],
 });
 const page = await browser.newPage();
+await browser.defaultBrowserContext().overridePermissions('https://shancoh18.github.io', ['notifications']);
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
@@ -59,6 +60,59 @@ check('welcome renders title', t.includes('brachas with rimon'));
 check('nusach selector present', t.includes('ashkenaz') && t.includes('edot hamizrach'));
 check('disclaimer present', t.includes('consult a qualified rabbi'));
 check('tip of the day present', t.includes('tip of the day') || t.includes('tip of the day') || /TIP OF THE DAY/i.test(t));
+
+// ------------------------------------------------- MEALTIME REMINDER NUDGE
+const nudgePlace = await page.evaluate(() => {
+  const nudge = document.querySelector('[data-reminder-nudge]');
+  if (!nudge) return { err: 'nudge missing' };
+  const tip = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('tip of the day'));
+  const nr = nudge.getBoundingClientRect();
+  const tr = tip ? tip.getBoundingClientRect() : null;
+  return { text: nudge.innerText, belowTip: tr ? nr.top >= tr.bottom - 2 : null };
+});
+check('reminder nudge on home page, under the tip', !nudgePlace.err && nudgePlace.belowTip === true, nudgePlace.err || `belowTip=${nudgePlace.belowTip}`);
+check('nudge invites setting breakfast/lunch/dinner', /set your mealtimes/i.test(nudgePlace.text || '') && /breakfast.*lunch.*dinner/i.test(nudgePlace.text || ''));
+
+const sheet = await page.evaluate(async () => {
+  document.querySelector('[data-reminder-nudge]').click();
+  await new Promise((r) => setTimeout(r, 700));
+  const s = document.querySelector('[data-reminder-sheet]');
+  if (!s) return { err: 'sheet missing' };
+  const inputs = [...s.querySelectorAll('input[type="time"]')];
+  return { text: s.innerText, count: inputs.length, labels: inputs.map((i) => i.getAttribute('aria-label')) };
+});
+check('nudge opens the mealtime sheet with 3 slots', !sheet.err && sheet.count === 3, sheet.err || `count=${sheet.count}`);
+check('slots labeled Breakfast / Lunch / Dinner',
+  JSON.stringify(sheet.labels) === JSON.stringify(['Breakfast reminder time', 'Lunch reminder time', 'Dinner reminder time']),
+  (sheet.labels || []).join(', '));
+
+await page.evaluate(() => {
+  const s = document.querySelector('[data-reminder-sheet]');
+  const inputs = [...s.querySelectorAll('input[type="time"]')];
+  const set = (el, v) => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set.call(el, v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  set(inputs[0], '07:15'); set(inputs[1], '12:45'); set(inputs[2], '18:30');
+});
+await sleep(400);
+await clickText('Turn on reminders', 2200);
+const nudgeSaved = await page.evaluate(() => {
+  const st = JSON.parse(localStorage.getItem('brachas-with-rimon')).state.reminders;
+  const n = document.querySelector('[data-reminder-nudge]');
+  return { st, closed: !document.querySelector('[data-reminder-sheet]'), text: n ? n.innerText : '' };
+});
+check('mealtimes save + reminders enable', JSON.stringify(nudgeSaved.st.times) === JSON.stringify(['07:15', '12:45', '18:30']) && nudgeSaved.st.enabled === true, (nudgeSaved.st.times || []).join(', '));
+check('nudge flips to ON with the chosen times', nudgeSaved.closed === true && /7:15 AM · 12:45 PM · 6:30 PM/.test(nudgeSaved.text), nudgeSaved.text.replaceAll('\n', ' | '));
+// leave reminders off so the rest of the run is unaffected by notification popups
+await page.evaluate(async () => {
+  document.querySelector('[data-reminder-nudge]').click();
+  await new Promise((r) => setTimeout(r, 600));
+  const b = [...document.querySelectorAll('button')].find((x) => /turn reminders off/i.test(x.textContent));
+  b?.click();
+});
+await sleep(800);
 
 // mascot asset actually renders (video or img with natural size)
 const mascotOk = await page.evaluate(async () => {
