@@ -13,6 +13,14 @@ workflows:
     name: iOS App Store build
     max_build_duration: 45
     instance_type: mac_mini_m2
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: master
+          include: true
+          source: true
+      cancel_previous_builds: true
     integrations:
       app_store_connect: rimon # must match the integration name you create
     environment:
