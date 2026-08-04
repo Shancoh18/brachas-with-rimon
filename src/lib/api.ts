@@ -31,10 +31,10 @@ const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Pr
   return (await res.json()) as T;
 };
 
-export const apiRegister = (name: string, email: string) =>
+export const apiRegister = (name: string, email: string, password?: string) =>
   call<{ token: string; code: string; email: string | null }>('/api/register', {
     method: 'POST',
-    body: JSON.stringify({ name, email }),
+    body: JSON.stringify({ name, email, ...(password ? { password } : {}) }),
   });
 
 export const apiSync = (token: string, progress: ProgressState, name?: string) =>
@@ -94,7 +94,11 @@ export function vapidKeyToBytes(base64: string): Uint8Array {
 export const apiLessons = () => call<{ lessons: Lesson[] }>('/api/lessons');
 
 export const apiMe = (token: string) =>
-  call<{ name: string; email: string | null; code: string }>('/api/me', {}, token);
+  call<{ name: string; email: string | null; code: string; hasPassword: boolean; providers: string[] }>(
+    '/api/me',
+    {},
+    token,
+  );
 
 export const apiUpdateAccount = (token: string, patch: { name?: string; email?: string }) =>
   call<{ name: string; email: string | null; code: string }>(
@@ -106,8 +110,24 @@ export const apiUpdateAccount = (token: string, patch: { name?: string; email?: 
 export const apiDeleteAccount = (token: string) =>
   call<{ ok: boolean }>('/api/account/delete', { method: 'POST' }, token);
 
-export const apiSignIn = (email: string, code: string) =>
+/** Sign in with email + password, or email + friend code (legacy accounts). */
+export const apiSignIn = (email: string, key: { password?: string; code?: string }) =>
   call<{ token: string; code: string; name: string; email: string }>('/api/signin', {
     method: 'POST',
-    body: JSON.stringify({ email, code }),
+    body: JSON.stringify({ email, ...key }),
   });
+
+/** Exchange a verified Apple/Google identity token for an account session. */
+export const apiOauth = (provider: 'apple' | 'google', idToken: string, name?: string) =>
+  call<{ token: string; code: string; name: string; email: string | null }>('/api/oauth', {
+    method: 'POST',
+    body: JSON.stringify({ provider, idToken, ...(name ? { name } : {}) }),
+  });
+
+/** Set (first time) or change the account password. */
+export const apiSetPassword = (token: string, password: string, current?: string) =>
+  call<{ ok: boolean }>(
+    '/api/account/password',
+    { method: 'POST', body: JSON.stringify({ password, ...(current ? { current } : {}) }) },
+    token,
+  );

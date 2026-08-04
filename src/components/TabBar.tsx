@@ -43,6 +43,12 @@ const ICONS: Record<Tab, ReactNode> = {
       <path d="M16.5 14.6c2.3.2 3.7 1.7 4.2 4.2" />
     </svg>
   ),
+  account: (
+    <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" {...stroke}>
+      <circle cx="12" cy="8" r="3.6" />
+      <path d="M4.5 20.5c.7-4 3.6-6.2 7.5-6.2s6.8 2.2 7.5 6.2" />
+    </svg>
+  ),
 };
 
 const TABS: { id: Tab; label: string }[] = [
@@ -50,13 +56,14 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'learn', label: 'Learn' },
   { id: 'journey', label: 'Journey' },
   { id: 'friends', label: 'Friends' },
+  { id: 'account', label: 'Account' },
 ];
 
 export function TabBar() {
   const { tab, setTab, reset } = useBracha();
   return (
     <nav className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-6">
-      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-espresso/10 bg-white/80 p-1.5 shadow-[0_18px_50px_-12px_rgba(43,33,26,0.28)] backdrop-blur-xl">
+      <div className="pointer-events-auto flex items-center gap-0.5 rounded-full border border-espresso/10 bg-white/80 p-1 shadow-[0_18px_50px_-12px_rgba(43,33,26,0.28)] backdrop-blur-xl">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -64,12 +71,12 @@ export function TabBar() {
               if (t.id === 'bless') reset();
               setTab(t.id);
             }}
-            className={`flex flex-col items-center gap-1 rounded-full px-4 py-2 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
+            className={`flex flex-col items-center gap-1 rounded-full px-2.5 py-2 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.96] ${
               tab === t.id ? 'bg-espresso text-cream' : 'text-espresso-soft hover:bg-espresso/[0.05]'
             }`}
           >
             {ICONS[t.id]}
-            <span className="text-[9px] font-bold uppercase tracking-[0.14em]">{t.label}</span>
+            <span className="text-[8.5px] font-bold uppercase tracking-[0.08em]">{t.label}</span>
           </button>
         ))}
       </div>

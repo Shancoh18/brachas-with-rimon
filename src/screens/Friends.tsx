@@ -12,7 +12,7 @@ import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 export function Friends() {
-  const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount, setUserEmail, setTab, setScreen } =
+  const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount, setUserEmail, setTab } =
     useBracha();
   const [league, setLeague] = useState<LeagueRow[] | null>(null);
   const [status, setStatus] = useState<'idle' | 'busy' | 'offline'>('idle');
@@ -177,10 +177,7 @@ export function Friends() {
               <p className="mt-2 text-[10px] leading-snug text-mocha">
                 Friends can add you by email or code. Already have an account?{' '}
                 <button
-                  onClick={() => {
-                    setTab('bless');
-                    setScreen('account');
-                  }}
+                  onClick={() => setTab('account')}
                   className="font-bold text-gold underline-offset-2 hover:underline"
                 >
                   Sign in here

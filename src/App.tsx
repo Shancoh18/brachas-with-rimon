@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { isNative } from './lib/native';
+import { showWebNotification } from './lib/useReminders';
 import { useBracha } from './store';
 import { Celebration } from './components/Celebration';
 import { TabBar } from './components/TabBar';
@@ -29,10 +30,10 @@ function useReminderTicker() {
       const stamp = `${now.toDateString()}-${hhmm}`;
       if (reminders.times.includes(hhmm) && fired.current !== stamp) {
         fired.current = stamp;
-        new Notification('Rimon here 🍎', {
-          body: 'Eating soon? Take ten seconds to say the bracha first — your streak is waiting.',
-          icon: '/icon.png',
-        });
+        void showWebNotification(
+          'Rimon here 🍎',
+          'Eating soon? Take ten seconds to say the bracha first — your streak is waiting.',
+        );
       }
     };
     const id = setInterval(tick, 20_000);
@@ -55,6 +56,7 @@ export default function App() {
   if (tab === 'learn') body = <Learn />;
   else if (tab === 'journey') body = <Journey />;
   else if (tab === 'friends') body = <Friends />;
+  else if (tab === 'account') body = <Account />;
   else {
     switch (screen) {
       case 'identify':
@@ -71,9 +73,6 @@ export default function App() {
         break;
       case 'reference':
         body = <Reference />;
-        break;
-      case 'account':
-        body = <Account />;
         break;
       default:
         body = <Welcome />;

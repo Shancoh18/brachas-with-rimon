@@ -14,6 +14,29 @@ import { useBracha } from '../store';
 
 export type PushMode = 'background' | 'in-app' | null;
 
+/**
+ * Show a local notification on the web. Prefers the service-worker path —
+ * `new Notification()` throws on Android Chrome and installed iOS PWAs,
+ * where only `registration.showNotification()` is allowed.
+ */
+export async function showWebNotification(title: string, body: string): Promise<void> {
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  const icon = `${import.meta.env.BASE_URL}icon-192.png`;
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) return void (await reg.showNotification(title, { body, icon }));
+    }
+  } catch {
+    /* fall through to the constructor */
+  }
+  try {
+    new Notification(title, { body, icon });
+  } catch {
+    /* page-context notifications unsupported — nothing else to try */
+  }
+}
+
 export function useReminders() {
   const { reminders, setReminders, serverToken } = useBracha();
   const [notifState, setNotifState] = useState<string>(
@@ -68,13 +91,12 @@ export function useReminders() {
     setReminders({ ...reminders, enabled: true, times: next, configured });
     const mode = await subscribePush(next);
     setPushMode(mode);
-    new Notification('Brachas with Rimon 🍎', {
-      body:
-        mode === 'background'
-          ? 'Reminders are on — Rimon will nudge you at mealtimes, even when the app is closed.'
-          : 'Reminders are on! Rimon will nudge you around mealtimes while the app is open.',
-      icon: './icon-192.png',
-    });
+    void showWebNotification(
+      'Brachas with Rimon 🍎',
+      mode === 'background'
+        ? 'Reminders are on — Rimon will nudge you at mealtimes, even when the app is closed.'
+        : 'Reminders are on! Rimon will nudge you around mealtimes while the app is open.',
+    );
     return true;
   };
 

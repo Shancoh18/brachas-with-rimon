@@ -6,8 +6,8 @@
  * Final slide: account creation (name + email) with a graceful skip.
  */
 import { useEffect, useRef, useState } from 'react';
-import { apiRegister, apiSignIn } from '../lib/api';
 import { useBracha } from '../store';
+import { AuthPanel } from '../components/AuthPanel';
 import { Rimon, RimonWalker, type RimonPose } from '../components/Rimon';
 import { Eyebrow, PillButton } from '../components/ui';
 
@@ -71,13 +71,8 @@ const SLIDES: Slide[] = [
 ];
 
 export function Onboarding() {
-  const { setOnboarded, displayName, setDisplayName, setServerAccount, setUserEmail, serverToken } = useBracha();
+  const { setOnboarded, displayName, serverToken } = useBracha();
   const [idx, setIdx] = useState(0);
-  const [email, setEmail] = useState('');
-  const [notice, setNotice] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'create' | 'signin'>('create');
-  const [codeIn, setCodeIn] = useState('');
   const [walkerT, setWalkerT] = useState(0);
   const touchX = useRef<number | null>(null);
   const total = SLIDES.length + 1; // + account slide
@@ -99,48 +94,6 @@ export function Onboarding() {
 
   const next = () => setIdx((i) => Math.min(i + 1, SLIDES.length));
   const back = () => setIdx((i) => Math.max(i - 1, 0));
-
-  const join = async () => {
-    const name = displayName.trim();
-    const mail = email.trim().toLowerCase();
-    if (!name) return setNotice('Pick a name first.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return setNotice('That email doesn’t look right.');
-    setBusy(true);
-    try {
-      const r = await apiRegister(name, mail);
-      setServerAccount(r.token, r.code);
-      setUserEmail(mail);
-      setOnboarded(true);
-    } catch (e) {
-      setNotice(
-        (e as { status?: number }).status === 409
-          ? 'That email already has an account — switch to Sign in above and use your RIMON code.'
-          : 'Couldn’t reach the league right now — you can join later from the Friends tab.',
-      );
-      setBusy(false);
-    }
-  };
-
-  const signIn = async () => {
-    const mail = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return setNotice('That email doesn’t look right.');
-    if (!codeIn.trim()) return setNotice('Enter your RIMON friend code — it’s your key.');
-    setBusy(true);
-    try {
-      const r = await apiSignIn(mail, codeIn.trim());
-      setServerAccount(r.token, r.code);
-      setDisplayName(r.name);
-      setUserEmail(r.email);
-      setOnboarded(true);
-    } catch (e) {
-      setNotice(
-        (e as { status?: number }).status === 404
-          ? 'No account matches that email + code pair. Check both, or create a new account.'
-          : 'Couldn’t reach the league right now — try again, or continue as guest below.',
-      );
-      setBusy(false);
-    }
-  };
 
   return (
     <div
@@ -279,99 +232,29 @@ export function Onboarding() {
           <div className={atAccount ? 'rise-in' : ''}>
             <Rimon
               pose="pointing"
-              say={
-                mode === 'create'
-                  ? 'Last thing — a name and email so friends can find you.'
-                  : 'Welcome back! Your email + code, and your streaks come home.'
-              }
-              size={150}
+              say="Last thing — an account, so your streaks follow you anywhere."
+              size={130}
             />
           </div>
-          <header className={`space-y-2.5 ${atAccount ? 'rise-in rise-in-1' : ''}`}>
-            <Eyebrow>{mode === 'create' ? 'Join the league' : 'Welcome back'}</Eyebrow>
-            <h1 className="font-display text-[36px] font-black leading-[1.05] tracking-tight text-espresso">
-              {mode === 'create' ? 'Make it yours.' : 'Sign back in.'}
+          <header className={`space-y-2 ${atAccount ? 'rise-in rise-in-1' : ''}`}>
+            <Eyebrow>Join the league</Eyebrow>
+            <h1 className="font-display text-[34px] font-black leading-[1.05] tracking-tight text-espresso">
+              Make it yours.
             </h1>
             <p className="mx-auto max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
-              {mode === 'create'
-                ? 'Streaks that sync, friends who can find you by email, a league to lead.'
-                : 'Your email plus your RIMON friend code — that pair is your key.'}
+              Streaks that sync, friends who can find you, a league to lead.
             </p>
           </header>
 
-          {/* create / sign-in toggle */}
-          <div className={`flex rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07] ${atAccount ? 'rise-in rise-in-1' : ''}`}>
-            {(['create', 'signin'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => {
-                  setMode(m);
-                  setNotice(null);
-                }}
-                className={`rounded-full px-5 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
-                  mode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
-                }`}
-              >
-                {m === 'create' ? 'Create account' : 'Sign in'}
-              </button>
-            ))}
+          <div className={atAccount ? 'rise-in rise-in-2' : ''}>
+            <AuthPanel onDone={() => setOnboarded(true)} />
           </div>
-
-          <div className={`w-full max-w-[320px] space-y-3 text-left ${atAccount ? 'rise-in rise-in-2' : ''}`}>
-            {mode === 'create' && (
-              <div className="rounded-[1.25rem] bg-white/70 px-5 py-3.5 ring-1 ring-espresso/[0.07]">
-                <label className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-mocha">Name</label>
-                <input
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="e.g. Shan"
-                  maxLength={20}
-                  className="mt-0.5 w-full bg-transparent text-[16px] font-semibold text-espresso outline-none placeholder:text-mocha/40"
-                />
-              </div>
-            )}
-            <div className="rounded-[1.25rem] bg-white/70 px-5 py-3.5 ring-1 ring-espresso/[0.07]">
-              <label className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-mocha">Email</label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                className="mt-0.5 w-full bg-transparent text-[15px] font-medium text-espresso outline-none placeholder:text-mocha/40"
-              />
-            </div>
-            {mode === 'signin' && (
-              <div className="rounded-[1.25rem] bg-white/70 px-5 py-3.5 ring-1 ring-espresso/[0.07]">
-                <label className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-mocha">Your friend code</label>
-                <input
-                  value={codeIn}
-                  onChange={(e) => setCodeIn(e.target.value.toUpperCase())}
-                  placeholder="RIMON-XXXX"
-                  maxLength={10}
-                  className="mt-0.5 w-full bg-transparent font-display text-[17px] font-bold tracking-wide text-espresso outline-none placeholder:text-[13px] placeholder:font-sans placeholder:font-medium placeholder:text-mocha/40"
-                />
-              </div>
-            )}
-            {notice && <p className="text-center text-[11.5px] font-medium text-rimon">{notice}</p>}
-          </div>
-          <div className={`flex flex-col items-center gap-2.5 ${atAccount ? 'rise-in rise-in-3' : ''}`}>
-            <PillButton
-              variant="rimon"
-              icon="✓"
-              onClick={() => void (mode === 'create' ? join() : signIn())}
-              disabled={busy}
-            >
-              {busy ? 'One moment…' : mode === 'create' ? 'Create my account' : 'Sign in'}
-            </PillButton>
-            <button
-              onClick={() => setOnboarded(true)}
-              className="text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
-            >
-              maybe later — take me to the app
-            </button>
-          </div>
+          <button
+            onClick={() => setOnboarded(true)}
+            className={`text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso ${atAccount ? 'rise-in rise-in-3' : ''}`}
+          >
+            maybe later — take me to the app
+          </button>
             </>
           )}
         </section>

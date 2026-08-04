@@ -6,8 +6,8 @@ import { badges, EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/pr
 import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
-export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference' | 'account';
-export type Tab = 'bless' | 'learn' | 'journey' | 'friends';
+export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference';
+export type Tab = 'bless' | 'learn' | 'journey' | 'friends' | 'account';
 export type TextMode = 'hebrew' | 'translit' | 'english';
 
 export interface Celebration {

@@ -1,46 +1,46 @@
 /**
- * Account screen — the in-app home for everything sign-in.
+ * Account screen — the in-app home for everything sign-in (its own tab).
  *
- * Signed OUT: create-account / sign-in tabs, so a device that skipped
- * onboarding (or a returning user on a new phone) can join or come back
- * without wiping the app.
+ * Signed OUT: the shared AuthPanel — email+password, Apple, Google, and the
+ * legacy RIMON friend-code pair.
  * Signed IN: profile card (name + email, editable, saved to the server),
- * friend code with copy, replay-the-intro, and sign out.
- *
- * No passwords by design — email + RIMON friend code is the key pair.
- * Email verification / recovery ships when a mail provider exists.
+ * password set/change, friend code with copy, replay-the-intro, sign out.
  */
 import { useEffect, useState } from 'react';
-import { apiDeleteAccount, apiMe, apiRegister, apiSignIn, apiUpdateAccount } from '../lib/api';
+import { apiDeleteAccount, apiMe, apiSetPassword, apiUpdateAccount } from '../lib/api';
 import { useBracha } from '../store';
+import { AuthPanel } from '../components/AuthPanel';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PASSWORD_MIN = 8;
 
 export function Account() {
   const {
-    setScreen,
+    setTab,
     displayName,
     setDisplayName,
     serverToken,
     friendCode,
     userEmail,
     setUserEmail,
-    setServerAccount,
     clearServerAccount,
     setOnboarded,
   } = useBracha();
 
-  const [mode, setMode] = useState<'create' | 'signin'>('create');
   const [name, setName] = useState(displayName);
   const [email, setEmail] = useState(userEmail ?? '');
-  const [codeIn, setCodeIn] = useState('');
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
+  const [providers, setProviders] = useState<string[]>([]);
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwSaved, setPwSaved] = useState(false);
 
   // restore the profile card from the server (also self-heals a stale token)
   useEffect(() => {
@@ -51,6 +51,8 @@ export function Account() {
         setEmail(r.email ?? '');
         setDisplayName(r.name);
         setUserEmail(r.email);
+        setHasPassword(r.hasPassword ?? false);
+        setProviders(r.providers ?? []);
       })
       .catch((e) => {
         if ((e as { status?: number }).status === 401) clearServerAccount();
@@ -58,45 +60,24 @@ export function Account() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverToken]);
 
-  const create = async () => {
-    const n = name.trim();
-    const mail = email.trim().toLowerCase();
-    if (!n) return setNotice('Pick a name first.');
-    if (!EMAIL_RE.test(mail)) return setNotice('That email doesn’t look right.');
+  const savePassword = async () => {
+    if (!serverToken) return;
+    if (pwNew.length < PASSWORD_MIN)
+      return setNotice(`Pick a password of at least ${PASSWORD_MIN} characters.`);
     setBusy(true);
     try {
-      const r = await apiRegister(n, mail);
-      setServerAccount(r.token, r.code);
-      setDisplayName(n);
-      setUserEmail(mail);
+      await apiSetPassword(serverToken, pwNew, hasPassword ? pwCurrent : undefined);
+      setHasPassword(true);
+      setPwCurrent('');
+      setPwNew('');
       setNotice(null);
+      setPwSaved(true);
+      setTimeout(() => setPwSaved(false), 2500);
     } catch (e) {
       setNotice(
-        (e as { status?: number }).status === 409
-          ? 'That email already has an account — switch to Sign in and use your RIMON code.'
-          : 'Couldn’t reach the league right now — try again in a moment.',
-      );
-    }
-    setBusy(false);
-  };
-
-  const signIn = async () => {
-    const mail = email.trim().toLowerCase();
-    if (!EMAIL_RE.test(mail)) return setNotice('That email doesn’t look right.');
-    if (!codeIn.trim()) return setNotice('Enter your RIMON friend code — it’s your key.');
-    setBusy(true);
-    try {
-      const r = await apiSignIn(mail, codeIn.trim());
-      setServerAccount(r.token, r.code);
-      setDisplayName(r.name);
-      setName(r.name);
-      setUserEmail(r.email);
-      setNotice(null);
-    } catch (e) {
-      setNotice(
-        (e as { status?: number }).status === 404
-          ? 'No account matches that email + code pair. Check both, or create a new account.'
-          : 'Couldn’t reach the league right now — try again in a moment.',
+        (e as { status?: number }).status === 403
+          ? 'That current password doesn’t match.'
+          : 'Couldn’t save the password right now — try again in a moment.',
       );
     }
     setBusy(false);
@@ -138,7 +119,7 @@ export function Account() {
     <ScreenShell wide>
       <div className="pb-24">
         <button
-          onClick={() => setScreen('welcome')}
+          onClick={() => setTab('bless')}
           className="rise-in pb-4 text-[12.5px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
         >
           ← home
@@ -152,9 +133,21 @@ export function Account() {
             </h2>
             <p className="max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
               {serverToken
-                ? 'Your name, your email, your key — all in one place.'
+                ? 'Your name, your email, your keys — all in one place.'
                 : 'An account syncs streaks across devices and puts you in the friends league.'}
             </p>
+            {serverToken && providers.length > 0 && (
+              <div className="flex gap-1.5">
+                {providers.map((p) => (
+                  <span
+                    key={p}
+                    className="rounded-full bg-espresso/[0.06] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-espresso-soft"
+                  >
+                    {p === 'apple' ? ' Apple linked' : 'G Google linked'}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <Rimon pose="pointing" size={88} className="shrink-0" />
         </header>
@@ -184,11 +177,49 @@ export function Account() {
               </div>
             </Bezel>
 
-            {/* the key */}
+            {/* password */}
+            <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
+              <p className={label}>{hasPassword ? 'Change password' : 'Set a password'}</p>
+              {hasPassword === false && (
+                <p className="mt-1 text-[10.5px] leading-snug text-mocha">
+                  Add a password so email + password signs you in on any device.
+                </p>
+              )}
+              {hasPassword && (
+                <>
+                  <label className={`${label} mt-3 block`}>Current password</label>
+                  <input
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    type="password"
+                    autoComplete="current-password"
+                    className={field}
+                  />
+                </>
+              )}
+              <label className={`${label} mt-3 block border-t border-espresso/[0.07] pt-3`}>
+                New password
+              </label>
+              <input
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                type="password"
+                autoComplete="new-password"
+                placeholder={`${PASSWORD_MIN}+ characters`}
+                className={field}
+              />
+              <div className="mt-4 flex justify-end">
+                <PillButton icon="✓" onClick={() => void savePassword()} disabled={busy || !pwNew}>
+                  {pwSaved ? 'Saved!' : busy ? 'Saving…' : hasPassword ? 'Change password' : 'Set password'}
+                </PillButton>
+              </div>
+            </Bezel>
+
+            {/* the friend code */}
             <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className={label}>Your friend code — your key</p>
+                  <p className={label}>Your friend code</p>
                   <p className="font-display text-[24px] font-bold tracking-wide text-gold">{friendCode}</p>
                 </div>
                 <button
@@ -203,9 +234,8 @@ export function Account() {
                 </button>
               </div>
               <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
-                There are no passwords here: your email plus this code signs you in on any device.
-                Keep the code private — treat it like a password. Email verification and account
-                recovery arrive in a future update.
+                Friends add you with this code, and it still works as a backup sign-in key
+                alongside your email. Keep it private — treat it like a password.
               </p>
             </Bezel>
 
@@ -226,7 +256,6 @@ export function Account() {
                 onClick={() => {
                   clearServerAccount();
                   setNotice(null);
-                  setCodeIn('');
                 }}
                 className="text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-rimon"
               >
@@ -234,7 +263,8 @@ export function Account() {
               </button>
               <p className="max-w-[290px] text-center text-[10px] leading-snug text-mocha">
                 Signing out keeps your local streaks on this device; your league account stays safe
-                on the server — sign back in any time with email + code.
+                on the server — sign back in any time with your email and password, Apple, Google,
+                or your friend code.
               </p>
 
               {/* permanent deletion — inline two-step confirm */}
@@ -284,82 +314,12 @@ export function Account() {
             </div>
           </>
         ) : (
-          <>
-            {/* create / sign-in toggle */}
-            <div className="rise-in rise-in-1 mb-4 flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
-              {(['create', 'signin'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => {
-                    setMode(m);
-                    setNotice(null);
-                  }}
-                  className={`rounded-full px-5 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
-                    mode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
-                  }`}
-                >
-                  {m === 'create' ? 'Create account' : 'Sign in'}
-                </button>
-              ))}
-            </div>
-
-            <Bezel className="rise-in rise-in-2" innerClassName="px-5 py-4">
-              {mode === 'create' && (
-                <>
-                  <label className={label}>Name</label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Shan"
-                    maxLength={20}
-                    className={field}
-                  />
-                  <div className="mt-3 border-t border-espresso/[0.07]" />
-                </>
-              )}
-              <label className={`${label} ${mode === 'create' ? 'mt-3 block' : ''}`}>Email</label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                className={field}
-              />
-              {mode === 'signin' && (
-                <>
-                  <label className={`${label} mt-3 block border-t border-espresso/[0.07] pt-3`}>
-                    Your friend code
-                  </label>
-                  <input
-                    value={codeIn}
-                    onChange={(e) => setCodeIn(e.target.value.toUpperCase())}
-                    placeholder="RIMON-XXXX"
-                    maxLength={10}
-                    className="mt-0.5 w-full bg-transparent font-display text-[17px] font-bold tracking-wide text-espresso outline-none placeholder:text-[13px] placeholder:font-sans placeholder:font-medium placeholder:text-mocha/40"
-                  />
-                </>
-              )}
-            </Bezel>
-
-            {notice && <p className="rise-in pt-3 text-center text-[12px] font-medium text-rimon">{notice}</p>}
-
-            <div className="rise-in rise-in-3 flex flex-col items-center gap-3 pt-6">
-              <PillButton
-                variant="rimon"
-                icon="✓"
-                onClick={() => void (mode === 'create' ? create() : signIn())}
-                disabled={busy}
-              >
-                {busy ? 'One moment…' : mode === 'create' ? 'Create my account' : 'Sign in'}
-              </PillButton>
-              <p className="max-w-[300px] text-center text-[10.5px] leading-snug text-mocha">
-                No passwords — your email + RIMON friend code is the key pair. Signing in on a new
-                device brings your name and league along.
-              </p>
-            </div>
-          </>
+          <div className="rise-in rise-in-1 flex flex-col items-center gap-3">
+            <AuthPanel />
+            <p className="max-w-[300px] text-center text-[10.5px] leading-snug text-mocha">
+              Signing in on a new device brings your name, streaks and league along.
+            </p>
+          </div>
         )}
 
         <p className="pt-8 text-center">

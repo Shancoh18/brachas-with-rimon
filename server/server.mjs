@@ -12,7 +12,7 @@
  */
 import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { randomBytes } from 'crypto';
+import { createPublicKey, randomBytes, scryptSync, timingSafeEqual, verify as cryptoVerify } from 'crypto';
 import { join } from 'path';
 import webpush from 'web-push';
 
@@ -83,6 +83,71 @@ const friendCode = () => {
   for (let i = 0; i < 4; i++) c += chars[randomBytes(1)[0] % chars.length];
   return `RIMON-${c}`;
 };
+
+// ------------------------------------------------------------ auth (passwords)
+// scrypt with a per-user salt; stored as { salt, hash } hex pair.
+const hashPassword = (password) => {
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(String(password), salt, 64).toString('hex');
+  return { salt, hash };
+};
+const checkPassword = (password, pass) => {
+  if (!pass?.salt || !pass?.hash) return false;
+  const candidate = scryptSync(String(password), pass.salt, 64);
+  const stored = Buffer.from(pass.hash, 'hex');
+  return candidate.length === stored.length && timingSafeEqual(candidate, stored);
+};
+const PASSWORD_MIN = 8;
+
+// ------------------------------------------- auth (Apple / Google ID tokens)
+// Verify RS256 identity tokens against the provider's published JWKS.
+// No SDK: decode header → fetch JWKS (cached 1h) → crypto.verify → check
+// iss / aud / exp. Returns the payload or null.
+const JWKS = {
+  apple: { url: process.env.APPLE_JWKS_URL || 'https://appleid.apple.com/auth/keys', keys: null, fetched: 0 },
+  google: { url: process.env.GOOGLE_JWKS_URL || 'https://www.googleapis.com/oauth2/v3/certs', keys: null, fetched: 0 },
+};
+const APPLE_AUDS = (process.env.APPLE_CLIENT_IDS || 'com.shancoh.brachaswithrimon')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const GOOGLE_AUDS = (process.env.GOOGLE_CLIENT_IDS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+const b64urlJson = (part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
+
+async function jwksKey(provider, kid) {
+  const store = JWKS[provider];
+  if (!store.keys || Date.now() - store.fetched > 3_600_000 || !store.keys.find((k) => k.kid === kid)) {
+    const r = await fetch(store.url);
+    if (!r.ok) throw new Error(`jwks ${r.status}`);
+    store.keys = (await r.json()).keys ?? [];
+    store.fetched = Date.now();
+  }
+  return store.keys.find((k) => k.kid === kid) ?? null;
+}
+
+async function verifyIdToken(provider, idToken) {
+  try {
+    const [h, p, sig] = String(idToken).split('.');
+    if (!h || !p || !sig) return null;
+    const header = b64urlJson(h);
+    if (header.alg !== 'RS256') return null;
+    const jwk = await jwksKey(provider, header.kid);
+    if (!jwk) return null;
+    const key = createPublicKey({ key: jwk, format: 'jwk' });
+    const ok = cryptoVerify('RSA-SHA256', Buffer.from(`${h}.${p}`), key, Buffer.from(sig, 'base64url'));
+    if (!ok) return null;
+    const payload = b64urlJson(p);
+    if (payload.exp * 1000 < Date.now() - 60_000) return null;
+    const iss = provider === 'apple' ? ['https://appleid.apple.com'] : ['https://accounts.google.com', 'accounts.google.com'];
+    if (!iss.includes(payload.iss)) return null;
+    const auds = provider === 'apple' ? APPLE_AUDS : GOOGLE_AUDS;
+    const aud = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
+    if (!aud.some((a) => auds.includes(a))) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
 
 const leagueFor = (me) => {
   const rows = [me, ...me.friends.map((code) => Object.values(users).find((u) => u.code === code)).filter(Boolean)];
@@ -225,7 +290,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/health') return json(res, 200, { ok: true, users: Object.keys(users).length, vision: !!process.env.ANTHROPIC_API_KEY });
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
-      const { name, email } = await readBody(req);
+      const { name, email, password } = await readBody(req);
       if (!name || String(name).trim().length < 1) return json(res, 400, { error: 'name_required' });
       let mail = null;
       if (email != null && String(email).trim() !== '') {
@@ -233,23 +298,67 @@ const server = createServer(async (req, res) => {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return json(res, 400, { error: 'email_invalid' });
         if (Object.values(users).some((u) => u.email === mail)) return json(res, 409, { error: 'email_taken' });
       }
+      let pass = null;
+      if (password != null && String(password) !== '') {
+        if (String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
+        pass = hashPassword(String(password).slice(0, 200));
+      }
       const token = randomBytes(24).toString('hex');
       let code = friendCode();
       while (Object.values(users).some((u) => u.code === code)) code = friendCode();
-      users[token] = { name: String(name).trim().slice(0, 20), email: mail, code, friends: [], progress: null, push: null, created: Date.now() };
+      users[token] = { name: String(name).trim().slice(0, 20), email: mail, pass, code, friends: [], progress: null, push: null, created: Date.now() };
       save();
       return json(res, 200, { token, code, email: mail });
     }
 
-    // Sign in on a new device: email + friend code is the key pair (no
-    // passwords by design; email verification arrives with a mail provider).
+    // Sign in on a new device. Two key pairs are accepted:
+    //   email + password       (accounts that set one)
+    //   email + friend code    (legacy no-password accounts — still valid)
     if (url.pathname === '/api/signin' && req.method === 'POST') {
-      const { email, code } = await readBody(req);
+      const { email, code, password } = await readBody(req);
       const mail = String(email || '').trim().toLowerCase();
+      if (password != null && String(password) !== '') {
+        const entry = Object.entries(users).find(([, u]) => u.email === mail);
+        if (!entry) return json(res, 404, { error: 'no_match' });
+        if (!entry[1].pass) return json(res, 403, { error: 'no_password' }); // account predates passwords
+        if (!checkPassword(password, entry[1].pass)) return json(res, 404, { error: 'no_match' });
+        return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
+      }
       const c = String(code || '').trim().toUpperCase();
       const entry = Object.entries(users).find(([, u]) => u.email === mail && u.code === c);
       if (!entry) return json(res, 404, { error: 'no_match' });
       return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
+    }
+
+    // Sign in with Apple / Google: the client sends the provider's identity
+    // token; we verify signature + iss/aud/exp against the provider JWKS.
+    // Links by provider sub first, then by verified email; creates otherwise.
+    if (url.pathname === '/api/oauth' && req.method === 'POST') {
+      const { provider, idToken, name } = await readBody(req);
+      if (provider !== 'apple' && provider !== 'google') return json(res, 400, { error: 'bad_provider' });
+      if (provider === 'google' && !GOOGLE_AUDS.length) return json(res, 501, { error: 'google_not_configured' });
+      const payload = await verifyIdToken(provider, idToken);
+      if (!payload?.sub) return json(res, 401, { error: 'token_invalid' });
+      const sub = String(payload.sub);
+      const mail = payload.email ? String(payload.email).toLowerCase() : null;
+
+      let entry = Object.entries(users).find(([, u]) => u[provider] === sub);
+      if (!entry && mail) {
+        entry = Object.entries(users).find(([, u]) => u.email === mail);
+        if (entry) entry[1][provider] = sub; // link provider to the existing account
+      }
+      if (!entry) {
+        const token = randomBytes(24).toString('hex');
+        let code = friendCode();
+        while (Object.values(users).some((u) => u.code === code)) code = friendCode();
+        const displayName = String(name || (mail ? mail.split('@')[0] : 'Friend')).trim().slice(0, 20) || 'Friend';
+        users[token] = { name: displayName, email: mail, [provider]: sub, pass: null, code, friends: [], progress: null, push: null, created: Date.now() };
+        entry = [token, users[token]];
+      } else if (mail && !entry[1].email && !Object.values(users).some((u) => u.email === mail)) {
+        entry[1].email = mail; // provider-verified email fills an empty slot
+      }
+      save();
+      return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email ?? null });
     }
 
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
@@ -273,7 +382,13 @@ const server = createServer(async (req, res) => {
 
     // Who am I — lets a device restore its profile card from just the token.
     if (url.pathname === '/api/me') {
-      return json(res, 200, { name: a.user.name, email: a.user.email ?? null, code: a.user.code });
+      return json(res, 200, {
+        name: a.user.name,
+        email: a.user.email ?? null,
+        code: a.user.code,
+        hasPassword: !!a.user.pass,
+        providers: ['apple', 'google'].filter((p) => !!a.user[p]),
+      });
     }
 
     // Account settings: change name and/or email (email stays unique).
@@ -293,6 +408,17 @@ const server = createServer(async (req, res) => {
       }
       save();
       return json(res, 200, { name: a.user.name, email: a.user.email ?? null, code: a.user.code });
+    }
+
+    // Set or change the account password. Requires the current password only
+    // when one already exists (legacy accounts set their first one freely).
+    if (url.pathname === '/api/account/password' && req.method === 'POST') {
+      const { password, current } = await readBody(req);
+      if (!password || String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
+      if (a.user.pass && !checkPassword(current ?? '', a.user.pass)) return json(res, 403, { error: 'wrong_password' });
+      a.user.pass = hashPassword(String(password).slice(0, 200));
+      save();
+      return json(res, 200, { ok: true });
     }
 
     // Full account deletion (App Store guideline 5.1.1(v)): removes the user

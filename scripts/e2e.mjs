@@ -319,8 +319,9 @@ check('starring pins a lesson', t.includes('starred'));
 // ---------------------------------------------------------------- FRIENDS (live server)
 await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());
 await sleep(1000);
+const e2eEmail = 'e2e-' + Math.floor(Math.random()*1e9) + '@example.com';
 await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
-await page.type('input[placeholder="you@example.com"]', 'e2e-' + Math.floor(Math.random()*1e9) + '@example.com');
+await page.type('input[placeholder="you@example.com"]', e2eEmail);
 await clickText('Join', 2200);
 t = await text();
 const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
@@ -330,6 +331,43 @@ await clickText('Add', 2200);
 t = await text();
 check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');
 check('league shows weekly counts', t.includes('this week'));
+
+// ------------------------------------------------- ACCOUNT TAB + PASSWORD AUTH (live server)
+await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
+await sleep(1500);
+t = await text();
+check('account tab opens from bottom bar (signed in)', t.includes('your account') && t.includes('save changes'));
+check('friend code card shows', /rimon-[a-z2-9]{4}/.test(t));
+check('password card offers set-a-password', t.includes('set a password'));
+// set a password on the fresh league account
+const E2E_PASS = 'e2e-pass-12345';
+await page.type('input[placeholder="8+ characters"]', E2E_PASS);
+await clickText('Set password', 2200);
+t = await text();
+check('password saves', t.includes('saved!') || t.includes('change password'), t.includes('change password') ? 'card flipped to change-password' : '');
+// sign out, then back in with email + password
+await clickText('sign out on this device', 1200);
+t = await text();
+check('signed-out account shows full sign-in menu', t.includes('create account') && t.includes('sign in'));
+await clickText('Sign in', 800); // mode toggle (first matching button)
+await page.type('input[placeholder="you@example.com"]', e2eEmail);
+await page.type('input[placeholder="your password"]', E2E_PASS);
+await page.evaluate(() => {
+  const subs = [...document.querySelectorAll('button')].filter((b) => b.textContent.trim().replace('✓','').trim() === 'Sign in');
+  subs[subs.length - 1]?.click(); // the submit pill (the toggle is first)
+});
+await sleep(2200);
+t = await text();
+const restoredName = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => v.includes('E2E')) ?? '');
+check('email + password sign-in restores the account', t.includes('your account') && restoredName.includes('E2E Debug'), `name=${restoredName}`);
+// friend-code fallback link present for legacy accounts
+await clickText('sign out on this device', 1000);
+await clickText('Sign in', 700);
+t = await text();
+check('friend-code fallback offered on sign-in', t.includes('no password? sign in with your friend code'));
+// back to a clean signed-out state for future runs
+await page.evaluate(() => [...document.querySelectorAll('nav button')][0]?.click());
+await sleep(800);
 
 // ---------------------------------------------------------------- AUDIO + assets over network
 const audioStatus = await page.evaluate(async () => {
