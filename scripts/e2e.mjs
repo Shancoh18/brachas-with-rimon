@@ -345,8 +345,14 @@ t = await text();
 check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');
 check('league shows weekly counts', t.includes('this week'));
 
-// ------------------------------------------------- ACCOUNT TAB + PASSWORD AUTH (live server)
+// ---------------------------------------------------------------- DONATE TAB
 await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
+await sleep(1000);
+t = await text();
+check('donate tab opens next to the profile button', t.includes('help keep the app free') && t.includes('donate to the developers'));
+
+// ------------------------------------------------- ACCOUNT TAB + PASSWORD AUTH (live server)
+await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
 await sleep(1500);
 t = await text();
 check('account tab opens from bottom bar (signed in)', t.includes('your account') && t.includes('save changes'));
@@ -364,7 +370,7 @@ await page.evaluate(() => {
   subs[subs.length - 1]?.click(); // the submit pill (the toggle is first)
 });
 await sleep(2200);
-await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
+await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
 await sleep(1200);
 t = await text();
 const restoredName = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => v.includes('E2E')) ?? '');

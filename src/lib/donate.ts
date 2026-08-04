@@ -7,6 +7,6 @@
  * use In-App Purchase (guideline 3.1.1) — an external payment link may be
  * rejected. If review bounces it, gate donateAvailable() on !isNative().
  */
-export const DONATE_URL = '';
+export const DONATE_URL = 'https://shancoh18.github.io/brachas-with-rimon/donate.html';
 
 export const donateAvailable = () => DONATE_URL.length > 0;
