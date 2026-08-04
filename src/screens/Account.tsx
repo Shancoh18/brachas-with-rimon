@@ -103,10 +103,14 @@ export function Account() {
         status === 409
           ? 'That email belongs to another account.'
           : status === 401
-            ? 'Your session expired — sign in again below.'
+            ? 'Your session expired — sign in again.'
             : 'Couldn’t save right now — try again in a moment.',
       );
-      if (status === 401) clearServerAccount();
+      if (status === 401) {
+        // set BEFORE the clear — clearing swaps this screen for the gate
+        useBracha.getState().setGateNotice('Your session expired — please sign in again.');
+        clearServerAccount();
+      }
     }
     setBusy(false);
   };
@@ -295,9 +299,14 @@ export function Account() {
                         setBusy(true);
                         try {
                           await apiDeleteAccount(serverToken);
+                          // set BEFORE the clear — clearing unmounts this screen
+                          useBracha
+                            .getState()
+                            .setGateNotice(
+                              'Your account has been deleted. Local streaks on this device remain yours.',
+                            );
                           clearServerAccount();
                           setConfirmDelete(false);
-                          setNotice('Your account has been deleted. Local streaks on this device remain yours.');
                         } catch {
                           setNotice('Couldn’t reach the server — try again in a moment.');
                         }

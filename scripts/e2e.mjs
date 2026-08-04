@@ -52,7 +52,7 @@ await clickText('Next', 900);
 await clickText('Next', 900);
 t = await text();
 check('tutorial ends at account creation', t.includes('make it yours') && (await page.evaluate(() => !!document.querySelector('input[type="email"]'))));
-await clickText('maybe later', 1200);
+await clickText('continue to sign-in', 1200);
 
 // ----------------------------------------------------- AUTH GATE (account-first)
 t = await text();
@@ -304,7 +304,18 @@ await page.evaluate(() => [...document.querySelectorAll('nav button')][2]?.click
 await sleep(1200);
 t = await text();
 check('journey streak hero shows 1', /1\s*🔥/.test(t.replace(/\n/g, ' ')));
-check('activity strip shows today count', t.includes('day streak') || t.includes('day streak'));
+// the week strip: 7 cells, Sunday-anchored, today's cell carrying the count
+const strip = await page.evaluate(() => {
+  const hero = [...document.querySelectorAll('div')].find((d) => /day streak/i.test(d.innerText) && d.querySelectorAll('span').length > 6);
+  if (!hero) return { err: 'strip not found' };
+  const cells = [...hero.querySelectorAll('span')].map((s) => (s.textContent || '').trim()).filter((x) => x.length <= 2);
+  return { cells: cells.slice(0, 20), todayIdx: new Date().getDay() };
+});
+check(
+  'week strip is Sunday-anchored with 7 day cells',
+  !strip.err && strip.cells.filter((c) => /^[SMTWF]$/.test(c)).length >= 7 && strip.cells.find((c) => /^[SMTWF]$/.test(c)) === 'S',
+  strip.err || strip.cells.join(' '),
+);
 check('challenges render', t.includes('first fruits') && t.includes('the seven species'));
 const challengeProgress = t.match(/first fruits[\s\S]{0,120}?(\d+)\/10/);
 check('First Fruits counts brachos', !!challengeProgress && Number(challengeProgress[1]) >= 6, challengeProgress?.[1]);

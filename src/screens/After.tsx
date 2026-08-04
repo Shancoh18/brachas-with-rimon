@@ -89,20 +89,21 @@ export function After() {
             <PillButton variant="rimon" icon="✓" onClick={() => setPhase('shiur')}>
               I’m done eating — after-blessings
             </PillButton>
-            <button
-              onClick={() => setScreen('guide')}
-              className="text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
-            >
-              ← back to the blessings
-            </button>
-            <button
+            <PillButton
+              variant="ghost"
+              icon="→"
               onClick={() => {
                 recordThisMeal(false);
                 setPartyTime(true);
               }}
-              className="text-[11px] font-medium text-mocha/70 underline-offset-4 transition-colors duration-150 hover:text-espresso hover:underline"
             >
-              finish without after-blessings
+              Skip after-blessings
+            </PillButton>
+            <button
+              onClick={() => setScreen('guide')}
+              className="pt-1 text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+            >
+              ← back to the blessings
             </button>
           </div>
         </div>

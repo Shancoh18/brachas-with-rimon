@@ -51,7 +51,10 @@ export function useReminders() {
     if (!serverToken || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'in-app';
     try {
       // pushManager.subscribe can hang indefinitely (push service unreachable,
-      // headless browsers) — never let it wedge the reminder sheet.
+      // headless browsers) — never let it wedge the reminder sheet. If the
+      // timeout wins, the late completion must NOT register on the server:
+      // the user was told "in-app", and may even have disabled reminders since.
+      let expired = false;
       const attempt = (async () => {
         const reg = await navigator.serviceWorker.ready;
         const { key } = await apiPushKey(serverToken);
@@ -61,10 +64,16 @@ export function useReminders() {
             userVisibleOnly: true,
             applicationServerKey: vapidKeyToBytes(key) as BufferSource,
           }));
+        if (expired) return 'in-app' as const; // abandoned — do not register
         await apiPushSubscribe(serverToken, sub, times);
         return 'background' as const;
       })();
-      const timeout = new Promise<'in-app'>((resolve) => setTimeout(() => resolve('in-app'), 8000));
+      const timeout = new Promise<'in-app'>((resolve) =>
+        setTimeout(() => {
+          expired = true;
+          resolve('in-app');
+        }, 8000),
+      );
       return await Promise.race([attempt, timeout]);
     } catch {
       return 'in-app';

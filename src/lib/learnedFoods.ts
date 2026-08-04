@@ -16,14 +16,44 @@ export type LearnedFoodEntry = FoodEntry & {
   learnedAt: string;
 };
 
+/** Server wire format → client enums. The server validates against its own
+ *  lowercase/snake_case enums; anything that doesn't map cleanly here is
+ *  REJECTED rather than merged — a malformed entry must never reach kedima
+ *  or the Guide liturgy lookup. */
+const RISHONA_MAP: Record<string, FoodEntry['brachaRishona']> = {
+  hamotzi: 'Hamotzi',
+  mezonos: 'Mezonos',
+  hagafen: 'Hagafen',
+  haetz: 'Haetz',
+  haadama: 'Haadama',
+  shehakol: 'Shehakol',
+};
+const ACHRONA_MAP: Record<string, FoodEntry['brachaAchrona']> = {
+  birkat_hamazon: 'BirkatHamazon',
+  al_hamichya: 'AlHamichya',
+  al_hagefen: 'AlHagefen',
+  al_haetz: 'AlHaetz',
+  borei_nefashos: 'BoreiNefashos',
+};
+
 const learnedKeys = new Set<string>();
 
 export const isLearned = (key: string) => learnedKeys.has(key);
 
 export function registerLearnedFoods(entries: LearnedFoodEntry[] | undefined) {
   if (!entries?.length) return;
-  for (const e of entries) {
-    if (!e?.key || FOOD_BY_KEY[e.key]) continue; // never override the vetted DB
+  for (const raw of entries) {
+    if (!raw?.key || FOOD_BY_KEY[raw.key]) continue; // never override the vetted DB
+    const rishona = RISHONA_MAP[String(raw.brachaRishona).toLowerCase()];
+    const achrona = ACHRONA_MAP[String(raw.brachaAchrona).toLowerCase()];
+    if (!rishona || !achrona || !Array.isArray(raw.names) || !raw.names.length) continue;
+    const e: LearnedFoodEntry = {
+      ...raw,
+      brachaRishona: rishona,
+      brachaAchrona: achrona,
+      shivasHaminim: false, // learned entries never claim Shivas Haminim rank
+      category: raw.category === 'Beverages' ? 'Beverages' : 'Other',
+    };
     FOOD_BY_KEY[e.key] = e;
     FOODS.push(e);
     learnedKeys.add(e.key);

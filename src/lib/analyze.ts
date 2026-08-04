@@ -8,7 +8,7 @@
  */
 import { API_BASE } from './api';
 import type { IdentifiedItem } from './classify';
-import { registerLearnedFoods, type LearnedFoodEntry } from './learnedFoods';
+import { fetchLearnedFoods, registerLearnedFoods, type LearnedFoodEntry } from './learnedFoods';
 
 const MAX_EDGE = 1568;
 const MAX_PIXELS = 1_150_000;
@@ -47,11 +47,25 @@ export async function analyzePhoto(base64: string, mediaType: string): Promise<A
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: base64, media_type: mediaType }),
+    // vision + inline research can legitimately take ~30s; fail crisply after 45
+    signal: AbortSignal.timeout(45_000),
   });
   if (!res.ok) throw new Error(`analyze failed: ${res.status}`);
   const result = (await res.json()) as AnalyzeResult;
   // Merge freshly learned foods before anything tries to look them up.
   registerLearnedFoods(result.learned_entries);
+  // A key the server knows (learned on another device) but this session hasn't
+  // synced yet would silently vanish in toMealItems — re-sync once, then let
+  // still-unknown keys surface as unmatched instead of disappearing.
+  const { FOOD_BY_KEY } = await import('../data/foods');
+  if (result.items.some((i) => !FOOD_BY_KEY[i.db_key])) {
+    await fetchLearnedFoods();
+    const still = result.items.filter((i) => !FOOD_BY_KEY[i.db_key]);
+    if (still.length) {
+      result.unmatched = [...(result.unmatched ?? []), ...still.map((i) => i.display_name)];
+      result.items = result.items.filter((i) => FOOD_BY_KEY[i.db_key]);
+    }
+  }
   return result;
 }
 

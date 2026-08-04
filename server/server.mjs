@@ -11,7 +11,7 @@
  *  - Storage: JSON on the Railway volume (DATA_DIR). Small-scale by design.
  */
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
 import { createPublicKey, randomBytes, scryptSync, timingSafeEqual, verify as cryptoVerify } from 'crypto';
 import { join } from 'path';
 import webpush from 'web-push';
@@ -67,7 +67,11 @@ const readBody = (req) =>
     let d = '';
     req.on('data', (c) => {
       d += c;
-      if (d.length > 12 * 1024 * 1024) reject(new Error('too large'));
+      if (d.length > 12 * 1024 * 1024) {
+        // stop buffering AND kill the stream, or the closure keeps growing
+        req.destroy();
+        reject(new Error('too large'));
+      }
     });
     req.on('end', () => {
       try {
@@ -185,12 +189,25 @@ const FOOD_KEYS = JSON.parse(readFileSync(join(import.meta.dirname, 'foods-keys.
 // allowed_domains — the halachic rule still never comes from the model's own
 // head) and persists it here. Entries carry the citing URL.
 const LEARNED_FILE = join(DATA_DIR, 'learned-foods.json');
-let learnedFoods = existsSync(LEARNED_FILE) ? JSON.parse(readFileSync(LEARNED_FILE, 'utf8')) : [];
-const saveLearned = () => writeFileSync(LEARNED_FILE, JSON.stringify(learnedFoods, null, 1));
+const LEARNED_MAX = 500; // hard cap — the enum/system-prompt grows with every entry
+let learnedFoods = [];
+try {
+  if (existsSync(LEARNED_FILE)) learnedFoods = JSON.parse(readFileSync(LEARNED_FILE, 'utf8'));
+} catch (err) {
+  // A write cut off mid-deploy must never crash-loop the whole API.
+  console.error(`learned-foods.json unreadable (${err.message}) — starting empty`);
+  learnedFoods = [];
+}
+const saveLearned = () => {
+  // atomic: tmp + rename so a SIGTERM mid-write can't truncate the file
+  const tmp = LEARNED_FILE + '.tmp';
+  writeFileSync(tmp, JSON.stringify(learnedFoods, null, 1));
+  renameSync(tmp, LEARNED_FILE);
+};
 const allFoodKeys = () => [...FOOD_KEYS, ...learnedFoods.map((e) => e.key)];
 
 const BRACHA_ENUM = ['hamotzi', 'mezonos', 'hagafen', 'haetz', 'haadama', 'shehakol'];
-const ACHRONA_ENUM = ['birkat_hamazon', 'al_hamichya', 'al_hagefen', 'al_haetz', 'borei_nefashos', 'none'];
+const ACHRONA_ENUM = ['birkat_hamazon', 'al_hamichya', 'al_hagefen', 'al_haetz', 'borei_nefashos'];
 const RESEARCH_DOMAINS = ['chabad.org', 'brachos.org', 'oukosher.org'];
 
 const RESEARCH_TOOL = {
@@ -257,6 +274,15 @@ which category a food belongs to, report found:false rather than guess.`,
   let host = '';
   try { host = new URL(e.sourceUrl).hostname.replace(/^www\./, ''); } catch { return null; }
   if (!RESEARCH_DOMAINS.includes(host)) return null;
+  // The cited page must actually exist — a fabricated URL never persists.
+  try {
+    const page = await fetch(e.sourceUrl, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(8000) });
+    if (!page.ok) return null;
+    const finalHost = new URL(page.url).hostname.replace(/^www\./, '');
+    if (!RESEARCH_DOMAINS.includes(finalHost)) return null;
+  } catch {
+    return null;
+  }
   const key = String(e.key || description).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
   if (!key || allFoodKeys().includes(key)) return null; // already known — nothing to learn
   return {
@@ -278,31 +304,30 @@ which category a food belongs to, report found:false rather than guess.`,
   };
 }
 
-/** Research every unmatched food; resolve with whatever finished in `budgetMs`,
- *  let the rest keep going in the background so the DB still grows. */
-function researchUnmatched(unmatched, apiKey, budgetMs = 25_000) {
-  const tasks = unmatched.map((desc) =>
+/** Research unmatched foods (first few only — fan-out is attacker-visible cost).
+ *  Resolves with the entries that finished inside `budgetMs`, each tagged with
+ *  the description it answers; the rest keep going in the background so the DB
+ *  still grows for next time. */
+function researchUnmatched(unmatched, apiKey, budgetMs = 12_000) {
+  const finished = []; // {desc, entry} collected as tasks land — no name re-matching
+  const tasks = unmatched.slice(0, 3).map((desc) =>
     researchFood(desc, apiKey)
       .then((entry) => {
-        if (entry && !allFoodKeys().includes(entry.key)) {
+        if (entry && learnedFoods.length < LEARNED_MAX && !allFoodKeys().includes(entry.key)) {
           learnedFoods.push(entry);
           saveLearned();
           console.log(`learned: ${entry.key} -> ${entry.brachaRishona}/${entry.brachaAchrona} (${entry.sourceUrl})`);
+          finished.push({ desc, entry });
         } else if (!entry) {
           console.log(`research no-ruling: ${desc}`);
         }
-        return entry;
       })
       .catch((err) => {
         console.log(`research failed: ${desc}: ${err.message}`);
-        return null;
       }),
   );
   const timeout = new Promise((resolve) => setTimeout(resolve, budgetMs, 'timeout'));
-  return Promise.race([Promise.allSettled(tasks), timeout]).then(() =>
-    // report whatever has landed by now (background tasks keep appending later)
-    learnedFoods.filter((e) => unmatched.some((d) => e.names.some((n) => n.toLowerCase() === d.toLowerCase()) || e.key === d.toLowerCase().replace(/[^a-z0-9]+/g, '_'))),
-  );
+  return Promise.race([Promise.allSettled(tasks), timeout]).then(() => [...finished]);
 }
 
 const SYSTEM_PROMPT = () => `You are the food-identification engine for a Jewish blessings (bracha) app.
@@ -379,15 +404,13 @@ async function analyze(body) {
     try {
       const found = await researchUnmatched(out.unmatched, key);
       if (found.length) {
-        out.learned_entries = found;
+        out.learned_entries = found.map((f) => f.entry);
         out.items = out.items || [];
-        for (const e of found) {
-          out.items.push({ db_key: e.key, display_name: e.names[0], state: 'unknown', confidence: 0.9 });
+        const answered = new Set(found.map((f) => f.desc));
+        for (const { desc, entry } of found) {
+          out.items.push({ db_key: entry.key, display_name: desc, state: 'unknown', confidence: 0.9 });
         }
-        const foundKeys = new Set(found.flatMap((e) => e.names.map((n) => n.toLowerCase())));
-        out.unmatched = out.unmatched.filter(
-          (d) => !foundKeys.has(d.toLowerCase()) && !found.some((e) => e.key === d.toLowerCase().replace(/[^a-z0-9]+/g, '_')),
-        );
+        out.unmatched = out.unmatched.filter((d) => !answered.has(d));
       }
     } catch (err) {
       console.log(`research pipeline error: ${err.message}`);

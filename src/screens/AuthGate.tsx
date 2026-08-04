@@ -8,11 +8,18 @@
 import { AuthPanel } from '../components/AuthPanel';
 import { Rimon } from '../components/Rimon';
 import { Eyebrow, ScreenShell } from '../components/ui';
+import { useBracha } from '../store';
 
 export function AuthGate() {
+  const gateNotice = useBracha((s) => s.gateNotice);
   return (
     <ScreenShell>
       <div className="flex flex-col items-center pb-16 pt-6 text-center">
+        {gateNotice && (
+          <div className="rise-in mb-4 w-full max-w-[340px] rounded-[1.25rem] bg-white/70 p-4 text-[12.5px] leading-relaxed text-espresso ring-1 ring-espresso/10">
+            {gateNotice}
+          </div>
+        )}
         <div className="rise-in">
           <Rimon pose="hello" size={132} />
         </div>

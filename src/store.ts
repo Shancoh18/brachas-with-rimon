@@ -56,6 +56,14 @@ interface BrachaState {
 
   unmatched: string[];
   setUnmatched: (u: string[]) => void;
+  /** True when a REAL photo's identification failed and the demo meal was
+   *  substituted — Confirm must label it so it never poses as a real result. */
+  demoFallback: boolean;
+  setDemoFallback: (v: boolean) => void;
+  /** One-shot message shown on the AuthGate (e.g. "account deleted") — set it
+   *  BEFORE clearServerAccount(), since that unmounts the screen that set it. */
+  gateNotice: string | null;
+  setGateNotice: (m: string | null) => void;
 
   guideIndex: number;
   setGuideIndex: (i: number) => void;
@@ -122,6 +130,10 @@ export const useBracha = create<BrachaState>()(
 
       unmatched: [],
       setUnmatched: (unmatched) => set({ unmatched }),
+      demoFallback: false,
+      setDemoFallback: (demoFallback) => set({ demoFallback }),
+      gateNotice: null,
+      setGateNotice: (gateNotice) => set({ gateNotice }),
 
       guideIndex: 0,
       setGuideIndex: (guideIndex) => set({ guideIndex }),
@@ -194,7 +206,7 @@ export const useBracha = create<BrachaState>()(
       friendCode: null,
       userEmail: null,
       setUserEmail: (userEmail) => set({ userEmail }),
-      setServerAccount: (serverToken, friendCode) => set({ serverToken, friendCode }),
+      setServerAccount: (serverToken, friendCode) => set({ serverToken, friendCode, gateNotice: null }),
       clearServerAccount: () => set({ serverToken: null, friendCode: null, userEmail: null }),
 
       reset: () =>

@@ -11,7 +11,7 @@ import { analyzePhoto, demoMeal, resizeImage } from '../lib/analyze';
 import { toMealItems } from '../lib/classify';
 
 export function Welcome() {
-  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, progress, setTab } =
+  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, setDemoFallback, progress, setTab } =
     useBracha();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -25,19 +25,22 @@ export function Welcome() {
     setScreen('identify');
     try {
       let result;
+      let fellBack = false;
       if (file) {
         const { dataUrl, base64, mediaType } = await resizeImage(file);
         setPhoto(dataUrl);
         try {
           result = await analyzePhoto(base64, mediaType);
         } catch {
-          // proxy unreachable (local dev without a key) → demo fallback, clearly labeled
+          // identification unreachable/timed out → demo fallback, labeled in Confirm
           result = demoMeal();
+          fellBack = true;
         }
       } else {
         setPhoto(null);
         result = demoMeal();
       }
+      setDemoFallback(fellBack);
       setItems(toMealItems(result.items));
       setUnmatched(result.unmatched ?? []);
       setScreen('confirm');

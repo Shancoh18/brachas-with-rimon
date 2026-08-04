@@ -22,7 +22,7 @@ const BRACHA_TINT: Record<string, string> = {
 };
 
 export function Confirm() {
-  const { items, updateItem, removeItem, addItem, unmatched, setScreen, reset, photo } = useBracha();
+  const { items, updateItem, removeItem, addItem, unmatched, setScreen, reset, photo, demoFallback } = useBracha();
   const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
 
@@ -50,6 +50,14 @@ export function Confirm() {
         Check every item — a photo can’t always tell cooked from raw, or what’s inside a mixture.
         Tap a state to correct it; star your favorite (<em>chaviv</em>).
       </p>
+
+      {demoFallback && (
+        <div className="rise-in rise-in-1 mb-5 rounded-[1.25rem] bg-rimon/8 p-4 text-[12px] leading-relaxed text-espresso ring-1 ring-rimon/20">
+          <strong className="text-rimon">Heads up:</strong> we couldn’t reach the identification
+          service just now, so this is Rimon’s <em>demo meal</em> — not what’s in your photo.
+          Check your connection and try the photo again.
+        </div>
+      )}
 
       {photo && (
         <div className="rise-in rise-in-1 mb-5 overflow-hidden rounded-[1.5rem] ring-1 ring-espresso/10">

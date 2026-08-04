@@ -3,7 +3,8 @@
  * Stories-style: segmented progress bars up top that auto-advance, tap the
  * right side for next / left for back, swipe on touch, every slide a
  * full-bleed scene with a different tint and a different Rimon motion loop.
- * Final slide: account creation (name + email) with a graceful skip.
+ * Final slide: account creation. The app is account-first, so declining here
+ * lands on the sign-in gate (AuthGate) — the skip button says so honestly.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useBracha } from '../store';
@@ -103,6 +104,9 @@ export function Onboarding() {
         if (touchX.current == null) return;
         const dx = e.changedTouches[0].clientX - touchX.current;
         touchX.current = null;
+        // No swipe-nav on the account slide — dragging a text cursor in the
+        // form must never yank the user off it (tap zones are gated the same).
+        if (atAccount) return;
         if (Math.abs(dx) < 48) return;
         if (dx < 0) next();
         else back();
@@ -253,7 +257,7 @@ export function Onboarding() {
             onClick={() => setOnboarded(true)}
             className={`text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso ${atAccount ? 'rise-in rise-in-3' : ''}`}
           >
-            maybe later — take me to the app
+            skip the tour — continue to sign-in
           </button>
             </>
           )}
