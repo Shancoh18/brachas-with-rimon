@@ -8,6 +8,7 @@
  */
 import { API_BASE } from './api';
 import type { IdentifiedItem } from './classify';
+import { registerLearnedFoods, type LearnedFoodEntry } from './learnedFoods';
 
 const MAX_EDGE = 1568;
 const MAX_PIXELS = 1_150_000;
@@ -36,6 +37,8 @@ export async function resizeImage(file: File | Blob): Promise<{ dataUrl: string;
 export interface AnalyzeResult {
   items: IdentifiedItem[];
   unmatched: string[];
+  /** Entries the server just researched from the approved sites for THIS meal. */
+  learned_entries?: LearnedFoodEntry[];
   demo?: boolean;
 }
 
@@ -46,7 +49,10 @@ export async function analyzePhoto(base64: string, mediaType: string): Promise<A
     body: JSON.stringify({ image: base64, media_type: mediaType }),
   });
   if (!res.ok) throw new Error(`analyze failed: ${res.status}`);
-  return (await res.json()) as AnalyzeResult;
+  const result = (await res.json()) as AnalyzeResult;
+  // Merge freshly learned foods before anything tries to look them up.
+  registerLearnedFoods(result.learned_entries);
+  return result;
 }
 
 /** A rich demo meal exercising kedima + both after-bracha paths. */

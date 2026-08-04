@@ -12,6 +12,12 @@ correct order (kedima), and the correct after-blessing(s).
   oukosher.org. Do NOT hardcode halachic decisions from the model. Claude
   vision ONLY identifies foods and maps them to db keys (`api/analyze.ts`
   constrains it with an enum tool schema).
+- ONE sanctioned extension (owner-approved 2026-08-04): the server may LEARN
+  new foods at runtime (`server.mjs` researchFood) — but only via web_search
+  hard-restricted to those same three domains (`allowed_domains`), only with a
+  citing URL from one of them, and validated against the bracha enums before
+  persisting to DATA_DIR/learned-foods.json. The model still never rules from
+  its own knowledge; a food the sites don't determine stays `unmatched`.
 - The app is a LEARNING AID. Every screen must surface the disclaimer:
   "This app is a study aid. For any practical halachic question, consult a
   qualified rabbi." All three source sites carry this same advice.

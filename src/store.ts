@@ -7,7 +7,7 @@ import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
 export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference';
-export type Tab = 'bless' | 'learn' | 'journey' | 'friends' | 'account';
+export type Tab = 'bless' | 'learn' | 'journey' | 'friends' | 'donate' | 'account';
 export type TextMode = 'hebrew' | 'translit' | 'english';
 
 export interface Celebration {

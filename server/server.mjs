@@ -175,10 +175,137 @@ const weekTotal = (u) => {
 
 // --------------------------------------------------------- Claude vision
 // FOOD_DATABASE_KEYS baked at deploy time (foods-keys.json is generated from
-// src/data/foods.ts by the deploy script — single source of truth).
+// src/data/foods.ts by the deploy script — single source of truth) — PLUS
+// entries the research pipeline has learned at runtime (LEARNED_FILE).
 const FOOD_KEYS = JSON.parse(readFileSync(join(import.meta.dirname, 'foods-keys.json'), 'utf8'));
 
-const SYSTEM_PROMPT = `You are the food-identification engine for a Jewish blessings (bracha) app.
+// ------------------------------------------- learned foods (self-growing DB)
+// When vision reports a food with no database match, researchFood() derives
+// its entry FROM THE THREE APPROVED SITES ONLY (web_search hard-limited via
+// allowed_domains — the halachic rule still never comes from the model's own
+// head) and persists it here. Entries carry the citing URL.
+const LEARNED_FILE = join(DATA_DIR, 'learned-foods.json');
+let learnedFoods = existsSync(LEARNED_FILE) ? JSON.parse(readFileSync(LEARNED_FILE, 'utf8')) : [];
+const saveLearned = () => writeFileSync(LEARNED_FILE, JSON.stringify(learnedFoods, null, 1));
+const allFoodKeys = () => [...FOOD_KEYS, ...learnedFoods.map((e) => e.key)];
+
+const BRACHA_ENUM = ['hamotzi', 'mezonos', 'hagafen', 'haetz', 'haadama', 'shehakol'];
+const ACHRONA_ENUM = ['birkat_hamazon', 'al_hamichya', 'al_hagefen', 'al_haetz', 'borei_nefashos', 'none'];
+const RESEARCH_DOMAINS = ['chabad.org', 'brachos.org', 'oukosher.org'];
+
+const RESEARCH_TOOL = {
+  name: 'report_food_entry',
+  description: 'Report the researched bracha entry for one food, or not_found.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      found: { type: 'boolean' },
+      key: { type: 'string', description: 'lowercase_snake_case canonical id, e.g. kombucha' },
+      names: { type: 'array', items: { type: 'string' }, description: 'display name first, then aliases' },
+      brachaRishona: { type: 'string', enum: BRACHA_ENUM },
+      brachaAchrona: { type: 'string', enum: ACHRONA_ENUM },
+      isDrink: { type: 'boolean' },
+      isTreeFruit: { type: 'boolean' },
+      isFiveGrain: { type: 'boolean' },
+      isWineGrape: { type: 'boolean' },
+      notes: { type: 'string', description: 'one short sentence for the Why panel' },
+      sourceUrl: { type: 'string', description: 'the exact page on an approved site that states this ruling' },
+    },
+    required: ['found'],
+  },
+};
+
+async function researchFood(description, apiKey) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+      max_tokens: 3000,
+      system: `You research the correct bracha (blessing) for foods, for a Jewish blessings app.
+You may ONLY conclude a ruling that an approved site states. Search the web (results
+are restricted to chabad.org, brachos.org and oukosher.org) and report via
+report_food_entry with the citing URL. A ruling counts when a page either
+(a) addresses this food specifically, or (b) states a GENERAL rule that plainly
+covers it — e.g. "all drinks other than wine and grape juice are Shehakol",
+"raw vegetables are Ha'adama" — cite that general-rule page and apply it.
+What you may NOT do is derive halacha from your own knowledge or reason beyond
+what a page plainly states; if neither a specific nor a clearly applicable
+general ruling exists on these sites, report found:false. When in doubt about
+which category a food belongs to, report found:false rather than guess.`,
+      tools: [
+        {
+          type: 'web_search_20250305',
+          name: 'web_search',
+          allowed_domains: RESEARCH_DOMAINS,
+          max_uses: 5,
+        },
+        RESEARCH_TOOL,
+      ],
+      messages: [
+        { role: 'user', content: `Food to research: ${description}` },
+      ],
+    }),
+  });
+  if (!r.ok) throw new Error(`research http ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const data = await r.json();
+  const tu = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_food_entry');
+  const e = tu?.input;
+  if (!e || e.found !== true) return null;
+  // Validate hard before it can ever reach a user.
+  if (!BRACHA_ENUM.includes(e.brachaRishona) || !ACHRONA_ENUM.includes(e.brachaAchrona)) return null;
+  let host = '';
+  try { host = new URL(e.sourceUrl).hostname.replace(/^www\./, ''); } catch { return null; }
+  if (!RESEARCH_DOMAINS.includes(host)) return null;
+  const key = String(e.key || description).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  if (!key || allFoodKeys().includes(key)) return null; // already known — nothing to learn
+  return {
+    key,
+    names: Array.isArray(e.names) && e.names.length ? e.names.map(String).slice(0, 6) : [description],
+    category: e.isDrink ? 'Beverages' : 'Other',
+    brachaRishona: e.brachaRishona,
+    brachaAchrona: e.brachaAchrona,
+    shivasHaminim: false,
+    isFiveGrain: !!e.isFiveGrain,
+    isTreeFruit: !!e.isTreeFruit,
+    isWineGrape: !!e.isWineGrape,
+    isDrink: !!e.isDrink,
+    notes: e.notes ? String(e.notes).slice(0, 300) : undefined,
+    source: host === 'oukosher.org' ? 'OU' : host,
+    sourceUrl: String(e.sourceUrl),
+    learned: true,
+    learnedAt: new Date().toISOString(),
+  };
+}
+
+/** Research every unmatched food; resolve with whatever finished in `budgetMs`,
+ *  let the rest keep going in the background so the DB still grows. */
+function researchUnmatched(unmatched, apiKey, budgetMs = 25_000) {
+  const tasks = unmatched.map((desc) =>
+    researchFood(desc, apiKey)
+      .then((entry) => {
+        if (entry && !allFoodKeys().includes(entry.key)) {
+          learnedFoods.push(entry);
+          saveLearned();
+          console.log(`learned: ${entry.key} -> ${entry.brachaRishona}/${entry.brachaAchrona} (${entry.sourceUrl})`);
+        } else if (!entry) {
+          console.log(`research no-ruling: ${desc}`);
+        }
+        return entry;
+      })
+      .catch((err) => {
+        console.log(`research failed: ${desc}: ${err.message}`);
+        return null;
+      }),
+  );
+  const timeout = new Promise((resolve) => setTimeout(resolve, budgetMs, 'timeout'));
+  return Promise.race([Promise.allSettled(tasks), timeout]).then(() =>
+    // report whatever has landed by now (background tasks keep appending later)
+    learnedFoods.filter((e) => unmatched.some((d) => e.names.some((n) => n.toLowerCase() === d.toLowerCase()) || e.key === d.toLowerCase().replace(/[^a-z0-9]+/g, '_'))),
+  );
+}
+
+const SYSTEM_PROMPT = () => `You are the food-identification engine for a Jewish blessings (bracha) app.
 You will receive a photo of a meal. Identify each distinct edible item.
 You MUST map every item to exactly one canonical key from the provided
 FOOD_DATABASE_KEYS list. Never invent a food name outside this list; if an
@@ -187,9 +314,9 @@ description. Do not guess the blessing yourself — only identify and map.
 Return ONLY the structured tool output. Distinguish preparation state where
 visible (raw vs cooked, whole vs cut) since it can change the mapping.
 
-FOOD_DATABASE_KEYS: ${FOOD_KEYS.join(', ')}`;
+FOOD_DATABASE_KEYS: ${allFoodKeys().join(', ')}`;
 
-const TOOL = {
+const TOOL = () => ({
   name: 'report_foods',
   description: 'Report every identified food item mapped to a database key.',
   input_schema: {
@@ -200,7 +327,7 @@ const TOOL = {
         items: {
           type: 'object',
           properties: {
-            db_key: { type: 'string', enum: FOOD_KEYS },
+            db_key: { type: 'string', enum: allFoodKeys() },
             display_name: { type: 'string' },
             state: { type: 'string', enum: ['raw', 'cooked', 'baked', 'whole', 'cut', 'liquid', 'unknown'] },
             confidence: { type: 'number' },
@@ -213,7 +340,7 @@ const TOOL = {
     },
     required: ['items'],
   },
-};
+});
 
 async function analyze(body) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -224,8 +351,8 @@ async function analyze(body) {
     body: JSON.stringify({
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
       max_tokens: 2048,
-      system: SYSTEM_PROMPT,
-      tools: [TOOL],
+      system: SYSTEM_PROMPT(),
+      tools: [TOOL()],
       tool_choice: { type: 'tool', name: 'report_foods' },
       messages: [
         {
@@ -242,7 +369,31 @@ async function analyze(body) {
   const data = await r.json();
   const toolUse = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_foods');
   if (!toolUse?.input) return { code: 502, body: { error: 'no_tool_output' } };
-  return { code: 200, body: toolUse.input };
+
+  const out = toolUse.input;
+  // Self-growing DB: research any unmatched foods against the approved sites.
+  // Whatever resolves within the budget joins THIS meal; the rest lands in the
+  // learned DB in the background for next time.
+  if (Array.isArray(out.unmatched) && out.unmatched.length) {
+    console.log(`unmatched: ${out.unmatched.join(', ')}`);
+    try {
+      const found = await researchUnmatched(out.unmatched, key);
+      if (found.length) {
+        out.learned_entries = found;
+        out.items = out.items || [];
+        for (const e of found) {
+          out.items.push({ db_key: e.key, display_name: e.names[0], state: 'unknown', confidence: 0.9 });
+        }
+        const foundKeys = new Set(found.flatMap((e) => e.names.map((n) => n.toLowerCase())));
+        out.unmatched = out.unmatched.filter(
+          (d) => !foundKeys.has(d.toLowerCase()) && !found.some((e) => e.key === d.toLowerCase().replace(/[^a-z0-9]+/g, '_')),
+        );
+      }
+    } catch (err) {
+      console.log(`research pipeline error: ${err.message}`);
+    }
+  }
+  return { code: 200, body: out };
 }
 
 // ------------------------------------------------------- reminder scheduler
@@ -365,6 +516,9 @@ const server = createServer(async (req, res) => {
       save();
       return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email ?? null });
     }
+
+    if (url.pathname === '/api/foods/learned' && req.method === 'GET')
+      return json(res, 200, { entries: learnedFoods });
 
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
       const body = await readBody(req);

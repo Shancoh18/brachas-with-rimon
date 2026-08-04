@@ -39,11 +39,11 @@ export function Journey() {
           <p className="pt-2 text-[12px] font-bold uppercase tracking-[0.2em] text-mocha">
             day streak {alive ? '' : '— say a bracha today to begin'}
           </p>
-          {/* last-7-days activity strip */}
+          {/* this week's activity strip — the Jewish week runs Sunday → Shabbos */}
           <div className="mt-5 flex items-center justify-center gap-2.5">
             {Array.from({ length: 7 }, (_, i) => {
               const d = new Date();
-              d.setDate(d.getDate() - (6 - i));
+              d.setDate(d.getDate() - d.getDay() + i);
               const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
               const entry = progress.history.find((h) => h.day === day);
               const initial = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];

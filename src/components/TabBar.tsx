@@ -5,6 +5,7 @@
  * this control is hit dozens of times a day.
  */
 import type { ReactNode } from 'react';
+import { donateAvailable } from '../lib/donate';
 import { useBracha, type Tab } from '../store';
 
 const stroke = {
@@ -43,6 +44,12 @@ const ICONS: Record<Tab, ReactNode> = {
       <path d="M16.5 14.6c2.3.2 3.7 1.7 4.2 4.2" />
     </svg>
   ),
+  donate: (
+    <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" {...stroke}>
+      {/* heart */}
+      <path d="M12 20s-7.5-4.6-7.5-10A4.3 4.3 0 0 1 12 7.4 4.3 4.3 0 0 1 19.5 10c0 5.4-7.5 10-7.5 10Z" />
+    </svg>
+  ),
   account: (
     <svg viewBox="0 0 24 24" className="h-[17px] w-[17px]" {...stroke}>
       <circle cx="12" cy="8" r="3.6" />
@@ -56,6 +63,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'learn', label: 'Learn' },
   { id: 'journey', label: 'Journey' },
   { id: 'friends', label: 'Friends' },
+  // Donate sits next to the profile button; hidden until a link is configured.
+  ...(donateAvailable() ? [{ id: 'donate' as Tab, label: 'Donate' }] : []),
   { id: 'account', label: 'Account' },
 ];
 

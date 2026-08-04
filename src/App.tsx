@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { isNative } from './lib/native';
+import { fetchLearnedFoods } from './lib/learnedFoods';
 import { showWebNotification } from './lib/useReminders';
 import { useBracha } from './store';
 import { Celebration } from './components/Celebration';
@@ -15,6 +16,7 @@ import { Onboarding } from './screens/Onboarding';
 import { AuthGate } from './screens/AuthGate';
 import { Reference } from './screens/Reference';
 import { Account } from './screens/Account';
+import { Donate } from './screens/Donate';
 import { Friends } from './screens/Friends';
 
 /** In-app reminder ticker: fires a notification when a set mealtime passes
@@ -48,6 +50,10 @@ export default function App() {
   const screen = useBracha((s) => s.screen);
   const serverToken = useBracha((s) => s.serverToken);
   useReminderTicker();
+  // Previously learned foods sync once per session — the DB keeps growing.
+  useEffect(() => {
+    void fetchLearnedFoods();
+  }, []);
 
   if (!onboarded) return <Onboarding />;
   // Account-first: everything past onboarding requires a signed-in account.
@@ -60,6 +66,7 @@ export default function App() {
   if (tab === 'learn') body = <Learn />;
   else if (tab === 'journey') body = <Journey />;
   else if (tab === 'friends') body = <Friends />;
+  else if (tab === 'donate') body = <Donate />;
   else if (tab === 'account') body = <Account />;
   else {
     switch (screen) {
