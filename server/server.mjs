@@ -42,6 +42,11 @@ const ALLOWED_ORIGINS = new Set([
   'https://shancoh18.github.io',
   'http://localhost:5199',
   'http://localhost:4173',
+  // Capacitor WKWebView origins — without these every API call from the
+  // native iOS app fails CORS (sign-in, league, account: all of it).
+  'capacitor://localhost',
+  'https://localhost',
+  'ionic://localhost',
 ]);
 const cors = (req, res) => {
   const origin = req.headers.origin;

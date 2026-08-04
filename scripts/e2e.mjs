@@ -54,6 +54,18 @@ t = await text();
 check('tutorial ends at account creation', t.includes('make it yours') && (await page.evaluate(() => !!document.querySelector('input[type="email"]'))));
 await clickText('maybe later', 1200);
 
+// ----------------------------------------------------- AUTH GATE (account-first)
+t = await text();
+check('auth gate blocks the app until sign-in', t.includes('sign in to begin'));
+const e2eEmail = 'e2e-' + Math.floor(Math.random() * 1e9) + '@example.com';
+const E2E_PASS = 'e2e-pass-12345';
+await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
+await page.type('input[placeholder="you@example.com"]', e2eEmail);
+await page.type('input[placeholder="8+ characters"]', E2E_PASS);
+await clickText('Create my account', 2600);
+t = await text();
+check('account created at the gate - app unlocked', t.includes('brachas with rimon') && !t.includes('sign in to begin'));
+
 // ---------------------------------------------------------------- WELCOME
 t = await text();
 check('welcome renders title', t.includes('brachas with rimon'));
@@ -97,7 +109,12 @@ await page.evaluate(() => {
   set(inputs[0], '07:15'); set(inputs[1], '12:45'); set(inputs[2], '18:30');
 });
 await sleep(400);
-await clickText('Turn on reminders', 2200);
+await clickText('Turn on reminders', 1200);
+// Signed-in enables may take the web-push path (permission + subscribe + server
+// round-trip) before the sheet closes — wait for the close instead of a fixed sleep.
+await page
+  .waitForFunction(() => !document.querySelector('[data-reminder-sheet]'), { timeout: 9000 })
+  .catch(() => {});
 const nudgeSaved = await page.evaluate(() => {
   const st = JSON.parse(localStorage.getItem('brachas-with-rimon')).state.reminders;
   const n = document.querySelector('[data-reminder-nudge]');
@@ -318,14 +335,10 @@ check('starring pins a lesson', t.includes('starred'));
 
 // ---------------------------------------------------------------- FRIENDS (live server)
 await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());
-await sleep(1000);
-const e2eEmail = 'e2e-' + Math.floor(Math.random()*1e9) + '@example.com';
-await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
-await page.type('input[placeholder="you@example.com"]', e2eEmail);
-await clickText('Join', 2200);
+await sleep(1200);
 t = await text();
 const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
-check('league join returns friend code', !!codeMatch, codeMatch?.[0]);
+check('league membership from gate signup - friend code shows', !!codeMatch, codeMatch?.[0]);
 await page.type('input[placeholder="RIMON-XXXX or friend@email.com"]', 'rimon-test-friend@example.com');
 await clickText('Add', 2200);
 t = await text();
@@ -338,17 +351,11 @@ await sleep(1500);
 t = await text();
 check('account tab opens from bottom bar (signed in)', t.includes('your account') && t.includes('save changes'));
 check('friend code card shows', /rimon-[a-z2-9]{4}/.test(t));
-check('password card offers set-a-password', t.includes('set a password'));
-// set a password on the fresh league account
-const E2E_PASS = 'e2e-pass-12345';
-await page.type('input[placeholder="8+ characters"]', E2E_PASS);
-await clickText('Set password', 2200);
+check('password card offers change-password (set at the gate)', t.includes('change password'));
+// sign out - the auth gate must re-arm; then back in with email + password
+await clickText('sign out on this device', 1500);
 t = await text();
-check('password saves', t.includes('saved!') || t.includes('change password'), t.includes('change password') ? 'card flipped to change-password' : '');
-// sign out, then back in with email + password
-await clickText('sign out on this device', 1200);
-t = await text();
-check('signed-out account shows full sign-in menu', t.includes('create account') && t.includes('sign in'));
+check('signing out re-arms the auth gate', t.includes('sign in to begin'));
 await clickText('Sign in', 800); // mode toggle (first matching button)
 await page.type('input[placeholder="you@example.com"]', e2eEmail);
 await page.type('input[placeholder="your password"]', E2E_PASS);
@@ -357,17 +364,16 @@ await page.evaluate(() => {
   subs[subs.length - 1]?.click(); // the submit pill (the toggle is first)
 });
 await sleep(2200);
+await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
+await sleep(1200);
 t = await text();
 const restoredName = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => v.includes('E2E')) ?? '');
 check('email + password sign-in restores the account', t.includes('your account') && restoredName.includes('E2E Debug'), `name=${restoredName}`);
-// friend-code fallback link present for legacy accounts
-await clickText('sign out on this device', 1000);
+// friend-code fallback link present on the gate sign-in for legacy accounts
+await clickText('sign out on this device', 1200);
 await clickText('Sign in', 700);
 t = await text();
 check('friend-code fallback offered on sign-in', t.includes('no password? sign in with your friend code'));
-// back to a clean signed-out state for future runs
-await page.evaluate(() => [...document.querySelectorAll('nav button')][0]?.click());
-await sleep(800);
 
 // ---------------------------------------------------------------- AUDIO + assets over network
 const audioStatus = await page.evaluate(async () => {

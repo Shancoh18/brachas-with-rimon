@@ -12,6 +12,7 @@ import { After } from './screens/After';
 import { Learn } from './screens/Learn';
 import { Journey } from './screens/Journey';
 import { Onboarding } from './screens/Onboarding';
+import { AuthGate } from './screens/AuthGate';
 import { Reference } from './screens/Reference';
 import { Account } from './screens/Account';
 import { Friends } from './screens/Friends';
@@ -45,9 +46,12 @@ export default function App() {
   const tab = useBracha((s) => s.tab);
   const onboarded = useBracha((s) => s.onboarded);
   const screen = useBracha((s) => s.screen);
+  const serverToken = useBracha((s) => s.serverToken);
   useReminderTicker();
 
   if (!onboarded) return <Onboarding />;
+  // Account-first: everything past onboarding requires a signed-in account.
+  if (!serverToken) return <AuthGate />;
 
   // Bless flow occupies the whole screen mid-flow; the tab bar shows on roots.
   const inFlow = tab === 'bless' && screen !== 'welcome';

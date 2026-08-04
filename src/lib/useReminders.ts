@@ -50,16 +50,22 @@ export function useReminders() {
   const subscribePush = async (times: string[]): Promise<'background' | 'in-app'> => {
     if (!serverToken || !('serviceWorker' in navigator) || !('PushManager' in window)) return 'in-app';
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const { key } = await apiPushKey(serverToken);
-      const sub =
-        (await reg.pushManager.getSubscription()) ??
-        (await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: vapidKeyToBytes(key) as BufferSource,
-        }));
-      await apiPushSubscribe(serverToken, sub, times);
-      return 'background';
+      // pushManager.subscribe can hang indefinitely (push service unreachable,
+      // headless browsers) — never let it wedge the reminder sheet.
+      const attempt = (async () => {
+        const reg = await navigator.serviceWorker.ready;
+        const { key } = await apiPushKey(serverToken);
+        const sub =
+          (await reg.pushManager.getSubscription()) ??
+          (await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: vapidKeyToBytes(key) as BufferSource,
+          }));
+        await apiPushSubscribe(serverToken, sub, times);
+        return 'background' as const;
+      })();
+      const timeout = new Promise<'in-app'>((resolve) => setTimeout(() => resolve('in-app'), 8000));
+      return await Promise.race([attempt, timeout]);
     } catch {
       return 'in-app';
     }
