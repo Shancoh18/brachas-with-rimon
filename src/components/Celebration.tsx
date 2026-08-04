@@ -72,6 +72,18 @@ export function Celebration() {
         </h2>
       )}
 
+      {(celebration.pointsEarned ?? 0) > 0 && (
+        <p className="rise-in rise-in-2 rounded-full bg-gold/[0.12] px-5 py-2 text-[16px] font-black text-gold">
+          +{celebration.pointsEarned} points ⭐
+          {(celebration.challengesCompleted?.length ?? 0) > 0 && (
+            <span className="ml-2 text-[12px] font-bold">
+              · {celebration.challengesCompleted!.length} daily challenge
+              {celebration.challengesCompleted!.length === 1 ? '' : 's'} done!
+            </span>
+          )}
+        </p>
+      )}
+
       {newBadges.length > 0 && (
         <div className="rise-in rise-in-2 flex flex-wrap justify-center gap-2">
           {newBadges.map((b) => (

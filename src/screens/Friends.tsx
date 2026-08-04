@@ -14,7 +14,13 @@ import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 export function Friends() {
   const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount, setUserEmail, setTab } =
     useBracha();
-  const [league, setLeague] = useState<LeagueRow[] | null>(null);
+  const [league, setLeagueLocal] = useState<LeagueRow[] | null>(null);
+  const setLeagueSnapshot = useBracha((s) => s.setLeagueSnapshot);
+  // keep the home-screen catch-up nudge in sync with whatever this tab loads
+  const setLeague = (rows: LeagueRow[] | null) => {
+    setLeagueLocal(rows);
+    setLeagueSnapshot(rows);
+  };
   const [status, setStatus] = useState<'idle' | 'busy' | 'offline'>('idle');
   const [codeInput, setCodeInput] = useState('');
   const [email, setEmail] = useState('');
@@ -103,10 +109,12 @@ export function Friends() {
   const localLeague: LeagueRow[] = useMemo(() => {
     const rimonScore =
       progress.totalBrachos >= 25 ? Math.floor(progress.totalBrachos * 0.8) : progress.totalBrachos + 3;
+    const myPoints = progress.points ?? 0;
+    const rimonPoints = rimonScore * 2;
     return [
-      { name: displayName || 'You', code: '', totalBrachos: progress.totalBrachos, weekBrachos: progress.totalBrachos, streak: alive ? progress.streakCurrent : 0, you: true },
-      { name: 'Rimon 🍎', code: '', totalBrachos: rimonScore, weekBrachos: rimonScore, streak: 999, you: false },
-    ].sort((a, b) => b.weekBrachos - a.weekBrachos);
+      { name: displayName || 'You', code: '', totalBrachos: progress.totalBrachos, weekBrachos: progress.totalBrachos, points: myPoints, weekPoints: myPoints, todayPoints: 0, streak: alive ? progress.streakCurrent : 0, you: true },
+      { name: 'Rimon 🍎', code: '', totalBrachos: rimonScore, weekBrachos: rimonScore, points: rimonPoints, weekPoints: rimonPoints, todayPoints: 0, streak: 999, you: false },
+    ].sort((a, b) => b.weekPoints - a.weekPoints);
   }, [progress, displayName, alive]);
 
   const rows = league ?? localLeague;
@@ -266,8 +274,16 @@ export function Friends() {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-[15px] font-bold text-espresso">{row.weekBrachos}</p>
-                <p className="text-[9px] font-bold uppercase tracking-wider text-mocha">this week</p>
+                <p className="text-[15px] font-bold text-espresso">
+                  ⭐ {row.weekPoints ?? 0}
+                </p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-mocha">
+                  pts this week
+                </p>
+              </div>
+              <div className="w-14 text-right">
+                <p className="text-[13px] font-bold text-espresso-soft">{row.weekBrachos}</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-mocha">brachos</p>
               </div>
             </div>
           ))}

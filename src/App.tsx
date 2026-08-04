@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { isNative } from './lib/native';
+import { apiSync } from './lib/api';
 import { fetchLearnedFoods } from './lib/learnedFoods';
 import { showWebNotification } from './lib/useReminders';
 import { useBracha } from './store';
@@ -54,6 +55,14 @@ export default function App() {
   useEffect(() => {
     void fetchLearnedFoods();
   }, []);
+  // Boot league sync: pushes progress+points up and fills the catch-up nudge.
+  useEffect(() => {
+    if (!serverToken) return;
+    const { progress, setLeagueSnapshot } = useBracha.getState();
+    apiSync(serverToken, progress)
+      .then((r) => setLeagueSnapshot(r.league))
+      .catch(() => undefined);
+  }, [serverToken]);
 
   if (!onboarded) return <Onboarding />;
   // Account-first: everything past onboarding requires a signed-in account.

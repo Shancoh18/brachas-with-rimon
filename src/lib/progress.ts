@@ -8,6 +8,9 @@ export interface DayStamp {
   /** YYYY-MM-DD in local time */
   day: string;
   brachos: number;
+  /** points earned that day (brachos + challenges) — rides along to the
+   *  server so the friends league can rank by weekly points */
+  points?: number;
 }
 
 export const todayStamp = (): string => {
@@ -33,6 +36,8 @@ export interface ProgressState {
   lastActiveDay: string | null;
   history: DayStamp[];
   lessonsRead: string[];
+  /** lifetime points (brachos ×2 + daily challenges) */
+  points?: number;
 }
 
 export const EMPTY_PROGRESS: ProgressState = {
@@ -45,7 +50,19 @@ export const EMPTY_PROGRESS: ProgressState = {
   lastActiveDay: null,
   history: [],
   lessonsRead: [],
+  points: 0,
 };
+
+/** Bank points onto the running total + today's history stamp. */
+export function addPoints(p: ProgressState, pts: number): ProgressState {
+  if (pts <= 0) return p;
+  const day = todayStamp();
+  const history = [...p.history];
+  const last = history[history.length - 1];
+  if (last?.day === day) history[history.length - 1] = { ...last, points: (last.points ?? 0) + pts };
+  else history.push({ day, brachos: 0, points: pts });
+  return { ...p, points: (p.points ?? 0) + pts, history: history.slice(-90) };
+}
 
 /** Record a completed meal: n brachos said (before + after), update streak. */
 export function recordMeal(

@@ -2,7 +2,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
 import type { NusachId } from './data/texts';
-import { badges, EMPTY_PROGRESS, recordMeal, type ProgressState } from './lib/progress';
+import { addPoints, badges, EMPTY_PROGRESS, recordMeal, todayStamp, type ProgressState } from './lib/progress';
+import { EMPTY_DAY, POINTS_PER_BRACHA, settleChallenges, type DayStats } from './lib/dailyChallenges';
+import type { LeagueRow } from './lib/api';
 import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
@@ -16,6 +18,10 @@ export interface Celebration {
   streakExtended: boolean;
   brachosSaid: number;
   newBadges: { id: string; label: string }[];
+  /** points banked by this event (brachos + any dailies it completed) */
+  pointsEarned?: number;
+  /** daily-challenge ids this event completed */
+  challengesCompleted?: string[];
 }
 
 export interface ReminderSettings {
@@ -70,8 +76,19 @@ interface BrachaState {
 
   // ---------------------------------------------------------- gamification
   progress: ProgressState;
+  /** today's counters for the daily challenges (rolls at local midnight) */
+  dayStats: DayStats;
   /** called once per completed meal from the After screen */
-  completeMeal: (brachosSaid: string[], sevenSpecies: number) => void;
+  completeMeal: (
+    brachosSaid: string[],
+    sevenSpecies: number,
+    meta?: { foodKeys?: string[]; withAfter?: boolean },
+  ) => void;
+  /** photo-identify flow ran on a real photo (feeds the Snap & Bless daily) */
+  notePhotoFlow: () => void;
+  /** latest friends-league standings (for the catch-up nudge) */
+  leagueSnapshot: LeagueRow[] | null;
+  setLeagueSnapshot: (rows: LeagueRow[] | null) => void;
   markLessonRead: (id: string) => void;
   starredLessons: string[];
   toggleStar: (id: string) => void;
@@ -139,17 +156,36 @@ export const useBracha = create<BrachaState>()(
       setGuideIndex: (guideIndex) => set({ guideIndex }),
 
       progress: EMPTY_PROGRESS,
-      completeMeal: (brachosSaid, sevenSpecies) =>
+      dayStats: EMPTY_DAY(todayStamp()),
+      completeMeal: (brachosSaid, sevenSpecies, meta) =>
         set((s) => {
           if (s.mealRecorded) return s;
           const before = badges(s.progress);
-          const progress = recordMeal(s.progress, brachosSaid, sevenSpecies);
+          let progress = recordMeal(s.progress, brachosSaid, sevenSpecies);
           const after = badges(progress);
           const newBadges = after
             .filter((b) => b.earned && !before.find((x) => x.id === b.id)?.earned)
             .map((b) => ({ id: b.id, label: b.label }));
+
+          // ------ today's counters → daily challenges → points
+          const base = s.dayStats.day === todayStamp() ? s.dayStats : EMPTY_DAY(todayStamp());
+          const byBracha = { ...base.byBracha };
+          for (const b of brachosSaid) byBracha[b] = (byBracha[b] ?? 0) + 1;
+          const day: DayStats = {
+            ...base,
+            brachos: base.brachos + brachosSaid.length,
+            byBracha,
+            foodKeys: [...new Set([...base.foodKeys, ...(meta?.foodKeys ?? [])])],
+            mealsWithAfter: base.mealsWithAfter + (meta?.withAfter ? 1 : 0),
+          };
+          const settled = settleChallenges(day);
+          day.challengesDone = [...day.challengesDone, ...settled.done];
+          const pointsEarned = brachosSaid.length * POINTS_PER_BRACHA + settled.points;
+          progress = addPoints(progress, pointsEarned);
+
           return {
             progress,
+            dayStats: day,
             mealRecorded: true,
             celebration: {
               kind: 'meal',
@@ -157,21 +193,43 @@ export const useBracha = create<BrachaState>()(
               streakExtended: progress.streakCurrent > s.progress.streakCurrent || s.progress.lastActiveDay == null,
               brachosSaid: brachosSaid.length,
               newBadges,
+              pointsEarned,
+              challengesCompleted: settled.done,
             },
           };
         }),
+      notePhotoFlow: () =>
+        set((s) => {
+          const base = s.dayStats.day === todayStamp() ? s.dayStats : EMPTY_DAY(todayStamp());
+          const day: DayStats = { ...base, photoFlows: base.photoFlows + 1 };
+          const settled = settleChallenges(day);
+          day.challengesDone = [...day.challengesDone, ...settled.done];
+          return {
+            dayStats: day,
+            progress: settled.points ? addPoints(s.progress, settled.points) : s.progress,
+          };
+        }),
+      leagueSnapshot: null,
+      setLeagueSnapshot: (leagueSnapshot) => set({ leagueSnapshot }),
       markLessonRead: (id) =>
         set((s) => {
           if (s.progress.lessonsRead.includes(id)) return s;
           const before = badges(s.progress);
-          const progress = { ...s.progress, lessonsRead: [...s.progress.lessonsRead, id] };
+          let progress = { ...s.progress, lessonsRead: [...s.progress.lessonsRead, id] };
           const newBadges = badges(progress)
             .filter((b) => b.earned && !before.find((x) => x.id === b.id)?.earned)
             .map((b) => ({ id: b.id, label: b.label }));
+          // lesson counts toward today's dailies (A Little Torah)
+          const base = s.dayStats.day === todayStamp() ? s.dayStats : EMPTY_DAY(todayStamp());
+          const day: DayStats = { ...base, lessonsRead: base.lessonsRead + 1 };
+          const settled = settleChallenges(day);
+          day.challengesDone = [...day.challengesDone, ...settled.done];
+          if (settled.points) progress = addPoints(progress, settled.points);
           return {
             progress,
+            dayStats: day,
             ...(newBadges.length
-              ? { celebration: { kind: 'lesson', streak: progress.streakCurrent, streakExtended: false, brachosSaid: 0, newBadges } }
+              ? { celebration: { kind: 'lesson', streak: progress.streakCurrent, streakExtended: false, brachosSaid: 0, newBadges, pointsEarned: settled.points } }
               : {}),
           };
         }),
@@ -225,6 +283,7 @@ export const useBracha = create<BrachaState>()(
         nusach: s.nusach,
         textMode: s.textMode,
         progress: s.progress,
+        dayStats: s.dayStats,
         reminders: s.reminders,
         displayName: s.displayName,
         serverToken: s.serverToken,

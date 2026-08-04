@@ -1,15 +1,19 @@
-/** Journey tab — streak, stats, challenges, badges, reminders. */
+/** Journey tab — streak, points, daily + lifetime challenges, badges, reminders. */
 import { isNative } from '../lib/native';
-import { badges, CHALLENGES, streakAlive } from '../lib/progress';
+import { dailyChallenges, EMPTY_DAY } from '../lib/dailyChallenges';
+import { badges, CHALLENGES, streakAlive, todayStamp } from '../lib/progress';
 import { useReminders } from '../lib/useReminders';
 import { MEAL_SLOTS, useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, ScreenShell } from '../components/ui';
 
 export function Journey() {
-  const { progress, serverToken } = useBracha();
+  const { progress, serverToken, dayStats: rawDay } = useBracha();
   const alive = streakAlive(progress);
   const earned = badges(progress).filter((b) => b.earned);
+  // roll stale persisted stats forward so yesterday's ✓ never shows today
+  const dayStats = rawDay.day === todayStamp() ? rawDay : EMPTY_DAY(todayStamp());
+  const todays = dailyChallenges(dayStats.day);
   // shared with the home-page nudge — see src/lib/useReminders.ts
   const { reminders, notifState, pushMode, enableReminders, disableReminders, setTime } =
     useReminders();
@@ -63,7 +67,11 @@ export function Journey() {
               );
             })}
           </div>
-          <div className="mt-5 grid grid-cols-3 gap-2 border-t border-espresso/[0.07] pt-5">
+          <div className="mt-5 grid grid-cols-4 gap-2 border-t border-espresso/[0.07] pt-5">
+            <div>
+              <p className="font-display text-[24px] font-bold text-gold">⭐{progress.points ?? 0}</p>
+              <p className="text-[9.5px] font-bold uppercase tracking-wider text-mocha">points</p>
+            </div>
             <div>
               <p className="font-display text-[24px] font-bold text-espresso">{progress.totalBrachos}</p>
               <p className="text-[9.5px] font-bold uppercase tracking-wider text-mocha">brachos</p>
@@ -79,6 +87,35 @@ export function Journey() {
           </div>
         </Bezel>
 
+        {/* today's challenges — same three for everyone, fresh every day */}
+        <h3 className="rise-in rise-in-2 pb-3 pt-8 text-[11px] font-bold uppercase tracking-[0.2em] text-mocha">
+          Today’s challenges
+        </h3>
+        <div className="flex flex-col gap-3">
+          {todays.map((c, idx) => {
+            const value = Math.min(c.progress(dayStats), c.target);
+            const done = dayStats.challengesDone.includes(c.id) || value >= c.target;
+            return (
+              <Bezel key={c.id} className={`rise-in rise-in-${Math.min(idx + 2, 4)}`} innerClassName="px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-semibold text-espresso">
+                      {c.emoji} {c.title}
+                      <span className="ml-2 rounded-full bg-gold/[0.12] px-2 py-0.5 text-[10px] font-bold text-gold">
+                        +{c.points} pts
+                      </span>
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] leading-snug text-mocha">{c.description}</p>
+                  </div>
+                  <span className={`shrink-0 text-[13px] font-bold ${done ? 'text-sage' : 'text-espresso-soft'}`}>
+                    {done ? '✓' : `${value}/${c.target}`}
+                  </span>
+                </div>
+              </Bezel>
+            );
+          })}
+        </div>
+
         {/* badges */}
         {earned.length > 0 && (
           <div className="rise-in rise-in-2 flex flex-wrap gap-2 pt-5">
@@ -93,9 +130,9 @@ export function Journey() {
           </div>
         )}
 
-        {/* challenges */}
+        {/* lifetime milestones */}
         <h3 className="rise-in rise-in-2 pb-3 pt-8 text-[11px] font-bold uppercase tracking-[0.2em] text-mocha">
-          Challenges
+          Milestones
         </h3>
         <div className="flex flex-col gap-3">
           {CHALLENGES.map((c, idx) => {

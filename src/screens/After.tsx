@@ -57,7 +57,10 @@ export function After() {
       if (result.boreiNefashos) said.push('BoreiNefashos');
     }
     const sevenSpecies = items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length;
-    completeMeal(said, sevenSpecies);
+    completeMeal(said, sevenSpecies, {
+      foodKeys: items.map((i) => i.entry.key),
+      withAfter,
+    });
     const { serverToken, progress: p } = useBracha.getState();
     if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
   };

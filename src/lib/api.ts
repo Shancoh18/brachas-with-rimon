@@ -14,6 +14,12 @@ export interface LeagueRow {
   code: string;
   totalBrachos: number;
   weekBrachos: number;
+  /** lifetime points */
+  points: number;
+  /** points earned in the last 7 days — the league ranks on this */
+  weekPoints: number;
+  /** points earned today — powers the catch-up nudge */
+  todayPoints: number;
   streak: number;
   you: boolean;
 }

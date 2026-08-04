@@ -165,16 +165,28 @@ const leagueFor = (me) => {
       name: u.name,
       code: u.code,
       totalBrachos: u.progress?.totalBrachos ?? 0,
-      weekBrachos: weekTotal(u),
+      weekBrachos: weekTotal(u, 'brachos'),
+      points: u.progress?.points ?? 0,
+      weekPoints: weekTotal(u, 'points'),
+      todayPoints: dayTotal(u, 'points'),
       streak: u.progress?.streakCurrent ?? 0,
       you: u.code === me.code,
     }))
-    .sort((a, b) => b.weekBrachos - a.weekBrachos || b.totalBrachos - a.totalBrachos);
+    .sort(
+      (a, b) =>
+        b.weekPoints - a.weekPoints || b.weekBrachos - a.weekBrachos || b.totalBrachos - a.totalBrachos,
+    );
 };
-const weekTotal = (u) => {
+const weekTotal = (u, field = 'brachos') => {
   const hist = u.progress?.history ?? [];
   const cutoff = Date.now() - 7 * 86_400_000;
-  return hist.filter((h) => new Date(h.day).getTime() >= cutoff).reduce((s, h) => s + h.brachos, 0);
+  return hist.filter((h) => new Date(h.day).getTime() >= cutoff).reduce((s, h) => s + (h[field] ?? 0), 0);
+};
+const dayTotal = (u, field = 'points') => {
+  const d = new Date();
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const hist = u.progress?.history ?? [];
+  return hist.filter((h) => h.day === today).reduce((s, h) => s + (h[field] ?? 0), 0);
 };
 
 // --------------------------------------------------------- Claude vision
@@ -434,12 +446,23 @@ setInterval(async () => {
     if (firedToday.get(token) === stamp) continue;
     firedToday.set(token, stamp);
     try {
+      // League-aware nudge: if a friend leads today's points, make it a race.
+      let body = `Eating soon, ${u.name}? Ten seconds for the bracha first — your streak is waiting.`;
+      if (u.friends?.length) {
+        const league = leagueFor(u);
+        const byToday = [...league].sort((a, b) => b.todayPoints - a.todayPoints);
+        const leader = byToday[0];
+        const meRow = byToday.find((r) => r.you);
+        if (leader && meRow && !leader.you && leader.todayPoints > 0) {
+          const gap = leader.todayPoints - meRow.todayPoints;
+          // ~10 points per daily challenge — frame the gap as an actionable count
+          const challenges = Math.max(1, Math.ceil(gap / 10));
+          body = `${leader.name} is in the lead today with ${leader.todayPoints} points — complete ${challenges} challenge${challenges === 1 ? '' : 's'} to catch up! 🏆`;
+        }
+      }
       await webpush.sendNotification(
         p.subscription,
-        JSON.stringify({
-          title: 'Rimon here 🍎',
-          body: `Eating soon, ${u.name}? Ten seconds for the bracha first — your streak is waiting.`,
-        }),
+        JSON.stringify({ title: 'Rimon here 🍎', body }),
       );
     } catch (e) {
       if (e.statusCode === 404 || e.statusCode === 410) {
@@ -556,7 +579,7 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/sync' && req.method === 'POST') {
       const { progress, name } = await readBody(req);
-      if (progress) a.user.progress = { totalBrachos: progress.totalBrachos ?? 0, streakCurrent: progress.streakCurrent ?? 0, history: (progress.history ?? []).slice(-30) };
+      if (progress) a.user.progress = { totalBrachos: progress.totalBrachos ?? 0, streakCurrent: progress.streakCurrent ?? 0, points: progress.points ?? 0, history: (progress.history ?? []).slice(-30) };
       if (name) a.user.name = String(name).trim().slice(0, 20);
       save();
       return json(res, 200, { league: leagueFor(a.user), code: a.user.code, email: a.user.email ?? null });

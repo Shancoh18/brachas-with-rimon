@@ -317,6 +317,9 @@ check(
   strip.err || strip.cells.join(' '),
 );
 check('challenges render', t.includes('first fruits') && t.includes('the seven species'));
+check('daily challenges card renders 3 dailies', (t.match(/\+\d+ pts/g) || []).length >= 3, `pts chips: ${(t.match(/\+\d+ pts/g) || []).length}`);
+check('food of the day challenge present', t.includes('food of the day'));
+check('points hero shows earned points', /⭐\s*[1-9]\d*/.test(t), (t.match(/⭐\s*\d+/) || ['none'])[0]);
 const challengeProgress = t.match(/first fruits[\s\S]{0,120}?(\d+)\/10/);
 check('First Fruits counts brachos', !!challengeProgress && Number(challengeProgress[1]) >= 6, challengeProgress?.[1]);
 
@@ -354,7 +357,8 @@ await page.type('input[placeholder="RIMON-XXXX or friend@email.com"]', 'rimon-te
 await clickText('Add', 2200);
 t = await text();
 check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');
-check('league shows weekly counts', t.includes('this week'));
+check('league ranks by weekly points', t.includes('pts this week') && /⭐\s*\d+/.test(t));
+check('league shows weekly bracha counts', t.includes('brachos'));
 
 // ---------------------------------------------------------------- DONATE TAB
 await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
