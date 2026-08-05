@@ -3,12 +3,12 @@ import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
 import type { NusachId } from './data/texts';
 import { addPoints, badges, EMPTY_PROGRESS, recordMeal, todayStamp, type ProgressState } from './lib/progress';
-import { EMPTY_DAY, POINTS_PER_BRACHA, settleChallenges, type DayStats } from './lib/dailyChallenges';
+import { AFTER_BRACHA_KEYS, EMPTY_DAY, POINTS_PER_AFTER_BRACHA, POINTS_PER_BRACHA, settleChallenges, type DayStats } from './lib/dailyChallenges';
 import type { LeagueRow } from './lib/api';
 import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
-export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference';
+export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference' | 'benching';
 export type Tab = 'bless' | 'learn' | 'journey' | 'friends' | 'donate' | 'account';
 export type TextMode = 'hebrew' | 'translit' | 'english';
 
@@ -180,7 +180,12 @@ export const useBracha = create<BrachaState>()(
           };
           const settled = settleChallenges(day);
           day.challengesDone = [...day.challengesDone, ...settled.done];
-          const pointsEarned = brachosSaid.length * POINTS_PER_BRACHA + settled.points;
+          // after-blessings earn extra: closing the meal's circle is the harder habit
+          const afterSaid = brachosSaid.filter((b) => AFTER_BRACHA_KEYS.has(b)).length;
+          const pointsEarned =
+            (brachosSaid.length - afterSaid) * POINTS_PER_BRACHA +
+            afterSaid * POINTS_PER_AFTER_BRACHA +
+            settled.points;
           progress = addPoints(progress, pointsEarned);
 
           return {

@@ -90,6 +90,9 @@ export function Learn() {
         tabIndex={0}
         onClick={() => setOpenId(l.id)}
         onKeyDown={(e) => {
+          // keys bubbling up from the star button belong to the star — a
+          // preventDefault here would swallow its Enter/Space activation
+          if (e.target !== e.currentTarget) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             setOpenId(l.id);
@@ -212,6 +215,7 @@ export function Learn() {
               {lesson.sourceUrl && (
                 <>
                   {' '}
+                  AI makes mistakes, to learn more information please read the article.{' '}
                   <a
                     href={lesson.sourceUrl}
                     target="_blank"

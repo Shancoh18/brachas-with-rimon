@@ -206,6 +206,7 @@ export function migrateFromJson(db, dataDir) {
   // .migrated file would carry every live session forever and re-open the
   // exact exposure this migration closes. The records are keyed by friend
   // code instead (unique, non-secret); sessions live on as hashes in `tokens`.
+  let redactedWritten = false;
   try {
     // Every legacy entry goes in — including ones the import skipped (bad
     // shape, duplicate code) — so the backup is complete even for records
@@ -221,10 +222,21 @@ export function migrateFromJson(db, dataDir) {
       n++;
     }
     writeFileSync(usersFile + '.migrated', JSON.stringify(redacted));
+    redactedWritten = true;
     unlinkSync(usersFile);
-  } catch {
-    // redaction failed — fall back to the rename so the data is never lost
-    try { renameSync(usersFile, usersFile + '.migrated'); } catch {}
+  } catch (e) {
+    if (redactedWritten) {
+      // The redacted backup exists; only the raw file's removal failed. NEVER
+      // rename raw over the redacted copy — retry the delete and warn.
+      try { unlinkSync(usersFile); } catch {
+        console.error('WARNING: users.json (raw tokens) could not be removed; redacted backup exists — delete it manually');
+      }
+    } else {
+      // Redaction itself failed — last resort: keep the data via plain rename,
+      // but say loudly that the backup still holds RAW tokens.
+      console.error(`backup redaction FAILED (${e.message}) — falling back to raw rename; scrub users.json.migrated manually`);
+      try { renameSync(usersFile, usersFile + '.migrated'); } catch {}
+    }
   }
 
   console.log(`migration: imported ${rows.length} accounts into SQLite`);

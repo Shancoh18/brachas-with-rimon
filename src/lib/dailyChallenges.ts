@@ -8,13 +8,17 @@
  * vetted food DB.
  *
  * Points (kept deliberately legible):
- *   · every bracha said ....... +2
- *   · regular daily challenge . +10
- *   · food of the day ......... +20
+ *   · every bracha said ............. +2
+ *   · every AFTER-blessing said ..... +3 (closing the circle earns extra)
+ *   · regular daily challenge ....... +10
+ *   · food of the day ............... +20
  */
 import { FOODS, type FoodEntry } from '../data/foods';
 
 export const POINTS_PER_BRACHA = 2;
+export const POINTS_PER_AFTER_BRACHA = 3;
+/** the after-blessing keys completeMeal receives in `brachosSaid` */
+export const AFTER_BRACHA_KEYS = new Set(['BirkatHamazon', 'MeeinShalosh', 'BoreiNefashos']);
 export const POINTS_DAILY = 10;
 export const POINTS_FOOD_OF_DAY = 20;
 

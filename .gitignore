@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 .env
 .env.local
+
+# migration safety copy — never commit
+server/server.mjs.bak

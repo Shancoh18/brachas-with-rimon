@@ -71,7 +71,7 @@ t = await text();
 check('welcome renders title', t.includes('brachas with rimon'));
 check('nusach selector present', t.includes('ashkenaz') && t.includes('edot hamizrach'));
 check('disclaimer present', t.includes('consult a qualified rabbi'));
-check('tip of the day present', t.includes('tip of the day') || t.includes('tip of the day') || /TIP OF THE DAY/i.test(t));
+check('tip of the day present', /tip of the day/i.test(t));
 
 // ------------------------------------------------- MEALTIME REMINDER NUDGE
 const nudgePlace = await page.evaluate(() => {
@@ -170,7 +170,35 @@ check('rimon eats the food groups', await page.evaluate(() => document.querySele
 await clickText('Hamotzi', 700);
 t = await text();
 check('quick guide expands with full text + audio', t.includes('wash hands first') && t.includes('hear it'));
+// after-blessings section (new): the three closers + the Birkat Hamazon door
+check('quick guide has after-blessings section', t.includes('after the meal') && t.includes('me’ein shalosh') && t.includes('borei nefashos') && t.includes('birkat hamazon'));
+await clickText('Borei Nefashos', 700);
+t = await text();
+check('Borei Nefashos expands with text + audio', t.includes('creator of numerous living beings') || t.includes('בורא נפשות') || t.includes('בּוֹרֵא נְפָשׁוֹת') || t.includes('ne-fa-shos'));
+await clickText('Birkat Hamazon', 700);
+await clickText('Open the full Birkat Hamazon guide', 1100);
+t = await text();
+check('Birkat Hamazon guide opens with the four blessings', t.includes('who nourishes all') && t.includes('rebuilder of jerusalem') && t.includes('when it'));
+check('Birkat Hamazon guide spells out holiday additions', t.includes('yaaleh veyavo') && t.includes('al hanissim') && t.includes('shabbat'));
+check('reading disclaimer cites the source', t.includes('per chabad.org'));
 await clickText('← home', 1000);
+
+// --------------------------------------------------- MANUAL ADD (no photo)
+t = await text();
+check('home offers manual add + Birkat Hamazon', t.includes('forgot to take a photo') && t.includes('birkat hamazon'));
+await clickText('Forgot to take a photo', 1200);
+t = await text();
+check('manual entry opens with search ready', t.includes('what did you eat') && (await page.evaluate(() => !!document.querySelector('input[placeholder="Search the food database…"]'))));
+await page.type('input[placeholder="Search the food database…"]', 'banana');
+await sleep(700);
+await page.evaluate(() => {
+  const li = [...document.querySelectorAll('li button')].find((b) => b.textContent.toLowerCase().includes('banana'));
+  li?.click();
+});
+await sleep(700);
+t = await text();
+check('manual add puts the food on the plate', t.includes('banana') && (t.includes('haadama') || t.includes('ha’adama')));
+await clickText('start over', 1100);
 
 // ---------------------------------------------------------------- CONFIRM
 await clickText('demo meal', 1600);
@@ -284,14 +312,25 @@ const celebrateVideo = await page.evaluate(() => {
 });
 check('celebrate video mounted', celebrateVideo);
 
-// the party: Finish meal → dancing Rimon + streak count-up + congratulation
+// the party: Finish meal → the streak "kindling" takeover (a first meal always
+// extends the streak): flame render + ignition choreography + stat chips
 await clickText('Finish meal', 1600);
 t = await text();
-check('celebration overlay shows', t.includes('day') && (t.includes('in a row') || t.includes('challenge complete')));
-const danceMounted = await page.evaluate(() => [...document.querySelectorAll('video source')].some((s) => s.src.includes('dance')));
-check('Rimon dances in celebration', danceMounted);
+check('streak takeover shows', t.includes('day') && t.includes('in a row') && t.includes('flame'));
+const takeover = await page.evaluate(() => {
+  const root = document.querySelector('[data-takeover="streak"]');
+  if (!root) return { err: 'takeover root missing' };
+  const img = root.querySelector('img[src*="rimon-flame"]');
+  const flame = root.querySelector('.tk-flame');
+  return {
+    art: !!img && (img.complete ? img.naturalWidth > 0 : true),
+    animated: flame ? getComputedStyle(flame).animationName.includes('tk-flame-in') : false,
+  };
+});
+check('flame art mounted in streak takeover', !takeover.err && takeover.art === true, takeover.err || '');
+check('kindling choreography animates', takeover.animated === true);
 check('congratulation line present', t.includes('rimon is proud') || t.includes('whole secret') || t.includes('consistency') || t.includes('keep going') || t.includes('kol hakavod') || t.includes('savoring') || t.includes('intention'));
-await clickText('Continue', 1200);
+await clickText('Keep it going', 1400);
 
 // persistence across reload
 await page.reload({ waitUntil: 'networkidle2' });

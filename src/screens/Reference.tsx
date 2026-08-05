@@ -90,6 +90,7 @@ export function Reference() {
   const { setScreen, nusach, textMode, setTextMode } = useBracha();
   const pack = NUSACHIM[nusach];
   const [open, setOpen] = useState<Bracha | null>(null);
+  const [openAfter, setOpenAfter] = useState<'bh' | 'ms' | 'bn' | null>(null);
 
   return (
     <ScreenShell wide>
@@ -188,6 +189,131 @@ export function Reference() {
               </Bezel>
             );
           })}
+        </div>
+
+        {/* ------------------------------------------------ after-blessings */}
+        <h3 className="rise-in pb-1 pt-9 text-[11px] font-bold uppercase tracking-[0.2em] text-mocha">
+          After the meal
+        </h3>
+        <p className="rise-in max-w-[320px] pb-4 text-[12.5px] leading-relaxed text-espresso-soft">
+          Finished eating? One of these three closes the circle — which one depends on what was on
+          the table.
+        </p>
+        <div className="flex flex-col gap-3">
+          {/* Birkat Hamazon */}
+          <Bezel className="rise-in" innerClassName="overflow-hidden">
+            <button
+              onClick={() => setOpenAfter(openAfter === 'bh' ? null : 'bh')}
+              className="flex w-full items-center gap-4 px-4 py-3 text-left"
+            >
+              <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-gold/[0.12] text-[24px]">🍞</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">After bread</p>
+                <p className="font-display text-[19px] font-bold leading-tight text-espresso">Birkat Hamazon</p>
+                <p className="mt-0.5 truncate text-[10.5px] text-mocha">the full Grace — bread covers the whole meal</p>
+              </div>
+              <span className={`shrink-0 text-[13px] text-mocha transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${openAfter === 'bh' ? 'rotate-90' : ''}`}>›</span>
+            </button>
+            {openAfter === 'bh' && (
+              <div className="border-t border-espresso/[0.07] px-5 pb-5 pt-4">
+                <p className="text-[13px] leading-relaxed text-espresso-soft">
+                  Said after a meal with at least a <em>kezayis</em> of bread — four blessings plus
+                  the Harachaman requests, with special additions on Shabbat and holidays.
+                </p>
+                <button
+                  onClick={() => setScreen('benching')}
+                  className="mt-3 rounded-full bg-espresso px-5 py-2.5 text-[12px] font-semibold text-cream"
+                >
+                  Open the full Birkat Hamazon guide →
+                </button>
+              </div>
+            )}
+          </Bezel>
+
+          {/* Me'ein Shalosh */}
+          <Bezel className="rise-in" innerClassName="overflow-hidden">
+            <button
+              onClick={() => setOpenAfter(openAfter === 'ms' ? null : 'ms')}
+              className="flex w-full items-center gap-4 px-4 py-3 text-left"
+            >
+              <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-sage/[0.15] text-[24px]">🍇</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">After grain · wine · special fruit</p>
+                <p className="font-display text-[19px] font-bold leading-tight text-espresso">Me’ein Shalosh</p>
+                <p className="mt-0.5 truncate text-[10.5px] text-mocha">Al Hamichya · Al Hagefen · Al Ha’etz — one combined blessing</p>
+              </div>
+              <span className={`shrink-0 text-[13px] text-mocha transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${openAfter === 'ms' ? 'rotate-90' : ''}`}>›</span>
+            </button>
+            {openAfter === 'ms' && (
+              <div className="border-t border-espresso/[0.07] px-5 pb-5 pt-4">
+                <p className="pb-3 text-[12.5px] leading-relaxed text-espresso-soft">
+                  One blessing, three interchangeable inserts — say the one(s) matching what you ate
+                  (cake/pasta → Al Hamichya; wine/grape juice → Al Hagefen; the Seven-Species fruits
+                  → Al Ha’etz). When several apply, they combine into a single blessing.
+                </p>
+                {(['AlHamichya', 'AlHagefen', 'AlHaetz'] as const).map((k) => (
+                  <div key={k} className="border-t border-espresso/[0.06] py-2.5">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gold">
+                      {k === 'AlHamichya' ? 'Al Hamichya — grain' : k === 'AlHagefen' ? 'Al Hagefen — wine' : 'Al Ha’etz — special fruit'}
+                    </p>
+                    {textMode === 'hebrew' ? (
+                      <p dir="rtl" lang="he" className="hebrew mt-1 text-[17px] text-espresso">
+                        {pack.meeinShalosh.inserts[k].hebrew} … {pack.meeinShalosh.seals[k].hebrew}
+                      </p>
+                    ) : textMode === 'translit' ? (
+                      <p className="mt-1 font-display text-[13.5px] italic leading-relaxed text-espresso">
+                        {pack.meeinShalosh.inserts[k].translit} … {pack.meeinShalosh.seals[k].translit}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[12.5px] leading-relaxed text-espresso">
+                        {pack.meeinShalosh.inserts[k].english} … {pack.meeinShalosh.seals[k].english}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                <p className="pt-2 text-[10.5px] leading-snug text-mocha">
+                  Shown here as opening + seal; the app assembles the full text for you after every
+                  meal on the after-blessings screen.
+                </p>
+              </div>
+            )}
+          </Bezel>
+
+          {/* Borei Nefashos */}
+          <Bezel className="rise-in" innerClassName="overflow-hidden">
+            <button
+              onClick={() => setOpenAfter(openAfter === 'bn' ? null : 'bn')}
+              className="flex w-full items-center gap-4 px-4 py-3 text-left"
+            >
+              <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-rimon/[0.1] text-[24px]">🥛</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">After everything else</p>
+                <p className="font-display text-[19px] font-bold leading-tight text-espresso">Borei Nefashos</p>
+                <p className="mt-0.5 truncate text-[10.5px] text-mocha">fruit · vegetables · meat · drinks · sweets</p>
+              </div>
+              <span className={`shrink-0 text-[13px] text-mocha transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] ${openAfter === 'bn' ? 'rotate-90' : ''}`}>›</span>
+            </button>
+            {openAfter === 'bn' && (
+              <div className="border-t border-espresso/[0.07] px-5 pb-5 pt-4">
+                {textMode === 'hebrew' && (
+                  <p dir="rtl" lang="he" className="hebrew text-[21px] text-espresso">
+                    {pack.boreiNefashos.hebrew}
+                  </p>
+                )}
+                {textMode === 'translit' && (
+                  <p className="font-display text-[15px] italic leading-relaxed text-espresso">
+                    {pack.boreiNefashos.translit}
+                  </p>
+                )}
+                {textMode === 'english' && (
+                  <p className="text-[14px] leading-relaxed text-espresso">{pack.boreiNefashos.english}</p>
+                )}
+                <div className="mt-4">
+                  <HearIt src={`${BASE}audio/borei-nefashos.mp3`} />
+                </div>
+              </div>
+            )}
+          </Bezel>
         </div>
 
         <div className="flex flex-col items-center gap-1 pt-8">

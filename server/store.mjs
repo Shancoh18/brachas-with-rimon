@@ -75,6 +75,11 @@ export function issueToken(userId) {
   return raw;
 }
 
+/** Kill every session for a user except the one holding keepRaw — used on
+ *  password change so an old (possibly stolen) session can't ride it out. */
+export const revokeOtherTokens = (userId, keepRaw) =>
+  db.prepare('DELETE FROM tokens WHERE user_id = ? AND hash <> ?').run(userId, tokenHash(String(keepRaw ?? '')));
+
 export function createUser({ name, email = null, pass = null, apple = null, google = null }) {
   const id = newId();
   const code = freshFriendCode();
@@ -91,8 +96,6 @@ export const setName = (id, name) => db.prepare('UPDATE users SET name = ? WHERE
 export const setEmail = (id, email) => db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, id);
 export const setPassword = (id, pass) =>
   db.prepare('UPDATE users SET pass_salt = ?, pass_hash = ? WHERE id = ?').run(pass.salt, pass.hash, id);
-export const linkProvider = (id, provider, sub) =>
-  db.prepare(`UPDATE users SET ${provider === 'apple' ? 'apple_sub' : 'google_sub'} = ? WHERE id = ?`).run(sub, id);
 export const setPush = (id, push) =>
   db.prepare('UPDATE users SET push = ? WHERE id = ?').run(push ? JSON.stringify(push) : null, id);
 export const deleteUser = (id) => db.prepare('DELETE FROM users WHERE id = ?').run(id); // cascades
@@ -152,7 +155,6 @@ export const allLearned = () =>
   db.prepare('SELECT entry FROM learned_foods ORDER BY added').all().map((r) => parse(r.entry)).filter(Boolean);
 export const learnedCount = () => db.prepare('SELECT COUNT(*) n FROM learned_foods').get().n;
 export const learnedKeys = () => db.prepare('SELECT key FROM learned_foods').all().map((r) => r.key);
-export const hasLearned = (key) => !!db.prepare('SELECT 1 FROM learned_foods WHERE key = ?').get(key);
 export const addLearned = (entry) =>
   db.prepare('INSERT OR IGNORE INTO learned_foods (key,entry,added) VALUES (?,?,?)').run(entry.key, JSON.stringify(entry), Date.now());
 export const learnedStamp = () =>

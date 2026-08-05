@@ -24,7 +24,10 @@ const BRACHA_TINT: Record<string, string> = {
 export function Confirm() {
   const { items, updateItem, removeItem, addItem, unmatched, setScreen, reset, photo, demoFallback } = useBracha();
   const [query, setQuery] = useState('');
-  const [adding, setAdding] = useState(false);
+  // manual entry (no photo, arrived with an empty plate): open the search
+  // immediately — looking up foods IS the flow
+  const [manualEntry] = useState(() => !photo && items.length === 0);
+  const [adding, setAdding] = useState(manualEntry);
 
   const matches = useMemo(() => {
     if (!query.trim()) return [];
@@ -38,17 +41,26 @@ export function Confirm() {
     <ScreenShell>
       <header className="rise-in flex items-start justify-between gap-4 pb-6">
         <div className="space-y-2">
-          <Eyebrow>Step 1 · Confirm</Eyebrow>
+          <Eyebrow>{manualEntry ? 'Step 1 · Add your foods' : 'Step 1 · Confirm'}</Eyebrow>
           <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-            Is this your meal?
+            {manualEntry ? 'What did you eat?' : 'Is this your meal?'}
           </h2>
         </div>
         <Rimon pose="pointing" size={84} />
       </header>
 
       <p className="rise-in rise-in-1 pb-5 text-[13px] leading-relaxed text-espresso-soft">
-        Check every item — a photo can’t always tell cooked from raw, or what’s inside a mixture.
-        Tap a state to correct it; star your favorite (<em>chaviv</em>).
+        {manualEntry ? (
+          <>
+            No photo needed — search the food database and add everything on your plate, then
+            Rimon guides you through the same brachas as always.
+          </>
+        ) : (
+          <>
+            Check every item — a photo can’t always tell cooked from raw, or what’s inside a
+            mixture. Tap a state to correct it; star your favorite (<em>chaviv</em>).
+          </>
+        )}
       </p>
 
       {demoFallback && (

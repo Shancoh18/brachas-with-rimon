@@ -10,7 +10,9 @@ import { join, relative } from 'path';
 
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
 const ROOT = 'D:/Claude GROUP APP/bracha-app';
-const SKIP = new Set(['.git', '.github', 'node_modules', 'dist', '.env', '.env.local']);
+// .claude = local harness config/worktrees — never publish, and a half-removed
+// worktree inside it can EPERM the walk
+const SKIP = new Set(['.git', '.github', 'node_modules', 'dist', '.env', '.env.local', '.claude']);
 // generated iOS artifacts (also git-ignored); the exFAT drive can wedge these
 const SKIP_PATHS = new Set([
   'ios/App/App/public',
@@ -35,7 +37,14 @@ const gh = (args, input) => {
 
 const files = [];
 const walk = (dir) => {
-  for (const name of readdirSync(dir)) {
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    console.warn(`skip unreadable dir: ${dir}`);
+    return;
+  }
+  for (const name of names) {
     if (SKIP.has(name)) continue;
     const p = join(dir, name);
     if (SKIP_PATHS.has(relative(ROOT, p).replace(/\\/g, '/'))) continue;

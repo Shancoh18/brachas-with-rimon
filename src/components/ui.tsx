@@ -132,7 +132,7 @@ export function WhyDropdown({
               </div>
             ))}
             <p className="border-t border-gold/15 pt-3 text-[10.5px] leading-snug text-mocha">
-              Learn more:{' '}
+              AI makes mistakes, to learn more information please read the article. Learn more:{' '}
               <a
                 href={entry.sourceUrl}
                 target="_blank"

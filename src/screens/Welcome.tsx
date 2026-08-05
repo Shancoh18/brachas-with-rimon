@@ -100,8 +100,24 @@ export function Welcome() {
           <PillButton variant="rimon" icon="📷" onClick={() => fileRef.current?.click()} disabled={busy}>
             Photograph my meal
           </PillButton>
+          <PillButton
+            icon="🔎"
+            onClick={() => {
+              // manual entry: same confirm → guide → after flow, no photo needed
+              setPhoto(null);
+              setDemoFallback(false);
+              setItems([]);
+              setUnmatched([]);
+              setScreen('confirm');
+            }}
+          >
+            Forgot to take a photo? Add it manually!
+          </PillButton>
           <PillButton icon="📖" onClick={() => setScreen('reference')}>
             Quick blessing guide
+          </PillButton>
+          <PillButton icon="🍞" onClick={() => setScreen('benching')}>
+            Birkat Hamazon
           </PillButton>
           <button
             onClick={() => runAnalysis()}

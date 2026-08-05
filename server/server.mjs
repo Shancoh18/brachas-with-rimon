@@ -1,7 +1,8 @@
 /**
  * Brachas with Rimon — backend (Railway).
- * Accounts (friend-code model, no passwords/emails), friend leagues,
- * Web-Push mealtime reminders, and the Claude vision proxy.
+ * Accounts (email+password, Apple/Google OAuth, legacy friend-code sign-in),
+ * friend leagues, shareable boards, Web-Push mealtime reminders, and the
+ * Claude vision proxy.
  *
  * Design rules (mirrors the app's CLAUDE.md):
  *  - Claude ONLY identifies foods and maps them to database keys (enum-forced
@@ -18,7 +19,6 @@ import { createPublicKey, randomBytes, scryptSync, timingSafeEqual, verify as cr
 import { join } from 'path';
 import webpush from 'web-push';
 import * as store from './store.mjs';
-import { initStore } from './store.mjs';
 
 const PORT = Number(process.env.PORT || 3300);
 const DATA_DIR = process.env.DATA_DIR || './data';
@@ -29,7 +29,7 @@ const VAPID_FILE = join(DATA_DIR, 'vapid.json');
 // ------------------------------------------------------------------ storage
 // SQLite (see db.mjs / store.mjs). Legacy users.json is imported on first
 // boot — including existing sessions, so nobody is signed out by the move.
-initStore(DATA_DIR);
+store.initStore(DATA_DIR);
 
 // ------------------------------------------------------------------- VAPID
 let vapid;
@@ -175,14 +175,14 @@ const GOOGLE_AUDS = (process.env.GOOGLE_CLIENT_IDS || '')
 const b64urlJson = (part) => JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
 
 async function jwksKey(provider, kid) {
-  const store = JWKS[provider];
-  if (!store.keys || Date.now() - store.fetched > 3_600_000 || !store.keys.find((k) => k.kid === kid)) {
-    const r = await fetch(store.url);
+  const jwks = JWKS[provider];
+  if (!jwks.keys || Date.now() - jwks.fetched > 3_600_000 || !jwks.keys.find((k) => k.kid === kid)) {
+    const r = await fetch(jwks.url);
     if (!r.ok) throw new Error(`jwks ${r.status}`);
-    store.keys = (await r.json()).keys ?? [];
-    store.fetched = Date.now();
+    jwks.keys = (await r.json()).keys ?? [];
+    jwks.fetched = Date.now();
   }
-  return store.keys.find((k) => k.kid === kid) ?? null;
+  return jwks.keys.find((k) => k.kid === kid) ?? null;
 }
 
 async function verifyIdToken(provider, idToken) {
@@ -469,7 +469,7 @@ async function analyze(body) {
 
 // ------------------------------------------------------- reminder scheduler
 // Client sends tzOffsetMinutes (Date.getTimezoneOffset()) + "HH:MM" times.
-const firedToday = new Map(); // token -> "YYYY-MM-DD-HH:MM"
+const firedToday = new Map(); // user id -> "YYYY-MM-DD-HH:MM"
 setInterval(async () => {
   const now = Date.now();
   // Sends are batched in parallel with a per-push timeout: at a shared
@@ -638,9 +638,11 @@ const server = createServer(async (req, res) => {
       const use = analyzeUse.get(who.user.id);
       if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
         return json(res, 429, { error: 'daily_limit' });
-      analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
       const body = await readBody(req);
       if (!body.image) return json(res, 400, { error: 'no_image' });
+      // charge the quota only once the request is valid — a malformed or
+      // oversized body shouldn't burn one of the user's 30 daily calls
+      analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
       analyzeInFlight++;
       try {
         const out = await analyze(body);
@@ -705,6 +707,9 @@ const server = createServer(async (req, res) => {
       if (!password || String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
       if (a.user.pass && !checkPassword(current ?? '', a.user.pass)) return json(res, 403, { error: 'wrong_password' });
       store.setPassword(a.user.id, hashPassword(String(password).slice(0, 200)));
+      // a changed password must lock out anyone holding an old session —
+      // revoke every other token, keeping only the one that made this request
+      store.revokeOtherTokens(a.user.id, a.token);
       return json(res, 200, { ok: true });
     }
 

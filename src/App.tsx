@@ -16,6 +16,7 @@ import { Journey } from './screens/Journey';
 import { Onboarding } from './screens/Onboarding';
 import { AuthGate } from './screens/AuthGate';
 import { Reference } from './screens/Reference';
+import { Benching } from './screens/Benching';
 import { Account } from './screens/Account';
 import { Donate } from './screens/Donate';
 import { Friends } from './screens/Friends';
@@ -93,6 +94,9 @@ export default function App() {
         break;
       case 'reference':
         body = <Reference />;
+        break;
+      case 'benching':
+        body = <Benching />;
         break;
       default:
         body = <Welcome />;
