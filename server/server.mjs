@@ -225,8 +225,20 @@ async function verifyIdToken(provider, idToken) {
   }
 }
 
+// Friend-code -> user index. Rebuilt lazily after any membership change;
+// without it every league render scanned all users once PER FRIEND.
+let codeIndex = null;
+const invalidateIndex = () => { codeIndex = null; };
+const byCode = (code) => {
+  if (!codeIndex) {
+    codeIndex = new Map();
+    for (const u of Object.values(users)) codeIndex.set(u.code, u);
+  }
+  return codeIndex.get(code) ?? null;
+};
+
 const leagueFor = (me) => {
-  const rows = [me, ...me.friends.map((code) => Object.values(users).find((u) => u.code === code)).filter(Boolean)];
+  const rows = [me, ...me.friends.map((code) => byCode(code)).filter(Boolean)];
   return rows
     .map((u) => ({
       name: u.name,
@@ -583,8 +595,9 @@ const server = createServer(async (req, res) => {
       }
       const token = randomBytes(24).toString('hex');
       let code = friendCode();
-      while (Object.values(users).some((u) => u.code === code)) code = friendCode();
+      while (byCode(code)) code = friendCode();
       users[token] = { name: String(name).trim().slice(0, 20), email: mail, pass, code, friends: [], progress: null, push: null, created: Date.now() };
+      invalidateIndex();
       save();
       return json(res, 200, { token, code, email: mail });
     }
@@ -633,11 +646,12 @@ const server = createServer(async (req, res) => {
       if (!entry) {
         const token = randomBytes(24).toString('hex');
         let code = friendCode();
-        while (Object.values(users).some((u) => u.code === code)) code = friendCode();
+        while (byCode(code)) code = friendCode();
         const displayName = String(name || (mail ? mail.split('@')[0] : 'Friend')).trim().slice(0, 20) || 'Friend';
         // never claim an email another account already holds
         const freeMail = mail && !Object.values(users).some((u) => u.email === mail) ? mail : null;
         users[token] = { name: displayName, email: freeMail, [provider]: sub, pass: null, code, friends: [], progress: null, push: null, created: Date.now() };
+        invalidateIndex();
         entry = [token, users[token]];
       } else if (mail && !entry[1].email && !Object.values(users).some((u) => u.email === mail)) {
         entry[1].email = mail; // provider-verified email fills an empty slot
@@ -646,8 +660,17 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email ?? null });
     }
 
-    if (url.pathname === '/api/foods/learned' && req.method === 'GET')
-      return json(res, 200, { entries: learnedFoods });
+    if (url.pathname === '/api/foods/learned' && req.method === 'GET') {
+      // ETag: the list is identical between learnings, and every client asks
+      // on every launch — 304s keep that from growing into real bandwidth.
+      const tag = `W/"${learnedFoods.length}-${learnedFoods.at(-1)?.learnedAt ?? '0'}"`;
+      if (req.headers['if-none-match'] === tag) {
+        res.writeHead(304, { ETag: tag });
+        return res.end();
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', ETag: tag, 'Cache-Control': 'no-cache' });
+      return res.end(JSON.stringify({ entries: learnedFoods }));
+    }
 
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
       // Vision costs real money per call: require a token, cap per-account
@@ -729,6 +752,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/account/delete' && req.method === 'POST') {
       const gone = a.user.code;
       delete users[a.token];
+      invalidateIndex();
       for (const u of Object.values(users)) {
         u.friends = (u.friends ?? []).filter((c) => c !== gone);
       }
@@ -744,7 +768,7 @@ const server = createServer(async (req, res) => {
       const raw = String(code || '').trim();
       const other = raw.includes('@')
         ? Object.values(users).find((u) => u.email === raw.toLowerCase())
-        : Object.values(users).find((u) => u.code === raw.toUpperCase());
+        : byCode(raw.toUpperCase());
       if (!other) return json(res, 404, { error: 'code_not_found' });
       if (other.code === a.user.code) return json(res, 400, { error: 'thats_you' });
       if (!a.user.friends.includes(other.code)) a.user.friends.push(other.code);
