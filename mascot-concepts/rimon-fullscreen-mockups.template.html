@@ -182,27 +182,187 @@
     100%     { opacity: 0; }
   }
 
-  /* ------------------------------------------------ phone 2: streak */
+  /* ------------------------------------------------ phone 2: streak
+     "Kindling ceremony": set-down with clay weight -> flame ignites
+     (gather, flare, one halo ripple) -> embers -> text cascade ->
+     chips land and the flame answers each one -> shared-breath hold.
+     Everything runs on the same 6.5s clock as phone 1. */
+  .p2 .s-jolt { position: absolute; inset: 0; animation: sJolt var(--cycle) var(--ease-lux) infinite; }
   .p2 .flame-img {
     position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-    transform-origin: 50% 80%;
-    animation: breathe 5s ease-in-out infinite;
+    transform-origin: 50% 88%;
+    animation: sEnter var(--cycle) var(--ease-lux) infinite;
   }
-  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.024); } }
+  @keyframes sEnter {
+    0%, 5%    { opacity: 0; transform: translateY(3.5%) scale(1.03); }
+    12%       { opacity: 1; }
+    18%       { transform: translateY(0) scale(1); }
+    22%       { transform: scaleX(1.02) scaleY(0.984); }
+    26%       { transform: scaleX(0.996) scaleY(1.005); }
+    30%       { transform: scale(1); }
+    64%       { transform: scale(1); }
+    70%       { transform: scale(1.012); }
+    76%       { transform: scale(1); }
+    82%       { transform: scale(1.012); }
+    88%, 91%  { opacity: 1; transform: scale(1); }
+    97%, 100% { opacity: 0; transform: scale(1); }
+  }
+  @keyframes sJolt {
+    0%, 26%   { transform: translateY(0); }
+    29%       { transform: translateY(3px); }
+    32%       { transform: translateY(-1px); }
+    35%, 100% { transform: translateY(0); }
+  }
+  .p2 .floor-shadow {
+    position: absolute; left: 48%; top: 84%; width: 180px; height: 30px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(43,33,26,0.22), transparent 70%);
+    z-index: 4; pointer-events: none; opacity: 0.25;
+    animation: sFloor var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes sFloor {
+    0%, 8%    { opacity: 0; transform: translate(-50%,-50%) scale(0.7); }
+    18%       { opacity: 0.3; transform: translate(-50%,-50%) scale(1); }
+    24%       { opacity: 0.25; }
+    91%       { opacity: 0.25; }
+    97%, 100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+  }
+  .p2 .glow-bloom {
+    position: absolute; left: 41%; top: 67%; width: 230px; height: 250px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(226,178,96,0.35), transparent 70%);
+    z-index: 5; pointer-events: none; opacity: 0.4;
+    animation: sBloom var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes sBloom {
+    0%, 24%   { opacity: 0; transform: translate(-50%,-50%) scale(0.8); }
+    30%       { opacity: 0.55; transform: translate(-50%,-50%) scale(1.12); }
+    36%       { opacity: 0.4; transform: translate(-50%,-50%) scale(1); }
+    70%       { opacity: 0.48; }
+    84%       { opacity: 0.4; }
+    91%       { opacity: 0.4; }
+    97%, 100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+  }
+  .p2 .glow-core {
+    position: absolute; left: 40%; top: 70%; width: 88px; height: 116px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(255,224,160,0.9), rgba(255,196,110,0.38) 55%, transparent 75%);
+    z-index: 6; pointer-events: none; opacity: 0.6;
+    animation: sCore var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes sCore {
+    0%, 20%   { opacity: 0; transform: translate(-50%,-50%) scale(0.6); }
+    25%       { opacity: 0.35; transform: translate(-50%,-50%) scale(0.68); } /* gather inward */
+    29%       { opacity: 0.95; transform: translate(-50%,-50%) scale(1.28); } /* ignition */
+    34%       { opacity: 0.6; transform: translate(-50%,-50%) scale(1); }
+    48%       { opacity: 0.78; transform: translate(-50%,-50%) scale(1.06); } /* chip 1 lands */
+    51%       { opacity: 0.6;  transform: translate(-50%,-50%) scale(1); }
+    53%       { opacity: 0.73; transform: translate(-50%,-50%) scale(1.045); } /* chip 2 */
+    56%       { opacity: 0.6;  transform: translate(-50%,-50%) scale(1); }
+    58%       { opacity: 0.69; transform: translate(-50%,-50%) scale(1.03); } /* chip 3 */
+    61%       { opacity: 0.6;  transform: translate(-50%,-50%) scale(1); }
+    70%       { opacity: 0.68; transform: translate(-50%,-50%) scale(1.02); } /* shared breath */
+    78%       { opacity: 0.6;  transform: translate(-50%,-50%) scale(1); }
+    84%       { opacity: 0.66; transform: translate(-50%,-50%) scale(1.015); }
+    91%       { opacity: 0.6;  transform: translate(-50%,-50%) scale(1); }
+    97%, 100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+  }
+  .p2 .halo {
+    position: absolute; left: 40%; top: 70%; width: 96px; height: 82px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    border: 2px solid rgba(212,150,60,0.7);
+    box-shadow: 0 0 14px rgba(230,170,80,0.5), inset 0 0 10px rgba(230,170,80,0.35);
+    z-index: 7; pointer-events: none; opacity: 0;
+    animation: sHalo var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes sHalo {
+    0%, 26%   { opacity: 0; transform: translate(-50%,-50%) scale(0.3); }
+    29%       { opacity: 0.85; transform: translate(-50%,-50%) scale(0.85); }
+    42%, 100% { opacity: 0; transform: translate(-50%,-50%) scale(2.2); }
+  }
+  .p2 .embers { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+  .p2 .embers i {
+    position: absolute; left: 40%; top: 70%; border-radius: 50%;
+    width: 4px; height: 4px; opacity: 0;
+    animation: sEmber var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes sEmber {
+    0%, 32%   { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+    38%       { opacity: 0.8; }
+    62%, 100% { opacity: 0; transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% - 92px)) scale(0.55); }
+  }
   .p2 .txt { position: absolute; top: 78px; left: 0; right: 0; z-index: 20; text-align: center; padding: 0 30px; }
   .p2 .txt h2 { font-family: var(--serif); font-weight: 500; font-size: 31px; margin-top: 12px; }
   .p2 .txt p  { font-size: 13px; color: var(--espresso-soft); margin-top: 9px; line-height: 1.55; }
+  .p2 .t1 { display: block; animation: sT1 var(--cycle) var(--ease-lux) infinite; }
+  .p2 .txt h2 { animation: sT2 var(--cycle) var(--ease-lux) infinite; }
+  .p2 .txt p  { animation: sT3 var(--cycle) var(--ease-lux) infinite; }
+  @keyframes sT1 {
+    0%, 28% { opacity: 0; transform: translateY(14px); }
+    33%     { transform: translateY(-2px); }
+    35%     { opacity: 1; transform: translateY(0); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes sT2 {
+    0%, 32% { opacity: 0; transform: translateY(16px); }
+    38%     { transform: translateY(-2px); }
+    40%     { opacity: 1; transform: translateY(0); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes sT3 {
+    0%, 36% { opacity: 0; transform: translateY(14px); }
+    44%     { opacity: 1; transform: translateY(0); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
   .p2 .stats {
     position: absolute; bottom: 96px; left: 0; right: 0; z-index: 20;
-    display: flex; justify-content: center; gap: 10px;
+    display: flex; justify-content: center; gap: 8px; padding: 0 16px;
   }
   .p2 .chip {
-    background: rgba(255,255,255,0.62); border: 1px solid var(--hairline);
-    backdrop-filter: blur(4px);
-    border-radius: 99px; padding: 9px 18px; font-size: 12.5px; font-weight: 600; color: var(--espresso-soft);
+    background: #fffdf4; border: 1px solid var(--hairline);
+    border-radius: 99px; padding: 8px 13px; font-size: 11.5px; font-weight: 600; color: var(--espresso-soft);
+    box-shadow: 0 6px 18px rgba(43,33,26,0.07);
   }
   .p2 .chip b { color: var(--gold); font-weight: 700; }
-  .p2 .cta { position: absolute; bottom: 34px; left: 0; right: 0; z-index: 20; display: flex; justify-content: center; }
+  .p2 .c1 { animation: sC1 var(--cycle) var(--ease-lux) infinite; }
+  .p2 .c2 { animation: sC2 var(--cycle) var(--ease-lux) infinite; }
+  .p2 .c3 { animation: sC3 var(--cycle) var(--ease-lux) infinite; }
+  @keyframes sC1 {
+    0%, 44% { opacity: 0; transform: translateY(10px) scale(0.7); }
+    48%     { opacity: 1; transform: translateY(0) scale(1.07); }
+    50%     { transform: scale(1); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes sC2 {
+    0%, 49% { opacity: 0; transform: translateY(10px) scale(0.7); }
+    53%     { opacity: 1; transform: translateY(0) scale(1.07); }
+    55%     { transform: scale(1); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes sC3 {
+    0%, 54% { opacity: 0; transform: translateY(10px) scale(0.7); }
+    58%     { opacity: 1; transform: translateY(0) scale(1.07); }
+    60%     { transform: scale(1); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  .p2 .cta {
+    position: absolute; bottom: 34px; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: center;
+    animation: sCta var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes sCta {
+    0%, 58% { opacity: 0; transform: translateY(12px) scale(0.95); }
+    63%     { opacity: 1; transform: translateY(0) scale(1.02); }
+    66%     { transform: scale(1); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
 
   /* ------------------------------------------------ phone 3: home hero */
   .p3 .greet { padding: 64px 24px 8px; }
@@ -211,14 +371,16 @@
   .p3 .hero-wide img {
     position: absolute; inset: 0; width: 100%; height: 100%;
     object-fit: cover; object-position: right center;
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px, #000 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 18px, #000 100%);
   }
   .p3 .lean-line {
     position: absolute; left: 24px; top: 50%; transform: translateY(-50%);
     max-width: 150px; font-size: 12.5px; font-style: italic;
     color: var(--espresso-soft); line-height: 1.55; z-index: 5;
   }
-  .p3 .body { padding: 10px 20px 0; display: flex; flex-direction: column; gap: 14px; }
-  .p3 .tip { padding: 16px 18px 15px; background: rgba(255,255,255,0.6); border: 1px solid var(--hairline); border-radius: 22px; }
+  .p3 .body { margin-top: -24px; position: relative; z-index: 5; padding: 0 20px; display: flex; flex-direction: column; gap: 14px; }
+  .p3 .tip { padding: 16px 18px 15px; background: rgba(255,255,255,0.88); border: 1px solid var(--hairline); border-radius: 22px; }
   .p3 .tip .t { font-size: 13px; color: var(--espresso-soft); line-height: 1.6; margin-top: 7px; }
   .p3 .tip .t em { font-family: var(--serif); font-style: normal; color: var(--espresso); }
   .p3 .cam { display: flex; justify-content: center; margin-top: 6px; }
@@ -230,20 +392,168 @@
   .p3 .mini .v { font-family: var(--serif); font-size: 21px; color: var(--espresso); }
   .p3 .mini .k { font-size: 9.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--mocha); margin-top: 3px; }
 
-  /* ------------------------------------------------ phone 4: badge */
+  /* ------------------------------------------------ phone 4: badge
+     "Lowered on its ribbon": type announces first on empty cream ->
+     the medal card descends and stops with a felt dip -> decaying
+     pendulum on a pivot ABOVE the card, the medal art counter-rotating
+     inside (ribbon lag) -> gold ring resonates at the stop -> one shine
+     sweep crosses the medal as "Century" reaches full ink -> gleam
+     sparks -> residual hang + counter-breathing floor shadow. */
   .p4 .txt { position: absolute; top: 76px; left: 0; right: 0; text-align: center; z-index: 20; padding: 0 30px; }
   .p4 .txt h2 { font-family: var(--serif); font-weight: 500; font-size: 31px; margin-top: 12px; }
+  .p4 .b1 { display: block; animation: bT1 var(--cycle) var(--ease-lux) infinite; }
+  .p4 .txt h2 { animation: bT2 var(--cycle) var(--ease-lux) infinite; }
+  @keyframes bT1 {
+    0%, 6%  { opacity: 0; transform: translateY(12px); }
+    12%     { opacity: 1; transform: translateY(0); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes bT2 {
+    0%, 9%  { opacity: 0; transform: translateY(16px); }
+    16%     { opacity: 1; transform: translateY(0); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  .p4 .aura {
+    position: absolute; left: 52%; top: 375px; width: 300px; height: 300px;
+    transform: translate(-50%,-50%); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(201,164,92,0.35), rgba(201,164,92,0.1) 55%, transparent 75%);
+    z-index: 15; pointer-events: none; opacity: 0.3;
+    animation: bAura var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes bAura {
+    0%, 16%   { opacity: 0; transform: translate(-50%,-50%) scale(0.85); }
+    20%       { opacity: 0.15; transform: translate(-50%,-50%) scale(0.9); }  /* tease */
+    27%       { opacity: 0.15; }
+    31%       { opacity: 0.55; transform: translate(-50%,-50%) scale(1.1); }
+    38%       { opacity: 0.3; transform: translate(-50%,-50%) scale(1); }
+    74%       { opacity: 0.38; }
+    90%, 91%  { opacity: 0.3; }
+    97%, 100% { opacity: 0; transform: translate(-50%,-50%) scale(1); }
+  }
+  .p4 .card-ring {
+    position: absolute; inset: -6px; border-radius: 32px;
+    border: 1.5px solid rgba(168,126,47,0.55); pointer-events: none; opacity: 0;
+    animation: bRing var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes bRing {
+    0%, 28%   { opacity: 0; transform: scale(0.96); }
+    31%       { opacity: 0.5; transform: scale(1); }
+    45%, 100% { opacity: 0; transform: scale(1.13); }
+  }
+  .p4 .bezel { background: rgba(255,255,255,0.9); }
+  .p4 .card-shadow {
+    position: absolute; left: 50%; top: 486px; width: 150px; height: 26px;
+    transform: translateX(-50%); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(43,33,26,0.26), transparent 70%);
+    z-index: 15; pointer-events: none; opacity: 0.5;
+    animation: bShadow var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes bShadow {
+    0%, 20%   { opacity: 0; transform: translateX(-50%) scale(0.6); }
+    27%       { opacity: 0.5; transform: translateX(-50%) scale(1); }
+    62%       { opacity: 0.5; transform: translateX(-50%) scale(1); }
+    74%       { opacity: 0.34; transform: translateX(-50%) scale(0.92); } /* counter-breathes the float */
+    90%, 91%  { opacity: 0.5; transform: translateX(-50%) scale(1); }
+    97%, 100% { opacity: 0; }
+  }
   .p4 .medal-card {
     position: absolute; top: 188px; left: 50%; transform: translateX(-50%);
     width: 218px; z-index: 20;
-    animation: floaty 3.6s ease-in-out infinite;
+    animation: bCard var(--cycle) var(--ease-lux) infinite;
   }
-  @keyframes floaty { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-7px); } }
-  .p4 .medal-card img { display: block; width: 100%; border-radius: 20px; }
+  @keyframes bCard {
+    0%, 8%   { opacity: 0; transform: translateX(-50%) translateY(-34px); }
+    14%      { opacity: 1; }
+    26%      { transform: translateX(-50%) translateY(0); }
+    29%      { transform: translateX(-50%) translateY(2.5px); }  /* felt stop */
+    33%      { transform: translateX(-50%) translateY(0); }
+    62%      { transform: translateX(-50%) translateY(0); }
+    74%      { transform: translateX(-50%) translateY(-6px); }   /* residual float */
+    90%, 91% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    97%, 100% { opacity: 0; transform: translateX(-50%) translateY(0); }
+  }
+  .p4 .swing { transform-origin: 50% -40px; animation: bSwing var(--cycle) var(--ease-lux) infinite; }
+  @keyframes bSwing {
+    0%, 26% { transform: rotate(2.4deg); }   /* hangs tilted while lowering */
+    34%     { transform: rotate(-1.5deg); }
+    42%     { transform: rotate(0.9deg); }
+    50%     { transform: rotate(-0.4deg); }
+    56%     { transform: rotate(0deg); }
+    66%     { transform: rotate(0.35deg); }
+    78%     { transform: rotate(-0.3deg); }
+    89%, 94% { transform: rotate(0deg); }
+    100%    { transform: rotate(2.4deg); }   /* reset during invisible tail */
+  }
+  .p4 .medal-card .bezel-inner { position: relative; overflow: hidden; }
+  .p4 .medal-card img {
+    display: block; width: 100%; border-radius: 20px;
+    transform-origin: 50% 30%;
+    animation: bInner var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes bInner {  /* ribbon lag: counter-rotates at ~40% amplitude, a beat behind */
+    0%, 26% { transform: scale(1.02) rotate(-0.95deg); }
+    30%     { transform: scale(1.02) rotate(-0.85deg); }
+    37%     { transform: scale(1.02) rotate(0.6deg); }
+    45%     { transform: scale(1.02) rotate(-0.35deg); }
+    53%     { transform: scale(1.02) rotate(0.15deg); }
+    59%     { transform: scale(1.02) rotate(0deg); }
+    69%     { transform: scale(1.02) rotate(-0.14deg); }
+    81%     { transform: scale(1.02) rotate(0.12deg); }
+    92%     { transform: scale(1.02) rotate(0deg); }
+    100%    { transform: scale(1.02) rotate(-0.95deg); }
+  }
+  .p4 .shine {
+    position: absolute; top: -30%; bottom: -30%; width: 18%; z-index: 5;
+    background: linear-gradient(105deg, transparent 35%, rgba(255,250,230,0.34) 50%, transparent 65%);
+    transform: translateX(-120%) rotate(14deg); pointer-events: none;
+    /* linear, not ease-lux: the sweep must still be mid-card at ~44% when
+       "Century" reaches full ink */
+    animation: bShine var(--cycle) linear infinite;
+  }
+  @keyframes bShine {  /* one pass, crossing the medal as "Century" reaches full ink */
+    0%, 40%   { transform: translateX(-120%) rotate(14deg); }
+    48%, 100% { transform: translateX(640%) rotate(14deg); }
+  }
+  .p4 .sparks { position: absolute; inset: 0; z-index: 21; pointer-events: none; }
+  .p4 .sparks i {
+    position: absolute; left: 52%; top: 375px; width: 5px; height: 5px;
+    background: var(--gold-soft); opacity: 0;
+    transform: translate(-50%,-50%) rotate(45deg);
+    animation: bSpark var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes bSpark {
+    0%, 29%   { opacity: 0; transform: translate(-50%,-50%) rotate(45deg) scale(0.4); }
+    33%       { opacity: 0.9; }
+    47%, 100% { opacity: 0; transform: translate(calc(-50% + var(--sx, 0px)), calc(-50% + var(--sy, -40px))) rotate(190deg) scale(1); }
+  }
   .p4 .badge-name { position: absolute; top: 500px; left: 0; right: 0; text-align: center; z-index: 20; padding: 0 34px; }
-  .p4 .badge-name h3 { font-family: var(--serif); font-size: 23px; font-weight: 500; }
-  .p4 .badge-name p { font-size: 12px; color: var(--mocha); line-height: 1.6; margin-top: 7px; }
-  .p4 .cta { position: absolute; bottom: 34px; left: 0; right: 0; display: flex; justify-content: center; z-index: 20; }
+  .p4 .badge-name h3 { font-family: var(--serif); font-size: 23px; font-weight: 500; animation: bN1 var(--cycle) var(--ease-lux) infinite; }
+  .p4 .badge-name p { font-size: 12px; color: var(--mocha); line-height: 1.6; margin-top: 7px; animation: bN2 var(--cycle) var(--ease-lux) infinite; }
+  @keyframes bN1 {
+    0%, 38% { opacity: 0; transform: translateY(12px); }
+    44%     { opacity: 1; transform: translateY(0); }  /* full ink exactly as the shine crosses */
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  @keyframes bN2 {
+    0%, 44% { opacity: 0; transform: translateY(10px); }
+    52%     { opacity: 1; transform: translateY(0); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  .p4 .cta {
+    position: absolute; bottom: 34px; left: 0; right: 0; display: flex; justify-content: center; z-index: 20;
+    animation: bCta var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes bCta {
+    0%, 54% { opacity: 0; transform: translateY(12px) scale(0.96); }
+    60%     { opacity: 1; transform: translateY(0) scale(1.015); }
+    63%     { transform: scale(1); }
+    91%     { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
 
   .foot { text-align: center; margin-top: 58px; font-size: 11.5px; color: #8a7a6d; letter-spacing: 0.04em; }
 
@@ -251,6 +561,9 @@
     * { animation: none !important; }
     .p1 .fly-img { display: none; }
     .p1 .land-img, .p1 .txt, .p1 .cta { opacity: 1 !important; transform: none !important; }
+    /* transient effects vanish; base styles already encode each screen's
+       finished static composition (resting glow, aura, shadow) */
+    .p2 .halo, .p2 .embers i, .p4 .card-ring, .p4 .sparks i, .p4 .shine { display: none; }
   }
 </style>
 </head>
@@ -259,7 +572,7 @@
 <div class="hero">
   <div class="eyebrow">Brachas with Rimon · Concept</div>
   <h1>Full-screen Rimon.</h1>
-  <p>Duolingo-native character moments, in the app's Editorial Luxury system. Phone 01 loops the fly-in &rarr; landing &rarr; thumbs-up.</p>
+  <p>Duolingo-native character moments, in the app's Editorial Luxury system. Phones 01, 02 and 04 each loop their own choreography on a shared 6.5s clock.</p>
 </div>
 
 <div class="row">
@@ -299,16 +612,28 @@
   <!-- ================================ 02 STREAK -->
   <div class="unit">
     <div class="phone"><div class="screen grain p2">
-      <img class="flame-img" src="__IMG11__" alt="">
+      <div class="s-jolt">
+        <img class="flame-img" src="__IMG11__" alt="">
+        <div class="floor-shadow"></div>
+        <div class="glow-bloom"></div>
+        <div class="glow-core"></div>
+        <div class="halo"></div>
+        <div class="embers">
+          <i style="--dx:-16px; background:#c9a45c;"></i>
+          <i style="--dx:-6px; background:#e8c98a; animation-delay:.16s; width:5px; height:5px;"></i>
+          <i style="--dx:7px; background:#a87e2f; animation-delay:.3s;"></i>
+          <i style="--dx:14px; background:#fffdf4; animation-delay:.44s; width:3px; height:3px;"></i>
+        </div>
+      </div>
       <div class="txt">
-        <div class="eyebrow-tag">Streak · Day 7</div>
+        <div class="eyebrow-tag t1">Streak · Day 7</div>
         <h2>The flame is lit.</h2>
         <p>Seven days of noticing —<br>one bracha at a time.</p>
       </div>
       <div class="stats">
-        <span class="chip"><b>7</b> days</span>
-        <span class="chip"><b>42</b> brachos</span>
-        <span class="chip"><b>4</b> badges</span>
+        <span class="chip c1"><b>7</b> days</span>
+        <span class="chip c2"><b>42</b> brachos</span>
+        <span class="chip c3"><b>4</b> badges</span>
       </div>
       <div class="cta"><span class="pill ghost">Keep it going</span></div>
       <div class="island"></div>
@@ -316,9 +641,9 @@
       <div class="homebar"></div>
     </div></div>
     <div class="caption">
-      <div class="num">02 · Full-bleed 9:16</div>
-      <div class="cap-t">Streak milestone</div>
-      <div class="cap-s">Rimon cradles the streak flame — the art breathes gently. Headroom in the render leaves the top third clean for type.</div>
+      <div class="num">02 · Animated</div>
+      <div class="cap-t">Streak milestone — the kindling</div>
+      <div class="cap-s">Rimon is set down with clay weight, then the flame ignites: the glow gathers, flares with one gold ripple, embers rise — and it flares again softly as each stat chip lands.</div>
     </div>
   </div>
 
@@ -360,10 +685,19 @@
   <div class="unit">
     <div class="phone"><div class="screen grain p4">
       <div class="txt">
-        <div class="eyebrow-tag">Journey</div>
+        <div class="eyebrow-tag b1">Journey</div>
         <h2>A new badge.</h2>
       </div>
-      <div class="medal-card bezel"><div class="bezel-inner"><img src="__IMG10__" alt=""></div></div>
+      <div class="aura"></div>
+      <div class="card-shadow"></div>
+      <div class="medal-card"><div class="card-ring"></div><div class="swing"><div class="bezel"><div class="bezel-inner"><span class="shine"></span><img src="__IMG10__" alt=""></div></div></div></div>
+      <div class="sparks">
+        <i style="--sx:-58px; --sy:-34px;"></i>
+        <i style="--sx:52px; --sy:-46px; animation-delay:.05s;"></i>
+        <i style="--sx:66px; --sy:18px; animation-delay:.1s; width:4px; height:4px;"></i>
+        <i style="--sx:-64px; --sy:26px; animation-delay:.08s; width:4px; height:4px;"></i>
+        <i style="--sx:8px; --sy:-70px; animation-delay:.12s;"></i>
+      </div>
       <div class="badge-name">
         <h3>Century</h3>
         <p>100 brachos with Rimon — a hundred thank-yous a day, the Gemara's measure.</p>
@@ -374,9 +708,9 @@
       <div class="homebar"></div>
     </div></div>
     <div class="caption">
-      <div class="num">04 · Card 3:4</div>
-      <div class="cap-t">Badge earned</div>
-      <div class="cap-s">The medal render floats in a double-bezel card — the app's signature framing — for Journey badge reveals.</div>
+      <div class="num">04 · Animated</div>
+      <div class="cap-t">Badge earned — lowered on its ribbon</div>
+      <div class="cap-s">"A new badge." prints first. The card descends, stops with a felt dip and swings like a hung medal — art counter-rotating inside — while a shine sweep crosses it the moment "Century" lands.</div>
     </div>
   </div>
 

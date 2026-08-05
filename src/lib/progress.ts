@@ -3,6 +3,11 @@
  * Local-first (persisted via zustand). Friendly-for-adults tone: growth and
  * mindfulness framing, not candy-crush pressure.
  */
+import { LESSONS } from '../data/learn';
+
+/** scholar challenge counts only lessons in the CURRENT library — stale ids
+ *  from removed lessons stay in lessonsRead but never inflate the count */
+const LESSON_IDS = new Set(LESSONS.map((l) => l.id));
 
 export interface DayStamp {
   /** YYYY-MM-DD in local time */
@@ -157,8 +162,8 @@ export const CHALLENGES: Challenge[] = [
     id: 'scholar',
     title: 'The Why Behind the Words',
     description: 'Read all the lessons in the Learn library.',
-    target: 8,
-    metric: (p) => p.lessonsRead.length,
+    target: LESSONS.length,
+    metric: (p) => p.lessonsRead.filter((id) => LESSON_IDS.has(id)).length,
     emoji: '📖',
   },
   {

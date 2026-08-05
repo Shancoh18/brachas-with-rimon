@@ -32,6 +32,8 @@ $RW service "$SERVICE_NAME" >/dev/null 2>&1 || true
 $RW volume add -m /data 2>/dev/null || echo "  (volume exists)"
 
 echo "→ variables"
+# node:sqlite needs Node 22.5+ — pin it so a nixpacks default can't regress us
+$RW variables --set "NIXPACKS_NODE_VERSION=22" --service "$SERVICE_NAME" --skip-deploys >/dev/null 2>&1 || true
 $RW variable set DATA_DIR=/data --service "$SERVICE_NAME" --skip-deploys >/dev/null 2>&1 || \
   $RW variables --set "DATA_DIR=/data" --service "$SERVICE_NAME" --skip-deploys >/dev/null
 

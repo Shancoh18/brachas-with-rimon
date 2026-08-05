@@ -49,9 +49,20 @@ Job IDs: flying 476b6793, thumbsup 9c136b37, banner 30399f6c,
 medal a5f10d28, flame dc630372. Slim `.webp` copies sit beside the PNGs.
 
 **Mockups:** `rimon-fullscreen-mockups.html` (self-contained, images inlined) —
-four phone frames: 01 challenge-complete with a CSS-only 6.5s loop
-(fly-in → pose-swap at touchdown → squash + jolt → text/CTA cascade),
-02 streak, 03 home hero, 04 badge. Rebuild from
+four phone frames, THREE of them animated on one shared 6.5s clock:
+01 challenge-complete (fly-in → pose-swap at touchdown → squash + jolt →
+text/CTA cascade), 02 streak "kindling" (clay set-down → flame ignition
+glow + one gold halo ripple anchored on the baked flame at left 40% / top
+70% → embers → chip cascade with sympathetic flame flares → shared-breath
+hold), 04 badge "lowered on its ribbon" (headline first → card descends,
+felt-stop dip → decaying pendulum on a .swing wrapper, origin 50% -40px,
+medal art counter-rotating inside at 40% amplitude → card-shaped resonance
+ring → single linear-timed shine sweep crossing the medal as "Century"
+inks → floor shadow counter-breathing the float). 03 home hero is static.
+Choreography came from a 3-lens design panel (game-feel / editorial /
+clay-materiality) + a 2-reviewer blind QA pass over frozen keyframes; all
+blockers fixed (opaque chips, thin shine, card-ring z-order, overlay
+anchors calibrated against the object-fit:cover crop). Rebuild from
 `rimon-fullscreen-mockups.template.html` by re-running the node inline step.
 `shot-*.png` are headless-Chrome captures (keyframes frozen via negative
 animation-delay). In-app, phone 01 would ship as a full-screen

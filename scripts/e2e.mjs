@@ -327,12 +327,13 @@ check('First Fruits counts brachos', !!challengeProgress && Number(challengeProg
 await page.evaluate(() => [...document.querySelectorAll('nav button')][1]?.click());
 await sleep(1000);
 await page.evaluate(() => {
-  const card = [...document.querySelectorAll('main button')].find((b) => b.textContent.includes('Why say a bracha'));
+  const card = [...document.querySelectorAll('main [role="button"]')].find((b) => b.textContent.includes('Why a Blessing'));
   card?.click();
 });
 await sleep(900);
 t = await text();
-check('lesson opens', t.includes('berachot 35'));
+check('lesson opens', t.includes('spark of holiness'));
+check('lesson cites its chabad.org article', t.includes('read the full article'));
 await clickText('Mark as read', 900);
 const lessonsRead = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.progress.lessonsRead);
 check('lesson marked read', lessonsRead.includes('why-bless'));

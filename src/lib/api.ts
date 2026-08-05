@@ -53,6 +53,7 @@ export const apiSync = (token: string, progress: ProgressState, name?: string) =
         progress: {
           totalBrachos: progress.totalBrachos,
           streakCurrent: progress.streakCurrent,
+          points: progress.points ?? 0, // lifetime points — the league ranks on these
           history: progress.history.slice(-30),
         },
       }),
@@ -137,3 +138,33 @@ export const apiSetPassword = (token: string, password: string, current?: string
     { method: 'POST', body: JSON.stringify({ password, ...(current ? { current } : {}) }) },
     token,
   );
+
+// ------------------------------------------------------------ leaderboards
+/** A named leaderboard anyone can create and share by code. */
+export interface Board {
+  id: string;
+  code: string;
+  title: string;
+  owner: boolean;
+  members: number;
+  league: LeagueRow[];
+}
+
+export const apiBoards = (token: string) => call<{ boards: Board[] }>('/api/boards', {}, token);
+
+export const apiCreateBoard = (token: string, title: string) =>
+  call<{ id: string; code: string; title: string }>(
+    '/api/boards/create',
+    { method: 'POST', body: JSON.stringify({ title }) },
+    token,
+  );
+
+export const apiJoinBoard = (token: string, code: string) =>
+  call<{ id: string; code: string; title: string; league: LeagueRow[] }>(
+    '/api/boards/join',
+    { method: 'POST', body: JSON.stringify({ code }) },
+    token,
+  );
+
+export const apiLeaveBoard = (token: string, id: string) =>
+  call<{ ok: boolean }>('/api/boards/leave', { method: 'POST', body: JSON.stringify({ id }) }, token);

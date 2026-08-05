@@ -8,63 +8,28 @@
  *    tool schema); all halachic logic stays in the client.
  *  - ANTHROPIC_API_KEY lives ONLY here (Railway variable). Without it,
  *    /api/analyze returns 503 and the client falls back to demo mode.
- *  - Storage: JSON on the Railway volume (DATA_DIR). Small-scale by design.
+ *  - Storage: SQLite on the Railway volume (DATA_DIR/rimon.db). Session
+ *    tokens live ONLY as sha256 digests (tokens table); reading the volume
+ *    never yields a usable session.
  */
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import { createPublicKey, randomBytes, scryptSync, timingSafeEqual, verify as cryptoVerify } from 'crypto';
 import { join } from 'path';
 import webpush from 'web-push';
+import * as store from './store.mjs';
+import { initStore } from './store.mjs';
 
 const PORT = Number(process.env.PORT || 3300);
 const DATA_DIR = process.env.DATA_DIR || './data';
 mkdirSync(DATA_DIR, { recursive: true });
 
-const USERS_FILE = join(DATA_DIR, 'users.json');
 const VAPID_FILE = join(DATA_DIR, 'vapid.json');
 
 // ------------------------------------------------------------------ storage
-/** token -> user record. NULL-PROTOTYPE: a plain object would let lookups like
- *  users['__proto__'] resolve to Object.prototype and authenticate a caller who
- *  holds no token at all. */
-let users = Object.create(null);
-try {
-  if (existsSync(USERS_FILE)) Object.assign(users, JSON.parse(readFileSync(USERS_FILE, 'utf8')));
-} catch (err) {
-  // A truncated write must never crash-loop the API and lock everyone out.
-  // Keep the damaged file for recovery rather than overwriting it blindly.
-  console.error(`users.json unreadable (${err.message}) — preserving as .corrupt`);
-  try { renameSync(USERS_FILE, USERS_FILE + '.corrupt'); } catch {}
-  users = Object.create(null);
-}
-/** Atomic: tmp + rename, so SIGTERM mid-write can't truncate every account. */
-const writeUsers = () => {
-  const tmp = USERS_FILE + '.tmp';
-  writeFileSync(tmp, JSON.stringify(users));
-  renameSync(tmp, USERS_FILE);
-};
-// Coalesced: /api/sync fires on every boot/meal/tab-open, and serializing the
-// whole map per request is O(all users) work on the single event loop.
-let saveTimer = null;
-const save = () => {
-  if (saveTimer) return;
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    try { writeUsers(); } catch (e) { console.error(`save failed: ${e.message}`); }
-  }, 1500);
-};
-const flushUsers = () => {
-  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-  try { writeUsers(); } catch (e) { console.error(`flush failed: ${e.message}`); }
-};
-for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.on(sig, () => { flushUsers(); process.exit(0); });
-}
-process.on('uncaughtException', (e) => {
-  console.error(`uncaught: ${e.stack || e.message}`);
-  flushUsers();
-  process.exit(1);
-});
+// SQLite (see db.mjs / store.mjs). Legacy users.json is imported on first
+// boot — including existing sessions, so nobody is signed out by the move.
+initStore(DATA_DIR);
 
 // ------------------------------------------------------------------- VAPID
 let vapid;
@@ -121,17 +86,37 @@ const readBody = (req) =>
   });
 const auth = (req) => {
   const t = (req.headers.authorization || '').replace(/^Bearer /, '');
-  // own-property only + shape check: never let a prototype key authenticate
-  if (!/^[0-9a-f]{48}$/.test(t)) return null;
-  const rec = Object.prototype.hasOwnProperty.call(users, t) ? users[t] : null;
-  return rec ? { token: t, user: rec } : null;
+  const user = store.userByToken(t); // digest lookup; tokens aren't stored raw
+  return user ? { token: t, user } : null;
+};
+
+// A board is a social circle, not a public feed: bound both directions so one
+// viral code can't turn every /api/boards call into a huge computation.
+const MAX_BOARDS_PER_USER = 20;
+const MAX_BOARD_MEMBERS = 200;
+const BOARD_ROWS = 50; // standings shown; "you" is always included
+/** Top rows of a board, with the caller's own row kept even if far down.
+ *  Friend codes are stripped: a board code is shareable, so shipping every
+ *  member's personal code would let any joiner friend them all unilaterally. */
+const standings = (me, members) => {
+  const rows = leagueRows(me, members);
+  const capped =
+    rows.length <= BOARD_ROWS
+      ? rows
+      : (() => {
+          const top = rows.slice(0, BOARD_ROWS);
+          return top.some((r) => r.you) ? top : [...top, rows.find((r) => r.you)].filter(Boolean);
+        })();
+  return capped.map((r, i) => ({ ...r, code: r.you ? r.code : `m${i}` }));
 };
 
 // ------------------------------------------------- abuse limits (in-memory)
 // Vision spend: per-account daily cap + global concurrency ceiling.
 const ANALYZE_MAX_PER_DAY = 30;
 const ANALYZE_MAX_INFLIGHT = 8;
-const analyzeUse = new Map(); // token -> {day, count}
+// Keyed by user id, NOT token: sign-in now mints a fresh token every time, so
+// a token-keyed cap would reset itself on every sign-in.
+const analyzeUse = new Map(); // user id -> {day, count}
 let analyzeInFlight = 0;
 // Auth endpoints: crude per-IP throttle against credential stuffing and
 // friend-code enumeration (923k code space). Window resets every 10 min.
@@ -152,12 +137,11 @@ setInterval(() => {
   for (const [k, v] of authHits) if (now - v.t0 > 600_000) authHits.delete(k);
   if (analyzeUse.size > 10_000) analyzeUse.clear(); // daily counters, bounded
 }, 300_000);
-const friendCode = () => {
-  // human-friendly: RIMON-XXXX
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let c = '';
-  for (let i = 0; i < 4; i++) c += chars[randomBytes(1)[0] % chars.length];
-  return `RIMON-${c}`;
+/** People paste codes in every shape: bare, lowercased, spaced, prefixed. */
+const normalizeCode = (raw) => {
+  const t = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const body = t.startsWith('RIMON') ? t.slice(5) : t;
+  return `RIMON-${body}`;
 };
 
 // ------------------------------------------------------------ auth (passwords)
@@ -225,21 +209,8 @@ async function verifyIdToken(provider, idToken) {
   }
 }
 
-// Friend-code -> user index. Rebuilt lazily after any membership change;
-// without it every league render scanned all users once PER FRIEND.
-let codeIndex = null;
-const invalidateIndex = () => { codeIndex = null; };
-const byCode = (code) => {
-  if (!codeIndex) {
-    codeIndex = new Map();
-    for (const u of Object.values(users)) codeIndex.set(u.code, u);
-  }
-  return codeIndex.get(code) ?? null;
-};
-
-const leagueFor = (me) => {
-  const rows = [me, ...me.friends.map((code) => byCode(code)).filter(Boolean)];
-  return rows
+const leagueRows = (me, people) =>
+  people
     .map((u) => ({
       name: u.name,
       code: u.code,
@@ -249,13 +220,15 @@ const leagueFor = (me) => {
       weekPoints: weekTotal(u, 'points'),
       todayPoints: dayTotal(u, 'points'),
       streak: u.progress?.streakCurrent ?? 0,
-      you: u.code === me.code,
+      you: u.id === me.id,
     }))
     .sort(
       (a, b) =>
         b.weekPoints - a.weekPoints || b.weekBrachos - a.weekBrachos || b.totalBrachos - a.totalBrachos,
     );
-};
+
+const leagueFor = (me) => leagueRows(me, [me, ...store.friendsOf(me.id)]);
+
 const weekTotal = (u, field = 'brachos') => {
   const hist = u.progress?.history ?? [];
   const cutoff = Date.now() - 7 * 86_400_000;
@@ -279,23 +252,8 @@ const FOOD_KEYS = JSON.parse(readFileSync(join(import.meta.dirname, 'foods-keys.
 // its entry FROM THE THREE APPROVED SITES ONLY (web_search hard-limited via
 // allowed_domains — the halachic rule still never comes from the model's own
 // head) and persists it here. Entries carry the citing URL.
-const LEARNED_FILE = join(DATA_DIR, 'learned-foods.json');
-const LEARNED_MAX = 500; // hard cap — the enum/system-prompt grows with every entry
-let learnedFoods = [];
-try {
-  if (existsSync(LEARNED_FILE)) learnedFoods = JSON.parse(readFileSync(LEARNED_FILE, 'utf8'));
-} catch (err) {
-  // A write cut off mid-deploy must never crash-loop the whole API.
-  console.error(`learned-foods.json unreadable (${err.message}) — starting empty`);
-  learnedFoods = [];
-}
-const saveLearned = () => {
-  // atomic: tmp + rename so a SIGTERM mid-write can't truncate the file
-  const tmp = LEARNED_FILE + '.tmp';
-  writeFileSync(tmp, JSON.stringify(learnedFoods, null, 1));
-  renameSync(tmp, LEARNED_FILE);
-};
-const allFoodKeys = () => [...FOOD_KEYS, ...learnedFoods.map((e) => e.key)];
+const LEARNED_MAX = 500; // hard cap — the enum/system-prompt grows per entry
+const allFoodKeys = () => [...FOOD_KEYS, ...store.learnedKeys()];
 
 const BRACHA_ENUM = ['hamotzi', 'mezonos', 'hagafen', 'haetz', 'haadama', 'shehakol'];
 const ACHRONA_ENUM = ['birkat_hamazon', 'al_hamichya', 'al_hagefen', 'al_haetz', 'borei_nefashos'];
@@ -404,9 +362,8 @@ function researchUnmatched(unmatched, apiKey, budgetMs = 12_000) {
   const tasks = unmatched.slice(0, 3).map((desc) =>
     researchFood(desc, apiKey)
       .then((entry) => {
-        if (entry && learnedFoods.length < LEARNED_MAX && !allFoodKeys().includes(entry.key)) {
-          learnedFoods.push(entry);
-          saveLearned();
+        if (entry && store.learnedCount() < LEARNED_MAX && !allFoodKeys().includes(entry.key)) {
+          store.addLearned(entry);
           console.log(`learned: ${entry.key} -> ${entry.brachaRishona}/${entry.brachaAchrona} (${entry.sourceUrl})`);
           finished.push({ desc, entry });
         } else if (!entry) {
@@ -519,9 +476,9 @@ setInterval(async () => {
   // mealtime minute, sequential awaits would serialize hundreds of pushes
   // (and one hung endpoint would stall everyone after it).
   const batch = [];
-  for (const [token, u] of Object.entries(users)) {
+  for (const u of store.pushSubscribers()) {
+    const token = u.id;
     const p = u.push;
-    if (!p?.subscription || !p.times?.length) continue;
     const local = new Date(now - (p.tzOffsetMinutes ?? 0) * 60_000);
     const hhmm = `${String(local.getUTCHours()).padStart(2, '0')}:${String(local.getUTCMinutes()).padStart(2, '0')}`;
     if (!p.times.includes(hhmm)) continue;
@@ -531,7 +488,7 @@ setInterval(async () => {
     try {
       // League-aware nudge: if a friend leads today's points, make it a race.
       let body = `Eating soon, ${u.name}? Ten seconds for the bracha first — your streak is waiting.`;
-      if (u.friends?.length) {
+      if (store.friendsOf(u.id).length) {
         const league = leagueFor(u);
         const byToday = [...league].sort((a, b) => b.todayPoints - a.todayPoints);
         const leader = byToday[0];
@@ -547,10 +504,7 @@ setInterval(async () => {
         webpush
           .sendNotification(p.subscription, JSON.stringify({ title: 'Rimon here 🍎', body }), { timeout: 5000 })
           .catch((e) => {
-            if (e.statusCode === 404 || e.statusCode === 410) {
-              delete u.push.subscription; // expired subscription
-              save();
-            }
+            if (e.statusCode === 404 || e.statusCode === 410) store.setPush(u.id, null); // expired
           }),
       );
     } catch (e) {
@@ -576,7 +530,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { lessons, updated: existsSync(f) ? statSync(f).mtimeMs : null });
     }
 
-    if (url.pathname === '/health') return json(res, 200, { ok: true, users: Object.keys(users).length, vision: !!process.env.ANTHROPIC_API_KEY });
+    if (url.pathname === '/health') return json(res, 200, { ok: true, users: store.userCount(), vision: !!process.env.ANTHROPIC_API_KEY });
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
       if (throttled(req)) return json(res, 429, { error: 'slow_down' });
@@ -586,20 +540,15 @@ const server = createServer(async (req, res) => {
       if (email != null && String(email).trim() !== '') {
         mail = String(email).trim().toLowerCase().slice(0, 254);
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return json(res, 400, { error: 'email_invalid' });
-        if (Object.values(users).some((u) => u.email === mail)) return json(res, 409, { error: 'email_taken' });
+        if (store.emailTaken(mail)) return json(res, 409, { error: 'email_taken' });
       }
       let pass = null;
       if (password != null && String(password) !== '') {
         if (String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
         pass = hashPassword(String(password).slice(0, 200));
       }
-      const token = randomBytes(24).toString('hex');
-      let code = friendCode();
-      while (byCode(code)) code = friendCode();
-      users[token] = { name: String(name).trim().slice(0, 20), email: mail, pass, code, friends: [], progress: null, push: null, created: Date.now() };
-      invalidateIndex();
-      save();
-      return json(res, 200, { token, code, email: mail });
+      const created = store.createUser({ name: String(name).trim().slice(0, 20), email: mail, pass });
+      return json(res, 200, { token: created.token, code: created.code, email: mail });
     }
 
     // Sign in on a new device. Two key pairs are accepted:
@@ -610,20 +559,20 @@ const server = createServer(async (req, res) => {
       const { email, code, password } = await readBody(req);
       const mail = String(email || '').trim().toLowerCase();
       if (password != null && String(password) !== '') {
-        const entry = Object.entries(users).find(([, u]) => u.email === mail);
-        if (!entry) return json(res, 404, { error: 'no_match' });
-        if (!entry[1].pass) return json(res, 403, { error: 'no_password' }); // account predates passwords
-        if (!checkPassword(password, entry[1].pass)) return json(res, 404, { error: 'no_match' });
-        return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
+        const u = store.userByEmail(mail);
+        if (!u) return json(res, 404, { error: 'no_match' });
+        if (!u.pass) return json(res, 403, { error: 'no_password' }); // account predates passwords
+        if (!checkPassword(password, u.pass)) return json(res, 404, { error: 'no_match' });
+        return json(res, 200, { token: store.issueToken(u.id), code: u.code, name: u.name, email: u.email });
       }
       // Friend-code sign-in is ONLY for accounts that predate passwords. The
       // code is a PUBLISHED invite identifier (it ships in invite texts), so
       // it must never unlock an account that has a real password.
-      const c = String(code || '').trim().toUpperCase();
-      const entry = Object.entries(users).find(([, u]) => u.email === mail && u.code === c);
-      if (!entry) return json(res, 404, { error: 'no_match' });
-      if (entry[1].pass) return json(res, 403, { error: 'use_password' });
-      return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
+      const c = normalizeCode(code);
+      const u = store.userByEmail(mail);
+      if (!u || u.code !== c) return json(res, 404, { error: 'no_match' });
+      if (u.pass) return json(res, 403, { error: 'use_password' });
+      return json(res, 200, { token: store.issueToken(u.id), code: u.code, name: u.name, email: u.email });
     }
 
     // Sign in with Apple / Google: the client sends the provider's identity
@@ -642,34 +591,41 @@ const server = createServer(async (req, res) => {
       // Match by provider `sub` ONLY. Auto-linking by email would let anyone
       // who pre-registered a victim's email capture their Apple/Google
       // sign-in into an attacker-controlled account.
-      let entry = Object.entries(users).find(([, u]) => u[provider] === sub);
-      if (!entry) {
-        const token = randomBytes(24).toString('hex');
-        let code = friendCode();
-        while (byCode(code)) code = friendCode();
+      let u = store.userByProvider(provider, sub);
+      let token;
+      if (!u) {
         const displayName = String(name || (mail ? mail.split('@')[0] : 'Friend')).trim().slice(0, 20) || 'Friend';
         // never claim an email another account already holds
-        const freeMail = mail && !Object.values(users).some((u) => u.email === mail) ? mail : null;
-        users[token] = { name: displayName, email: freeMail, [provider]: sub, pass: null, code, friends: [], progress: null, push: null, created: Date.now() };
-        invalidateIndex();
-        entry = [token, users[token]];
-      } else if (mail && !entry[1].email && !Object.values(users).some((u) => u.email === mail)) {
-        entry[1].email = mail; // provider-verified email fills an empty slot
+        const freeMail = mail && !store.emailTaken(mail) ? mail : null;
+        const created = store.createUser({
+          name: displayName,
+          email: freeMail,
+          apple: provider === 'apple' ? sub : null,
+          google: provider === 'google' ? sub : null,
+        });
+        token = created.token;
+        u = store.userById(created.id);
+      } else {
+        if (mail && !u.email && !store.emailTaken(mail)) {
+          store.setEmail(u.id, mail); // provider-verified email fills an empty slot
+          u = store.userById(u.id);
+        }
+        token = store.issueToken(u.id);
       }
-      save();
-      return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email ?? null });
+      return json(res, 200, { token, code: u.code, name: u.name, email: u.email ?? null });
     }
 
     if (url.pathname === '/api/foods/learned' && req.method === 'GET') {
       // ETag: the list is identical between learnings, and every client asks
       // on every launch — 304s keep that from growing into real bandwidth.
-      const tag = `W/"${learnedFoods.length}-${learnedFoods.at(-1)?.learnedAt ?? '0'}"`;
+      const st = store.learnedStamp();
+      const tag = `W/"${st.n}-${st.m}"`;
       if (req.headers['if-none-match'] === tag) {
         res.writeHead(304, { ETag: tag });
         return res.end();
       }
       res.writeHead(200, { 'Content-Type': 'application/json', ETag: tag, 'Cache-Control': 'no-cache' });
-      return res.end(JSON.stringify({ entries: learnedFoods }));
+      return res.end(JSON.stringify({ entries: store.allLearned() }));
     }
 
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
@@ -679,10 +635,10 @@ const server = createServer(async (req, res) => {
       if (!who) return json(res, 401, { error: 'unauthorized' });
       if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return json(res, 429, { error: 'busy' });
       const today = new Date().toISOString().slice(0, 10);
-      const use = analyzeUse.get(who.token);
+      const use = analyzeUse.get(who.user.id);
       if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
         return json(res, 429, { error: 'daily_limit' });
-      analyzeUse.set(who.token, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
+      analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
       const body = await readBody(req);
       if (!body.image) return json(res, 400, { error: 'no_image' });
       analyzeInFlight++;
@@ -700,10 +656,16 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/sync' && req.method === 'POST') {
       const { progress, name } = await readBody(req);
-      if (progress) a.user.progress = { totalBrachos: progress.totalBrachos ?? 0, streakCurrent: progress.streakCurrent ?? 0, points: progress.points ?? 0, history: (progress.history ?? []).slice(-30) };
-      if (name) a.user.name = String(name).trim().slice(0, 20);
-      save();
-      return json(res, 200, { league: leagueFor(a.user), code: a.user.code, email: a.user.email ?? null });
+      if (progress)
+        store.setProgress(a.user.id, {
+          totalBrachos: progress.totalBrachos ?? 0,
+          streakCurrent: progress.streakCurrent ?? 0,
+          points: progress.points ?? 0,
+          history: (progress.history ?? []).slice(-30),
+        });
+      if (name) store.setName(a.user.id, String(name).trim().slice(0, 20));
+      const me = store.userById(a.user.id);
+      return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null });
     }
 
     // Who am I — lets a device restore its profile card from just the token.
@@ -723,17 +685,17 @@ const server = createServer(async (req, res) => {
       if (name != null) {
         const n = String(name).trim().slice(0, 20);
         if (!n) return json(res, 400, { error: 'name_required' });
-        a.user.name = n;
+        store.setName(a.user.id, n);
       }
       if (email != null) {
         const mail = String(email).trim().toLowerCase().slice(0, 254);
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return json(res, 400, { error: 'email_invalid' });
-        const taken = Object.entries(users).some(([t, u]) => u.email === mail && t !== a.token);
-        if (taken) return json(res, 409, { error: 'email_taken' });
-        a.user.email = mail;
+        const holder = store.userByEmail(mail);
+        if (holder && holder.id !== a.user.id) return json(res, 409, { error: 'email_taken' });
+        store.setEmail(a.user.id, mail);
       }
-      save();
-      return json(res, 200, { name: a.user.name, email: a.user.email ?? null, code: a.user.code });
+      const me = store.userById(a.user.id);
+      return json(res, 200, { name: me.name, email: me.email ?? null, code: me.code });
     }
 
     // Set or change the account password. Requires the current password only
@@ -742,21 +704,14 @@ const server = createServer(async (req, res) => {
       const { password, current } = await readBody(req);
       if (!password || String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
       if (a.user.pass && !checkPassword(current ?? '', a.user.pass)) return json(res, 403, { error: 'wrong_password' });
-      a.user.pass = hashPassword(String(password).slice(0, 200));
-      save();
+      store.setPassword(a.user.id, hashPassword(String(password).slice(0, 200)));
       return json(res, 200, { ok: true });
     }
 
     // Full account deletion (App Store guideline 5.1.1(v)): removes the user
     // and unlinks them from every friend list. Irreversible.
     if (url.pathname === '/api/account/delete' && req.method === 'POST') {
-      const gone = a.user.code;
-      delete users[a.token];
-      invalidateIndex();
-      for (const u of Object.values(users)) {
-        u.friends = (u.friends ?? []).filter((c) => c !== gone);
-      }
-      save();
+      store.deleteUser(a.user.id); // cascades: tokens, friendships, board rows
       return json(res, 200, { ok: true });
     }
 
@@ -766,15 +721,72 @@ const server = createServer(async (req, res) => {
       if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
       const { code } = await readBody(req);
       const raw = String(code || '').trim();
-      const other = raw.includes('@')
-        ? Object.values(users).find((u) => u.email === raw.toLowerCase())
-        : byCode(raw.toUpperCase());
+      const other = raw.includes('@') ? store.userByEmail(raw) : store.userByCode(normalizeCode(raw));
       if (!other) return json(res, 404, { error: 'code_not_found' });
-      if (other.code === a.user.code) return json(res, 400, { error: 'thats_you' });
-      if (!a.user.friends.includes(other.code)) a.user.friends.push(other.code);
-      if (!other.friends.includes(a.user.code)) other.friends.push(a.user.code); // mutual
-      save();
+      if (other.id === a.user.id) return json(res, 400, { error: 'thats_you' });
+      store.addFriend(a.user.id, other.id);
       return json(res, 200, { league: leagueFor(a.user), added: other.name });
+    }
+
+    // ------------------------------------------------------- leaderboards
+    // Any user can run several named boards at once (family, shul, chevrusa)
+    // and invite people with a short share code.
+    if (url.pathname === '/api/boards' && req.method === 'GET') {
+      const me = store.userById(a.user.id);
+      const boards = store.boardsOf(me.id).map((b) => {
+        const members = store.boardMembers(b.id);
+        return {
+          id: b.id,
+          code: b.code,
+          title: b.title,
+          owner: b.owner_id === me.id,
+          members: members.length,
+          league: standings(me, members),
+        };
+      });
+      return json(res, 200, { boards });
+    }
+
+    if (url.pathname === '/api/boards/create' && req.method === 'POST') {
+      const { title } = await readBody(req);
+      const clean = String(title || '').trim().slice(0, 40);
+      if (!clean) return json(res, 400, { error: 'title_required' });
+      if (store.boardsOf(a.user.id).filter((b) => b.owner_id === a.user.id).length >= MAX_BOARDS_PER_USER)
+        return json(res, 400, { error: 'too_many_boards' });
+      const b = store.createBoard(a.user.id, clean);
+      return json(res, 200, { id: b.id, code: b.code, title: clean });
+    }
+
+    if (url.pathname === '/api/boards/join' && req.method === 'POST') {
+      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      const { code } = await readBody(req);
+      const board = store.boardByCode(code);
+      if (!board) return json(res, 404, { error: 'board_not_found' });
+      const already = store.boardsOf(a.user.id).some((b) => b.id === board.id);
+      if (!already) {
+        if (store.boardsOf(a.user.id).length >= MAX_BOARDS_PER_USER)
+          return json(res, 400, { error: 'too_many_boards' });
+        if (store.boardMemberCount(board.id) >= MAX_BOARD_MEMBERS)
+          return json(res, 400, { error: 'board_full' });
+      }
+      store.joinBoard(board.id, a.user.id);
+      const me = store.userById(a.user.id);
+      return json(res, 200, {
+        id: board.id,
+        code: board.code,
+        title: board.title,
+        league: standings(me, store.boardMembers(board.id)),
+      });
+    }
+
+    if (url.pathname === '/api/boards/leave' && req.method === 'POST') {
+      const { id } = await readBody(req);
+      const board = store.boardById(String(id || ''));
+      if (!board) return json(res, 404, { error: 'board_not_found' });
+      // the owner leaving deletes the board rather than orphaning it
+      if (board.owner_id === a.user.id) store.deleteBoard(board.id);
+      else store.leaveBoard(board.id, a.user.id);
+      return json(res, 200, { ok: true });
     }
 
     if (url.pathname === '/api/push/key') return json(res, 200, { key: vapid.publicKey });
@@ -791,8 +803,10 @@ const server = createServer(async (req, res) => {
           return json(res, 400, { error: 'bad_endpoint' });
         }
       }
-      a.user.push = subscription ? { subscription, times: (times ?? []).slice(0, 6), tzOffsetMinutes: tzOffsetMinutes ?? 0 } : null;
-      save();
+      store.setPush(
+        a.user.id,
+        subscription ? { subscription, times: (times ?? []).slice(0, 6), tzOffsetMinutes: tzOffsetMinutes ?? 0 } : null,
+      );
       return json(res, 200, { ok: true, enabled: !!subscription });
     }
 

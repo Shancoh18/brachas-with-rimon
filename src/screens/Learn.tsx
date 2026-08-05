@@ -73,6 +73,7 @@ export function Learn() {
 
   const fresh = useMemo(() => dailyPick(library, 3), [library]);
   const lesson = library.find((l) => l.id === openId);
+  const readCount = library.filter((l) => progress.lessonsRead.includes(l.id)).length;
 
   const starred = library.filter((l) => starredLessons.includes(l.id));
   const todays = library.filter((l) => fresh.has(l.id) && !starredLessons.includes(l.id));
@@ -81,7 +82,21 @@ export function Learn() {
   const Card = ({ l, idx, badge }: { l: Lesson; idx: number; badge?: string }) => {
     const read = progress.lessonsRead.includes(l.id);
     return (
-      <button key={l.id} onClick={() => setOpenId(l.id)} className="w-full text-left">
+      // role=button div (not <button>): the star control nests inside, and
+      // button-in-button is invalid HTML — React flags it as a hydration error
+      <div
+        key={l.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpenId(l.id)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setOpenId(l.id);
+          }
+        }}
+        className="w-full cursor-pointer text-left"
+      >
         <Bezel className={`rise-in rise-in-${Math.min(idx + 1, 4)}`} innerClassName="px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -109,7 +124,7 @@ export function Learn() {
             </div>
           </div>
         </Bezel>
-      </button>
+      </div>
     );
   };
 
@@ -194,6 +209,19 @@ export function Learn() {
             ))}
             <p className="border-t border-espresso/[0.08] pt-4 text-[11.5px] italic leading-relaxed text-mocha">
               {lesson.source}
+              {lesson.sourceUrl && (
+                <>
+                  {' '}
+                  <a
+                    href={lesson.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium not-italic underline decoration-gold/40 underline-offset-2 hover:text-espresso"
+                  >
+                    Read the full article →
+                  </a>
+                </>
+              )}
             </p>
           </div>
           <div className="flex justify-center py-8">
@@ -221,7 +249,7 @@ export function Learn() {
             <Eyebrow>The why behind the words</Eyebrow>
             <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Learn</h2>
             <p className="text-[13px] leading-relaxed text-espresso-soft">
-              Fresh study every day — {progress.lessonsRead.length} of {library.length} read.
+              Fresh study every day — {readCount} of {library.length} read.
             </p>
           </div>
           <Rimon pose="teaching" size={88} />

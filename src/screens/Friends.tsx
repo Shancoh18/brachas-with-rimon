@@ -10,6 +10,7 @@ import { streakAlive } from '../lib/progress';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
+import { Boards } from '../components/Boards';
 
 export function Friends() {
   const { progress, displayName, setDisplayName, serverToken, friendCode, setServerAccount, clearServerAccount, setUserEmail, setTab } =
@@ -304,6 +305,9 @@ export function Friends() {
             Three who eat together form a zimmun — gratitude was always designed to be social.
           </p>
         </div>
+
+        {/* named leaderboards — create/join by code */}
+        <Boards />
       </div>
     </ScreenShell>
   );

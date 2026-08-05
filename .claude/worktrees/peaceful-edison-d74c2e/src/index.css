@@ -1,0 +1,175 @@
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------ theme */
+@theme {
+  --color-cream: #faf7e9;
+  --color-cream-deep: #f2eddc;
+  --color-espresso: #2b211a;
+  --color-espresso-soft: #57493e;
+  --color-mocha: #8a7a6d;
+  --color-gold: #a87e2f;
+  --color-gold-soft: #c9a45c;
+  --color-rimon: #a13327;
+  --color-rimon-deep: #7c2118;
+  --color-sage: #7d8b74;
+  --color-hairline: rgba(43, 33, 26, 0.08);
+
+  --font-display: 'Frank Ruhl Libre', 'Times New Roman', serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-hebrew: 'Frank Ruhl Libre', 'David Libre', serif;
+
+  --ease-lux: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* ------------------------------------------------------------- base layer */
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-espresso);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* film grain — fixed, pointer-events-none, per the performance guardrails */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0.028;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Hebrew liturgy blocks — generous leading for nikud */
+.hebrew {
+  font-family: var(--font-hebrew);
+  direction: rtl;
+  line-height: 1.9;
+  letter-spacing: 0.01em;
+  font-feature-settings: 'liga' 1;
+}
+
+/* entry animation used across screens (transform+opacity only) */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.8s var(--ease-lux) both;
+}
+.rise-in-1 { animation-delay: 0.06s; }
+.rise-in-2 { animation-delay: 0.14s; }
+.rise-in-3 { animation-delay: 0.22s; }
+.rise-in-4 { animation-delay: 0.3s; }
+
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.float-soft {
+  animation: float-soft 3.6s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+.pulse-ring::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid var(--color-gold);
+  animation: pulse-ring 2.2s var(--ease-lux) infinite;
+}
+
+/* scrollbar quieting for the editorial look */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(43, 33, 26, 0.15) transparent;
+}
+
+/* ---------------------------------------------------------- Rimon life */
+/* seamless blend: exact-cream assets + a wide feather, no visible disc */
+.rimon-blend {
+  border-radius: 9999px;
+  -webkit-mask-image: radial-gradient(circle, black 52%, transparent 76%);
+  mask-image: radial-gradient(circle, black 52%, transparent 76%);
+}
+
+@keyframes rimon-enter {
+  0% { opacity: 0; transform: translateY(18px) scale(0.82); filter: blur(5px); }
+  60% { opacity: 1; filter: blur(0); }
+  80% { transform: translateY(-3px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+}
+.rimon-enter { animation: rimon-enter 0.7s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* tap reaction — squash and stretch, like pressing a clay toy */
+@keyframes rimon-boop {
+  0% { transform: scale(1, 1); }
+  30% { transform: scale(1.14, 0.84) translateY(5px); }
+  55% { transform: scale(0.92, 1.1) translateY(-7px); }
+  75% { transform: scale(1.05, 0.96) translateY(1px); }
+  100% { transform: scale(1, 1) translateY(0); }
+}
+.rimon-boop { animation: rimon-boop 0.55s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+@keyframes bubble-pop {
+  0% { opacity: 0; transform: translateY(8px) scale(0.9); }
+  70% { transform: translateY(-2px) scale(1.02); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bubble-pop { animation: bubble-pop 0.45s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* typing dots for the identifying state */
+@keyframes dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+.typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: dot-bounce 1.2s ease-in-out infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* ambient self-wiggle — Rimon is alive even when idle */
+@keyframes rimon-wiggle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-2.5deg) scale(1.02, 0.98); }
+  55% { transform: rotate(2deg) scale(0.985, 1.015); }
+  80% { transform: rotate(-1deg) scale(1.01, 0.99); }
+}
+.rimon-wiggle { animation: rimon-wiggle 0.7s cubic-bezier(0.32, 0.72, 0, 1) both; }
+
+/* wide cinematic banner crop — soft fade on all edges into the canvas */
+.rimon-wide-blend {
+  border-radius: 2rem;
+  -webkit-mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);
+  mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);
+}
+
+/* stories-style progress fill (duration set inline per slide) */
+@keyframes story-fill { from { width: 0%; } to { width: 100%; } }
+.story-fill { animation-name: story-fill; animation-timing-function: linear; animation-fill-mode: forwards; }
+
+/* ------------------------------------------------ reduced motion (a11y) */
+@media (prefers-reduced-motion: reduce) {
+  .rise-in, .rimon-enter, .bubble-pop, .float-soft, .rimon-boop, .rimon-wiggle, .typing-dot, .story-fill { animation: none !important; }
+  .pulse-ring::before { animation: none !important; display: none; }
+  * { transition-duration: 0.01ms !important; }
+}
