@@ -113,18 +113,18 @@ export function Welcome() {
           >
             Forgot to take a photo? Add it manually!
           </PillButton>
-          <PillButton icon="📖" onClick={() => setScreen('reference')}>
-            Quick blessing guide
-          </PillButton>
-          <PillButton icon="🍞" onClick={() => setScreen('benching')}>
-            Birkat Hamazon
-          </PillButton>
           <button
             onClick={() => runAnalysis()}
             className="text-[12px] font-medium text-mocha underline-offset-4 transition-colors hover:text-espresso hover:underline"
           >
             or try a demo meal
           </button>
+          <PillButton icon="📖" onClick={() => setScreen('reference')}>
+            Quick blessing guide
+          </PillButton>
+          <PillButton icon="🍞" onClick={() => setScreen('benching')}>
+            Birkat Hamazon
+          </PillButton>
           <input
             ref={fileRef}
             type="file"
