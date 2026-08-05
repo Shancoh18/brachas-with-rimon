@@ -24,9 +24,47 @@ const USERS_FILE = join(DATA_DIR, 'users.json');
 const VAPID_FILE = join(DATA_DIR, 'vapid.json');
 
 // ------------------------------------------------------------------ storage
-/** token -> user record */
-let users = existsSync(USERS_FILE) ? JSON.parse(readFileSync(USERS_FILE, 'utf8')) : {};
-const save = () => writeFileSync(USERS_FILE, JSON.stringify(users));
+/** token -> user record. NULL-PROTOTYPE: a plain object would let lookups like
+ *  users['__proto__'] resolve to Object.prototype and authenticate a caller who
+ *  holds no token at all. */
+let users = Object.create(null);
+try {
+  if (existsSync(USERS_FILE)) Object.assign(users, JSON.parse(readFileSync(USERS_FILE, 'utf8')));
+} catch (err) {
+  // A truncated write must never crash-loop the API and lock everyone out.
+  // Keep the damaged file for recovery rather than overwriting it blindly.
+  console.error(`users.json unreadable (${err.message}) — preserving as .corrupt`);
+  try { renameSync(USERS_FILE, USERS_FILE + '.corrupt'); } catch {}
+  users = Object.create(null);
+}
+/** Atomic: tmp + rename, so SIGTERM mid-write can't truncate every account. */
+const writeUsers = () => {
+  const tmp = USERS_FILE + '.tmp';
+  writeFileSync(tmp, JSON.stringify(users));
+  renameSync(tmp, USERS_FILE);
+};
+// Coalesced: /api/sync fires on every boot/meal/tab-open, and serializing the
+// whole map per request is O(all users) work on the single event loop.
+let saveTimer = null;
+const save = () => {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    try { writeUsers(); } catch (e) { console.error(`save failed: ${e.message}`); }
+  }, 1500);
+};
+const flushUsers = () => {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  try { writeUsers(); } catch (e) { console.error(`flush failed: ${e.message}`); }
+};
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => { flushUsers(); process.exit(0); });
+}
+process.on('uncaughtException', (e) => {
+  console.error(`uncaught: ${e.stack || e.message}`);
+  flushUsers();
+  process.exit(1);
+});
 
 // ------------------------------------------------------------------- VAPID
 let vapid;
@@ -83,8 +121,37 @@ const readBody = (req) =>
   });
 const auth = (req) => {
   const t = (req.headers.authorization || '').replace(/^Bearer /, '');
-  return users[t] ? { token: t, user: users[t] } : null;
+  // own-property only + shape check: never let a prototype key authenticate
+  if (!/^[0-9a-f]{48}$/.test(t)) return null;
+  const rec = Object.prototype.hasOwnProperty.call(users, t) ? users[t] : null;
+  return rec ? { token: t, user: rec } : null;
 };
+
+// ------------------------------------------------- abuse limits (in-memory)
+// Vision spend: per-account daily cap + global concurrency ceiling.
+const ANALYZE_MAX_PER_DAY = 30;
+const ANALYZE_MAX_INFLIGHT = 8;
+const analyzeUse = new Map(); // token -> {day, count}
+let analyzeInFlight = 0;
+// Auth endpoints: crude per-IP throttle against credential stuffing and
+// friend-code enumeration (923k code space). Window resets every 10 min.
+const authHits = new Map(); // ip -> {t0, count}
+const throttled = (req, max = 30) => {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '?';
+  const now = Date.now();
+  const e = authHits.get(ip);
+  if (!e || now - e.t0 > 600_000) {
+    authHits.set(ip, { t0: now, count: 1 });
+    return false;
+  }
+  e.count++;
+  return e.count > max;
+};
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of authHits) if (now - v.t0 > 600_000) authHits.delete(k);
+  if (analyzeUse.size > 10_000) analyzeUse.clear(); // daily counters, bounded
+}, 300_000);
 const friendCode = () => {
   // human-friendly: RIMON-XXXX
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -97,12 +164,12 @@ const friendCode = () => {
 // scrypt with a per-user salt; stored as { salt, hash } hex pair.
 const hashPassword = (password) => {
   const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(String(password), salt, 64).toString('hex');
+  const hash = scryptSync(String(password).slice(0, 200), salt, 64).toString('hex');
   return { salt, hash };
 };
 const checkPassword = (password, pass) => {
   if (!pass?.salt || !pass?.hash) return false;
-  const candidate = scryptSync(String(password), pass.salt, 64);
+  const candidate = scryptSync(String(password).slice(0, 200), pass.salt, 64);
   const stored = Buffer.from(pass.hash, 'hex');
   return candidate.length === stored.length && timingSafeEqual(candidate, stored);
 };
@@ -436,6 +503,10 @@ async function analyze(body) {
 const firedToday = new Map(); // token -> "YYYY-MM-DD-HH:MM"
 setInterval(async () => {
   const now = Date.now();
+  // Sends are batched in parallel with a per-push timeout: at a shared
+  // mealtime minute, sequential awaits would serialize hundreds of pushes
+  // (and one hung endpoint would stall everyone after it).
+  const batch = [];
   for (const [token, u] of Object.entries(users)) {
     const p = u.push;
     if (!p?.subscription || !p.times?.length) continue;
@@ -460,17 +531,21 @@ setInterval(async () => {
           body = `${leader.name} is in the lead today with ${leader.todayPoints} points — complete ${challenges} challenge${challenges === 1 ? '' : 's'} to catch up! 🏆`;
         }
       }
-      await webpush.sendNotification(
-        p.subscription,
-        JSON.stringify({ title: 'Rimon here 🍎', body }),
+      batch.push(
+        webpush
+          .sendNotification(p.subscription, JSON.stringify({ title: 'Rimon here 🍎', body }), { timeout: 5000 })
+          .catch((e) => {
+            if (e.statusCode === 404 || e.statusCode === 410) {
+              delete u.push.subscription; // expired subscription
+              save();
+            }
+          }),
       );
     } catch (e) {
-      if (e.statusCode === 404 || e.statusCode === 410) {
-        delete u.push.subscription; // expired subscription
-        save();
-      }
+      console.error(`push prep failed: ${e.message}`);
     }
   }
+  if (batch.length) await Promise.allSettled(batch);
 }, 30_000);
 
 // -------------------------------------------------------------------- server
@@ -492,6 +567,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/health') return json(res, 200, { ok: true, users: Object.keys(users).length, vision: !!process.env.ANTHROPIC_API_KEY });
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
+      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
       const { name, email, password } = await readBody(req);
       if (!name || String(name).trim().length < 1) return json(res, 400, { error: 'name_required' });
       let mail = null;
@@ -517,6 +593,7 @@ const server = createServer(async (req, res) => {
     //   email + password       (accounts that set one)
     //   email + friend code    (legacy no-password accounts — still valid)
     if (url.pathname === '/api/signin' && req.method === 'POST') {
+      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
       const { email, code, password } = await readBody(req);
       const mail = String(email || '').trim().toLowerCase();
       if (password != null && String(password) !== '') {
@@ -526,9 +603,13 @@ const server = createServer(async (req, res) => {
         if (!checkPassword(password, entry[1].pass)) return json(res, 404, { error: 'no_match' });
         return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
       }
+      // Friend-code sign-in is ONLY for accounts that predate passwords. The
+      // code is a PUBLISHED invite identifier (it ships in invite texts), so
+      // it must never unlock an account that has a real password.
       const c = String(code || '').trim().toUpperCase();
       const entry = Object.entries(users).find(([, u]) => u.email === mail && u.code === c);
       if (!entry) return json(res, 404, { error: 'no_match' });
+      if (entry[1].pass) return json(res, 403, { error: 'use_password' });
       return json(res, 200, { token: entry[0], code: entry[1].code, name: entry[1].name, email: entry[1].email });
     }
 
@@ -536,6 +617,7 @@ const server = createServer(async (req, res) => {
     // token; we verify signature + iss/aud/exp against the provider JWKS.
     // Links by provider sub first, then by verified email; creates otherwise.
     if (url.pathname === '/api/oauth' && req.method === 'POST') {
+      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
       const { provider, idToken, name } = await readBody(req);
       if (provider !== 'apple' && provider !== 'google') return json(res, 400, { error: 'bad_provider' });
       if (provider === 'google' && !GOOGLE_AUDS.length) return json(res, 501, { error: 'google_not_configured' });
@@ -544,17 +626,18 @@ const server = createServer(async (req, res) => {
       const sub = String(payload.sub);
       const mail = payload.email ? String(payload.email).toLowerCase() : null;
 
+      // Match by provider `sub` ONLY. Auto-linking by email would let anyone
+      // who pre-registered a victim's email capture their Apple/Google
+      // sign-in into an attacker-controlled account.
       let entry = Object.entries(users).find(([, u]) => u[provider] === sub);
-      if (!entry && mail) {
-        entry = Object.entries(users).find(([, u]) => u.email === mail);
-        if (entry) entry[1][provider] = sub; // link provider to the existing account
-      }
       if (!entry) {
         const token = randomBytes(24).toString('hex');
         let code = friendCode();
         while (Object.values(users).some((u) => u.code === code)) code = friendCode();
         const displayName = String(name || (mail ? mail.split('@')[0] : 'Friend')).trim().slice(0, 20) || 'Friend';
-        users[token] = { name: displayName, email: mail, [provider]: sub, pass: null, code, friends: [], progress: null, push: null, created: Date.now() };
+        // never claim an email another account already holds
+        const freeMail = mail && !Object.values(users).some((u) => u.email === mail) ? mail : null;
+        users[token] = { name: displayName, email: freeMail, [provider]: sub, pass: null, code, friends: [], progress: null, push: null, created: Date.now() };
         entry = [token, users[token]];
       } else if (mail && !entry[1].email && !Object.values(users).some((u) => u.email === mail)) {
         entry[1].email = mail; // provider-verified email fills an empty slot
@@ -567,10 +650,25 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { entries: learnedFoods });
 
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
+      // Vision costs real money per call: require a token, cap per-account
+      // daily use, and cap global concurrency so one client can't OOM the box.
+      const who = auth(req);
+      if (!who) return json(res, 401, { error: 'unauthorized' });
+      if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return json(res, 429, { error: 'busy' });
+      const today = new Date().toISOString().slice(0, 10);
+      const use = analyzeUse.get(who.token);
+      if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
+        return json(res, 429, { error: 'daily_limit' });
+      analyzeUse.set(who.token, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
       const body = await readBody(req);
       if (!body.image) return json(res, 400, { error: 'no_image' });
-      const out = await analyze(body);
-      return json(res, out.code, out.body);
+      analyzeInFlight++;
+      try {
+        const out = await analyze(body);
+        return json(res, out.code, out.body);
+      } finally {
+        analyzeInFlight--;
+      }
     }
 
     // ------- authed routes
@@ -641,6 +739,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/league') return json(res, 200, { league: leagueFor(a.user), code: a.user.code });
 
     if (url.pathname === '/api/friends/add' && req.method === 'POST') {
+      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
       const { code } = await readBody(req);
       const raw = String(code || '').trim();
       const other = raw.includes('@')
@@ -658,6 +757,16 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/push/subscribe' && req.method === 'POST') {
       const { subscription, times, tzOffsetMinutes } = await readBody(req);
+      // never store an arbitrary URL the scheduler would then POST to forever
+      if (subscription) {
+        try {
+          const u = new URL(subscription.endpoint);
+          const okHost = /(^|\.)(googleapis\.com|push\.apple\.com|windows\.com|mozilla\.com|mozaws\.net)$/.test(u.hostname);
+          if (u.protocol !== 'https:' || !okHost) return json(res, 400, { error: 'bad_endpoint' });
+        } catch {
+          return json(res, 400, { error: 'bad_endpoint' });
+        }
+      }
       a.user.push = subscription ? { subscription, times: (times ?? []).slice(0, 6), tzOffsetMinutes: tzOffsetMinutes ?? 0 } : null;
       save();
       return json(res, 200, { ok: true, enabled: !!subscription });

@@ -45,7 +45,10 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* film grain — fixed, pointer-events-none, per the performance guardrails */
+/* film grain — fixed, pointer-events-none, per the performance guardrails.
+   translateZ(0) promotes it to its own compositor layer: without it, WKWebView
+   repaints the full-screen fixed overlay on EVERY scroll frame (visible
+   jitter/flashing on iOS). */
 .grain::after {
   content: '';
   position: fixed;
@@ -53,6 +56,8 @@ body {
   z-index: 40;
   pointer-events: none;
   opacity: 0.028;
+  transform: translateZ(0);
+  backface-visibility: hidden;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
@@ -65,17 +70,18 @@ body {
   font-feature-settings: 'liga' 1;
 }
 
-/* entry animation used across screens (transform+opacity only) */
+/* entry animation used across screens — transform+opacity ONLY. Never animate
+   filter here: `filter: blur(0)` as an end state is not `none` — it leaves
+   every risen element on the filter-rendering path permanently, and WKWebView
+   re-rasterizes those layers on every scroll frame (jitter/flashing). */
 @keyframes rise-in {
   from {
     opacity: 0;
     transform: translateY(28px);
-    filter: blur(6px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 .rise-in {
@@ -131,16 +137,20 @@ body {
 /* ---------------------------------------------------------- Rimon life */
 /* seamless blend: exact-cream assets + a wide feather, no visible disc */
 .rimon-blend {
+  /* own compositor layer: a CSS-masked autoplaying video repaints per scroll
+     frame in WKWebView without this (part of the scroll-jitter fix) */
+  transform: translateZ(0);
   border-radius: 9999px;
   -webkit-mask-image: radial-gradient(circle, black 52%, transparent 76%);
   mask-image: radial-gradient(circle, black 52%, transparent 76%);
 }
 
+/* transform+opacity only — see the rise-in note about filter and scroll jitter */
 @keyframes rimon-enter {
-  0% { opacity: 0; transform: translateY(18px) scale(0.82); filter: blur(5px); }
-  60% { opacity: 1; filter: blur(0); }
+  0% { opacity: 0; transform: translateY(18px) scale(0.82); }
+  60% { opacity: 1; }
   80% { transform: translateY(-3px) scale(1.03); }
-  100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .rimon-enter { animation: rimon-enter 0.7s cubic-bezier(0.32, 0.72, 0, 1) both; }
 
@@ -181,6 +191,7 @@ body {
 
 /* wide cinematic banner crop — soft fade on all edges into the canvas */
 .rimon-wide-blend {
+  transform: translateZ(0);
   border-radius: 2rem;
   -webkit-mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);
   mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);

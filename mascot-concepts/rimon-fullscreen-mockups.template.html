@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Full-screen Rimon — concept mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream: #faf7e9;
+    --cream-img: #f8f4e3;      /* the cream the renders were baked on */
+    --cream-deep: #f2eddc;
+    --espresso: #2b211a;
+    --espresso-soft: #57493e;
+    --mocha: #8a7a6d;
+    --gold: #a87e2f;
+    --gold-soft: #c9a45c;
+    --rimon: #a13327;
+    --rimon-deep: #7c2118;
+    --sage: #7d8b74;
+    --hairline: rgba(43, 33, 26, 0.08);
+    --ease-lux: cubic-bezier(0.32, 0.72, 0, 1);
+    --serif: 'Frank Ruhl Libre', Georgia, 'Times New Roman', serif;
+    --sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --cycle: 6.5s;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: var(--sans);
+    background: radial-gradient(120% 90% at 50% 0%, #40312a 0%, #2b211a 55%, #201811 100%);
+    color: var(--cream);
+    min-height: 100vh;
+    padding: 56px 28px 72px;
+  }
+  .hero { text-align: center; margin-bottom: 52px; }
+  .hero .eyebrow {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.28em;
+    color: var(--gold-soft); text-transform: uppercase; margin-bottom: 14px;
+  }
+  .hero h1 { font-family: var(--serif); font-weight: 500; font-size: 42px; letter-spacing: -0.01em; }
+  .hero p { color: #b9a893; font-size: 14px; margin-top: 10px; }
+
+  .row { display: flex; flex-wrap: wrap; gap: 46px; justify-content: center; align-items: flex-start; }
+  .unit { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+  /* ------------------------------------------------ phone chrome */
+  .phone {
+    width: 322px; height: 697px;
+    background: #17120e;
+    border-radius: 52px;
+    padding: 11px;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.35), inset 0 0 0 1.5px #3c322a;
+    flex: none;
+  }
+  .screen {
+    position: relative; width: 100%; height: 100%;
+    border-radius: 42px; overflow: hidden;
+    background: var(--cream-img);
+    color: var(--espresso);
+  }
+  .island {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 88px; height: 25px; border-radius: 14px; background: #17120e; z-index: 30;
+  }
+  .statusbar {
+    position: absolute; top: 15px; left: 0; right: 0; z-index: 29;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 26px; height: 20px;
+    font-size: 12.5px; font-weight: 600; color: var(--espresso);
+  }
+  .statusbar svg { display: block; opacity: 0.85; }
+  .homebar {
+    position: absolute; bottom: 7px; left: 50%; transform: translateX(-50%);
+    width: 110px; height: 4px; border-radius: 2px; background: rgba(43,33,26,0.35); z-index: 30;
+  }
+  .grain::after {
+    content: ''; position: absolute; inset: 0; z-index: 24; pointer-events: none; opacity: 0.028;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .caption { text-align: center; max-width: 322px; }
+  .caption .num {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.22em;
+    color: var(--gold-soft); border: 1px solid rgba(201,164,92,0.4);
+    border-radius: 99px; padding: 4px 12px; margin-bottom: 8px; text-transform: uppercase;
+  }
+  .caption .cap-t { font-family: var(--serif); font-size: 18px; color: var(--cream); }
+  .caption .cap-s { font-size: 12px; color: #b9a893; margin-top: 4px; line-height: 1.5; }
+
+  /* ------------------------------------------------ shared screen bits */
+  .eyebrow-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--gold);
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--espresso); color: var(--cream);
+    font-size: 14px; font-weight: 600;
+    border-radius: 99px; padding: 15px 26px;
+    box-shadow: 0 14px 34px rgba(43,33,26,0.28);
+  }
+  .pill .tail {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 99px; background: var(--gold);
+    color: var(--espresso); font-size: 13px; margin-right: -12px;
+  }
+  .pill.gold { background: var(--gold); color: #fffdf4; }
+  .pill.gold .tail { background: rgba(255,253,244,0.92); color: var(--gold); }
+  .pill.ghost {
+    background: transparent; color: var(--espresso-soft);
+    border: 1px solid rgba(43,33,26,0.18); box-shadow: none;
+  }
+  .bezel {
+    background: rgba(255,255,255,0.6); border: 1px solid var(--hairline);
+    border-radius: 26px; padding: 7px;
+    box-shadow: 0 18px 44px rgba(43,33,26,0.09);
+  }
+  .bezel-inner { border: 1px solid var(--hairline); border-radius: 20px; }
+
+  /* ------------------------------------------------ phone 1: challenge complete */
+  .p1 .jolt { position: absolute; inset: 0; animation: jolt var(--cycle) var(--ease-lux) infinite; }
+  .p1 .fly-img, .p1 .land-img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  }
+  .p1 .fly-img { animation: flyCycle var(--cycle) var(--ease-lux) infinite; }
+  .p1 .land-img { transform-origin: 50% 92%; animation: landCycle var(--cycle) var(--ease-lux) infinite; }
+  @keyframes flyCycle {
+    0%, 5%     { opacity: 1; transform: translateY(112%) rotate(-6deg) scale(1.02); }
+    24%        { opacity: 1; transform: translateY(-3.5%) rotate(1.6deg); }
+    28%        { opacity: 1; transform: translateY(0%) rotate(0deg); }
+    29.5%,100% { opacity: 0; transform: translateY(0%); }
+  }
+  @keyframes landCycle {
+    0%, 28.5% { opacity: 0; transform: scale(1.05) translateY(10px); }
+    30%       { opacity: 1; transform: scaleX(1.06) scaleY(0.92) translateY(12px); }
+    33.5%     { opacity: 1; transform: scaleX(0.985) scaleY(1.012) translateY(-3px); }
+    37%       { opacity: 1; transform: scale(1) translateY(0); }
+    91%       { opacity: 1; transform: scale(1); }
+    97%, 100% { opacity: 0; transform: scale(1); }
+  }
+  @keyframes jolt {
+    0%, 29%   { transform: translateY(0); }
+    31%       { transform: translateY(5px); }
+    33%       { transform: translateY(-2px); }
+    35%, 100% { transform: translateY(0); }
+  }
+  .p1 .txt {
+    position: absolute; top: 78px; left: 0; right: 0; z-index: 20;
+    text-align: center; padding: 0 30px;
+    animation: textCycle var(--cycle) var(--ease-lux) infinite;
+  }
+  .p1 .txt h2 { font-family: var(--serif); font-weight: 500; font-size: 33px; margin-top: 12px; letter-spacing: -0.01em; }
+  .p1 .txt p  { font-size: 13px; color: var(--espresso-soft); margin-top: 9px; line-height: 1.55; }
+  @keyframes textCycle {
+    0%, 34%   { opacity: 0; transform: translateY(18px); }
+    42%       { opacity: 1; transform: translateY(0); }
+    91%       { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  .p1 .cta {
+    position: absolute; bottom: 40px; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: center;
+    animation: ctaCycle var(--cycle) var(--ease-lux) infinite;
+  }
+  @keyframes ctaCycle {
+    0%, 42%   { opacity: 0; transform: translateY(14px) scale(0.92); }
+    50%       { opacity: 1; transform: translateY(0) scale(1.03); }
+    54%       { transform: scale(1); }
+    91%       { opacity: 1; }
+    97%, 100% { opacity: 0; }
+  }
+  .p1 .confetti { position: absolute; inset: 0; z-index: 18; pointer-events: none; }
+  .p1 .confetti i {
+    position: absolute; width: 9px; height: 6px; border-radius: 2px;
+    opacity: 0; animation: confettiCycle var(--cycle) linear infinite;
+  }
+  @keyframes confettiCycle {
+    0%, 31%  { opacity: 0; transform: translateY(-36px) rotate(0deg); }
+    35%      { opacity: 1; }
+    68%      { opacity: 0; transform: translateY(110px) rotate(var(--rr, 200deg)); }
+    100%     { opacity: 0; }
+  }
+
+  /* ------------------------------------------------ phone 2: streak */
+  .p2 .flame-img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    transform-origin: 50% 80%;
+    animation: breathe 5s ease-in-out infinite;
+  }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.024); } }
+  .p2 .txt { position: absolute; top: 78px; left: 0; right: 0; z-index: 20; text-align: center; padding: 0 30px; }
+  .p2 .txt h2 { font-family: var(--serif); font-weight: 500; font-size: 31px; margin-top: 12px; }
+  .p2 .txt p  { font-size: 13px; color: var(--espresso-soft); margin-top: 9px; line-height: 1.55; }
+  .p2 .stats {
+    position: absolute; bottom: 96px; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: center; gap: 10px;
+  }
+  .p2 .chip {
+    background: rgba(255,255,255,0.62); border: 1px solid var(--hairline);
+    backdrop-filter: blur(4px);
+    border-radius: 99px; padding: 9px 18px; font-size: 12.5px; font-weight: 600; color: var(--espresso-soft);
+  }
+  .p2 .chip b { color: var(--gold); font-weight: 700; }
+  .p2 .cta { position: absolute; bottom: 34px; left: 0; right: 0; z-index: 20; display: flex; justify-content: center; }
+
+  /* ------------------------------------------------ phone 3: home hero */
+  .p3 .greet { padding: 64px 24px 8px; }
+  .p3 .greet h2 { font-family: var(--serif); font-weight: 500; font-size: 28px; margin-top: 9px; }
+  .p3 .hero-wide { position: relative; height: 148px; }
+  .p3 .hero-wide img {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: right center;
+  }
+  .p3 .lean-line {
+    position: absolute; left: 24px; top: 50%; transform: translateY(-50%);
+    max-width: 150px; font-size: 12.5px; font-style: italic;
+    color: var(--espresso-soft); line-height: 1.55; z-index: 5;
+  }
+  .p3 .body { padding: 10px 20px 0; display: flex; flex-direction: column; gap: 14px; }
+  .p3 .tip { padding: 16px 18px 15px; background: rgba(255,255,255,0.6); border: 1px solid var(--hairline); border-radius: 22px; }
+  .p3 .tip .t { font-size: 13px; color: var(--espresso-soft); line-height: 1.6; margin-top: 7px; }
+  .p3 .tip .t em { font-family: var(--serif); font-style: normal; color: var(--espresso); }
+  .p3 .cam { display: flex; justify-content: center; margin-top: 6px; }
+  .p3 .minirow { display: flex; gap: 10px; justify-content: center; }
+  .p3 .mini {
+    flex: 1; text-align: center; padding: 13px 8px 11px;
+    background: rgba(255,255,255,0.55); border: 1px solid var(--hairline); border-radius: 18px;
+  }
+  .p3 .mini .v { font-family: var(--serif); font-size: 21px; color: var(--espresso); }
+  .p3 .mini .k { font-size: 9.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--mocha); margin-top: 3px; }
+
+  /* ------------------------------------------------ phone 4: badge */
+  .p4 .txt { position: absolute; top: 76px; left: 0; right: 0; text-align: center; z-index: 20; padding: 0 30px; }
+  .p4 .txt h2 { font-family: var(--serif); font-weight: 500; font-size: 31px; margin-top: 12px; }
+  .p4 .medal-card {
+    position: absolute; top: 188px; left: 50%; transform: translateX(-50%);
+    width: 218px; z-index: 20;
+    animation: floaty 3.6s ease-in-out infinite;
+  }
+  @keyframes floaty { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-7px); } }
+  .p4 .medal-card img { display: block; width: 100%; border-radius: 20px; }
+  .p4 .badge-name { position: absolute; top: 500px; left: 0; right: 0; text-align: center; z-index: 20; padding: 0 34px; }
+  .p4 .badge-name h3 { font-family: var(--serif); font-size: 23px; font-weight: 500; }
+  .p4 .badge-name p { font-size: 12px; color: var(--mocha); line-height: 1.6; margin-top: 7px; }
+  .p4 .cta { position: absolute; bottom: 34px; left: 0; right: 0; display: flex; justify-content: center; z-index: 20; }
+
+  .foot { text-align: center; margin-top: 58px; font-size: 11.5px; color: #8a7a6d; letter-spacing: 0.04em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; }
+    .p1 .fly-img { display: none; }
+    .p1 .land-img, .p1 .txt, .p1 .cta { opacity: 1 !important; transform: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="eyebrow">Brachas with Rimon · Concept</div>
+  <h1>Full-screen Rimon.</h1>
+  <p>Duolingo-native character moments, in the app's Editorial Luxury system. Phone 01 loops the fly-in &rarr; landing &rarr; thumbs-up.</p>
+</div>
+
+<div class="row">
+
+  <!-- ================================ 01 CHALLENGE COMPLETE (animated) -->
+  <div class="unit">
+    <div class="phone"><div class="screen grain p1">
+      <div class="jolt">
+        <img class="fly-img"  src="__IMG7__"  alt="">
+        <img class="land-img" src="__IMG8__" alt="">
+      </div>
+      <div class="confetti">
+        <i style="left:14%; top:24%; background:#c9a45c; --rr:230deg;"></i>
+        <i style="left:30%; top:18%; background:#7d8b74; --rr:150deg; animation-delay:.12s"></i>
+        <i style="left:52%; top:15%; background:#a13327; --rr:320deg; animation-delay:.05s"></i>
+        <i style="left:70%; top:20%; background:#c9a45c; --rr:120deg; animation-delay:.2s"></i>
+        <i style="left:84%; top:26%; background:#7d8b74; --rr:260deg; animation-delay:.09s"></i>
+        <i style="left:42%; top:28%; background:#a87e2f; --rr:190deg; animation-delay:.16s"></i>
+      </div>
+      <div class="txt">
+        <div class="eyebrow-tag">Challenge complete</div>
+        <h2>Kol hakavod!</h2>
+        <p>Century — 100 brachos with Rimon.<br>The Gemara's daily hundred, reached.</p>
+      </div>
+      <div class="cta"><span class="pill gold">Continue <span class="tail">&rarr;</span></span></div>
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><svg width="58" height="12" viewBox="0 0 58 12" fill="currentColor"><rect x="0" y="6" width="3" height="5" rx="1"/><rect x="5" y="4" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1"/><path d="M28 4 a7 7 0 0 1 9 0 l-1.6 1.8 a4.6 4.6 0 0 0-5.8 0z"/><circle cx="32.5" cy="8.6" r="1.8"/><rect x="42" y="1.5" width="13" height="9" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="43.6" y="3.1" width="8" height="5.8" rx="1.4"/><rect x="55.8" y="4.4" width="1.8" height="3.2" rx="0.9"/></svg></div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="caption">
+      <div class="num">01 · Animated</div>
+      <div class="cap-t">Challenge complete</div>
+      <div class="cap-s">Rimon flies in from the bottom, lands with squash &amp; a jolt, thumbs-up. Pose-swap at touchdown — exactly how Duolingo cuts between poses.</div>
+    </div>
+  </div>
+
+  <!-- ================================ 02 STREAK -->
+  <div class="unit">
+    <div class="phone"><div class="screen grain p2">
+      <img class="flame-img" src="__IMG11__" alt="">
+      <div class="txt">
+        <div class="eyebrow-tag">Streak · Day 7</div>
+        <h2>The flame is lit.</h2>
+        <p>Seven days of noticing —<br>one bracha at a time.</p>
+      </div>
+      <div class="stats">
+        <span class="chip"><b>7</b> days</span>
+        <span class="chip"><b>42</b> brachos</span>
+        <span class="chip"><b>4</b> badges</span>
+      </div>
+      <div class="cta"><span class="pill ghost">Keep it going</span></div>
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><svg width="58" height="12" viewBox="0 0 58 12" fill="currentColor"><rect x="0" y="6" width="3" height="5" rx="1"/><rect x="5" y="4" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1"/><path d="M28 4 a7 7 0 0 1 9 0 l-1.6 1.8 a4.6 4.6 0 0 0-5.8 0z"/><circle cx="32.5" cy="8.6" r="1.8"/><rect x="42" y="1.5" width="13" height="9" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="43.6" y="3.1" width="8" height="5.8" rx="1.4"/><rect x="55.8" y="4.4" width="1.8" height="3.2" rx="0.9"/></svg></div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="caption">
+      <div class="num">02 · Full-bleed 9:16</div>
+      <div class="cap-t">Streak milestone</div>
+      <div class="cap-s">Rimon cradles the streak flame — the art breathes gently. Headroom in the render leaves the top third clean for type.</div>
+    </div>
+  </div>
+
+  <!-- ================================ 03 HOME HERO -->
+  <div class="unit">
+    <div class="phone"><div class="screen grain p3">
+      <div class="greet">
+        <div class="eyebrow-tag">Tuesday · 21 Av</div>
+        <h2>Shalom, Maya.</h2>
+      </div>
+      <div class="hero-wide">
+        <img src="__IMG9__" alt="">
+        <p class="lean-line">Rimon's ready when lunch is.</p>
+      </div>
+      <div class="body">
+        <div class="tip">
+          <div class="eyebrow-tag" style="font-size:9px;">Rimon's tip of the day</div>
+          <div class="t"><em>Olive, date, grape, fig, pomegranate</em> — when the Seven Species share a plate, that's the order.</div>
+        </div>
+        <div class="cam"><span class="pill">Photograph your meal <span class="tail">&#10003;</span></span></div>
+        <div class="minirow">
+          <div class="mini"><div class="v">7</div><div class="k">Streak</div></div>
+          <div class="mini"><div class="v">3</div><div class="k">Today</div></div>
+          <div class="mini"><div class="v">42</div><div class="k">Total</div></div>
+        </div>
+      </div>
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><svg width="58" height="12" viewBox="0 0 58 12" fill="currentColor"><rect x="0" y="6" width="3" height="5" rx="1"/><rect x="5" y="4" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1"/><path d="M28 4 a7 7 0 0 1 9 0 l-1.6 1.8 a4.6 4.6 0 0 0-5.8 0z"/><circle cx="32.5" cy="8.6" r="1.8"/><rect x="42" y="1.5" width="13" height="9" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="43.6" y="3.1" width="8" height="5.8" rx="1.4"/><rect x="55.8" y="4.4" width="1.8" height="3.2" rx="0.9"/></svg></div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="caption">
+      <div class="num">03 · Wide 21:9</div>
+      <div class="cap-t">Home, with Rimon leaning in</div>
+      <div class="cap-s">The ultra-wide render keeps its left three-quarters clean, so the greeting sits directly on the art — no card needed.</div>
+    </div>
+  </div>
+
+  <!-- ================================ 04 BADGE -->
+  <div class="unit">
+    <div class="phone"><div class="screen grain p4">
+      <div class="txt">
+        <div class="eyebrow-tag">Journey</div>
+        <h2>A new badge.</h2>
+      </div>
+      <div class="medal-card bezel"><div class="bezel-inner"><img src="__IMG10__" alt=""></div></div>
+      <div class="badge-name">
+        <h3>Century</h3>
+        <p>100 brachos with Rimon — a hundred thank-yous a day, the Gemara's measure.</p>
+      </div>
+      <div class="cta"><span class="pill ghost">Back to Journey</span></div>
+      <div class="island"></div>
+      <div class="statusbar"><span>9:41</span><svg width="58" height="12" viewBox="0 0 58 12" fill="currentColor"><rect x="0" y="6" width="3" height="5" rx="1"/><rect x="5" y="4" width="3" height="7" rx="1"/><rect x="10" y="2" width="3" height="9" rx="1"/><rect x="15" y="0" width="3" height="11" rx="1"/><path d="M28 4 a7 7 0 0 1 9 0 l-1.6 1.8 a4.6 4.6 0 0 0-5.8 0z"/><circle cx="32.5" cy="8.6" r="1.8"/><rect x="42" y="1.5" width="13" height="9" rx="2.6" fill="none" stroke="currentColor" stroke-width="1.1"/><rect x="43.6" y="3.1" width="8" height="5.8" rx="1.4"/><rect x="55.8" y="4.4" width="1.8" height="3.2" rx="0.9"/></svg></div>
+      <div class="homebar"></div>
+    </div></div>
+    <div class="caption">
+      <div class="num">04 · Card 3:4</div>
+      <div class="cap-t">Badge earned</div>
+      <div class="cap-s">The medal render floats in a double-bezel card — the app's signature framing — for Journey badge reveals.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="foot">
+  Assets: Higgsfield, identity-locked to the canonical Rimon reference &nbsp;·&nbsp; Palette #faf7e9 / #2b211a / #a87e2f / #a13327 &nbsp;·&nbsp; Motion: cubic-bezier(0.32, 0.72, 0, 1)
+</div>
+
+</body>
+</html>

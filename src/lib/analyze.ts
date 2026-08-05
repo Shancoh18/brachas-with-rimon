@@ -43,9 +43,15 @@ export interface AnalyzeResult {
 }
 
 export async function analyzePhoto(base64: string, mediaType: string): Promise<AnalyzeResult> {
+  // /api/analyze is authenticated (vision costs money per call) — the app is
+  // account-first, so a token always exists by the time a photo can be taken.
+  const { serverToken } = (await import('../store')).useBracha.getState();
   const res = await fetch(`${API_BASE}/api/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(serverToken ? { Authorization: `Bearer ${serverToken}` } : {}),
+    },
     body: JSON.stringify({ image: base64, media_type: mediaType }),
     // vision + inline research can legitimately take ~30s; fail crisply after 45
     signal: AbortSignal.timeout(45_000),
