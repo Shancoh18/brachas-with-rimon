@@ -114,14 +114,8 @@ export function Welcome() {
               setScreen('confirm');
             }}
           >
-            Forgot to take a photo? Add it manually!
+            Add it manually!
           </PillButton>
-          <button
-            onClick={() => runAnalysis()}
-            className="text-[12px] font-medium text-mocha underline-offset-4 transition-colors hover:text-espresso hover:underline"
-          >
-            or try a demo meal
-          </button>
           <PillButton icon="📖" onClick={() => setScreen('reference')}>
             Quick blessing guide
           </PillButton>

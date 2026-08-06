@@ -690,6 +690,37 @@ const server = createServer(async (req, res) => {
       return res.end(JSON.stringify({ entries: store.allLearned() }));
     }
 
+    // One-shot owner broadcast (release announcements). Requires the
+    // BROADCAST_KEY service variable — without it the route plays dead, and a
+    // wrong secret is indistinguishable from the route not existing.
+    if (url.pathname === '/api/admin/broadcast' && req.method === 'POST') {
+      const key = process.env.BROADCAST_KEY || '';
+      const { secret, title, body } = await readBody(req);
+      const sBuf = Buffer.from(String(secret || ''));
+      const kBuf = Buffer.from(key);
+      if (!key || sBuf.length !== kBuf.length || !timingSafeEqual(sBuf, kBuf))
+        return json(res, 404, { error: 'not_found' });
+      const cleanTitle = String(title || 'Rimon here 🍎').slice(0, 60);
+      const cleanBody = String(body || '').trim().slice(0, 180);
+      if (!cleanBody) return json(res, 400, { error: 'body_required' });
+      const subs = store.pushSubscribers().filter((u) => u.push?.subscription);
+      let sent = 0, expired = 0, failed = 0;
+      await Promise.allSettled(
+        subs.map((u) =>
+          webpush
+            .sendNotification(u.push.subscription, JSON.stringify({ title: cleanTitle, body: cleanBody }), { timeout: 5000 })
+            .then(() => sent++)
+            .catch((e) => {
+              if (e.statusCode === 404 || e.statusCode === 410) {
+                store.setPush(u.id, null); // expired
+                expired++;
+              } else failed++;
+            }),
+        ),
+      );
+      return json(res, 200, { ok: true, subscribers: subs.length, sent, expired, failed });
+    }
+
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
       // Vision costs real money per call: require a token, cap per-account
       // daily use, and cap global concurrency so one client can't OOM the box.

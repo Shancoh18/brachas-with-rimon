@@ -108,12 +108,12 @@ export function Learn() {
         <Bezel className={`rise-in rise-in-${Math.min(idx + 1, 4)}`} innerClassName="px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-[14.5px] font-semibold text-espresso">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <p className="min-w-0 text-[14.5px] font-semibold text-espresso">
                   {l.emoji} {l.title}
                 </p>
                 {badge && (
-                  <span className="rounded-full bg-rimon/10 px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-rimon">
+                  <span className="shrink-0 whitespace-nowrap rounded-full bg-rimon/10 px-2 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-rimon">
                     {badge}
                   </span>
                 )}

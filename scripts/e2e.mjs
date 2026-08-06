@@ -151,15 +151,16 @@ await sleep(1500);
 const swCount = await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length);
 check('service worker registered', swCount > 0, `${swCount} registration(s)`);
 
-// demo-button not covered by the tab bar (hit-test at its center)
-const demoCovered = await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('demo meal'));
+// the demo section is gone (owner directive) — manual add is the no-photo path
+check('demo section removed from home', !t.includes('demo meal'));
+const manualCovered = await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('Add it manually'));
   if (!b) return 'missing';
   const r = b.getBoundingClientRect();
   const el = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
   return b.contains(el) || el === b ? 'clear' : 'covered';
 });
-check('demo button tap-target clear of tab bar', demoCovered === 'clear', demoCovered);
+check('manual-add pill tap-target clear of tab bar', manualCovered === 'clear', manualCovered);
 
 // nusach switching persists
 await clickText('Ashkenaz', 600);
@@ -193,8 +194,8 @@ await clickText('← home', 1000);
 
 // --------------------------------------------------- MANUAL ADD (no photo)
 t = await text();
-check('home offers manual add + Birkat Hamazon', t.includes('forgot to take a photo') && t.includes('birkat hamazon'));
-await clickText('Forgot to take a photo', 1200);
+check('home offers manual add + Birkat Hamazon', t.includes('add it manually!') && t.includes('birkat hamazon'));
+await clickText('Add it manually', 1200);
 t = await text();
 check('manual entry opens with search ready', t.includes('what did you eat') && (await page.evaluate(() => !!document.querySelector('input[placeholder="Search the food database…"]'))));
 await page.type('input[placeholder="Search the food database…"]', 'banana');
@@ -208,35 +209,64 @@ t = await text();
 check('manual add puts the food on the plate', t.includes('banana') && (t.includes('haadama') || t.includes('ha’adama')));
 await clickText('start over', 1100);
 
-// ---------------------------------------------------------------- CONFIRM
-await clickText('demo meal', 1600);
+// ------------------------------------------- CONFIRM (via manual add — the
+// demo entry point is gone, so the meal is built the way a real user builds it)
+// picks are EXACT db labels (names[0]) — the demo's display names are gone
+const MEAL = [
+  { q: 'chocolate cake', pick: 'cake' },
+  { q: 'grape juice', pick: 'grape juice' },
+  { q: 'medjool', pick: 'date' },
+  { q: 'green apple', pick: 'apple' },
+  { q: 'baby carrot', pick: 'carrot' },
+  { q: 'grilled chicken', pick: 'chicken' },
+];
+const addFood = async ({ q, pick }) => {
+  const searchReady = await page.evaluate(() => !!document.querySelector('input[placeholder="Search the food database…"]'));
+  if (!searchReady) await clickText('+ add a food', 700);
+  await page.evaluate(() => {
+    const inp = document.querySelector('input[placeholder="Search the food database…"]');
+    if (inp) {
+      Object.getOwnPropertyDescriptor(Object.getPrototypeOf(inp), 'value').set.call(inp, '');
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+  await page.type('input[placeholder="Search the food database…"]', q);
+  await sleep(650);
+  const picked = await page.evaluate((label) => {
+    // the li button's first text node is the food label; the bracha tag span follows
+    const li = [...document.querySelectorAll('li button')].find(
+      (b) => (b.childNodes[0]?.textContent ?? '').trim().toLowerCase() === label,
+    );
+    if (li) li.click();
+    return !!li;
+  }, pick);
+  await sleep(500);
+  return picked;
+};
+await clickText('Add it manually', 1300);
+let allPicked = true;
+for (const item of MEAL) allPicked = (await addFood(item)) && allPicked;
+check('manual add builds the full 6-item meal', allPicked);
 t = await text();
-check('confirm shows all 6 demo items', ['chocolate cake', 'grape juice', 'medjool dates', 'apple slices', 'baby carrots', 'grilled chicken'].every((x) => t.includes(x)));
+check('confirm shows all 6 meal items', ['cake', 'grape juice', 'date', 'apple', 'carrot', 'chicken'].every((x) => t.includes(x)));
 check('Seven Species chip on dates', t.includes('seven species'));
 
-// remove chicken (card-scoped: walk up from each remove button)
+// remove chicken: climb from its label to the first container owning a
+// remove button — that container IS the item card
 await page.evaluate(() => {
-  for (const btn of [...document.querySelectorAll('button[title="remove"]')]) {
-    let up = btn, depth = 0;
-    while (up && depth < 8) {
-      if (String(up.className).includes('rounded-') && up.textContent.includes('Grilled chicken')) { btn.click(); return; }
-      up = up.parentElement; depth++;
-    }
-  }
+  let el = [...document.querySelectorAll('span')].find((s) => s.textContent.trim().toLowerCase() === 'chicken');
+  while (el && !el.querySelector?.('button[title="remove"]')) el = el.parentElement;
+  el?.querySelector('button[title="remove"]')?.click();
 });
 await sleep(700);
+check(
+  'remove item works',
+  await page.evaluate(() => ![...document.querySelectorAll('span')].some((s) => s.textContent.trim().toLowerCase() === 'chicken')),
+);
 t = await text();
-check('remove item works', !t.includes('grilled chicken'));
 
 // add cucumber from the database, then set state=cooked → Shehakol override
-await clickText('+ add a food', 700);
-await page.type('input[placeholder="Search the food database…"]', 'cucumber');
-await sleep(700);
-await page.evaluate(() => {
-  const li = [...document.querySelectorAll('li button')].find((b) => b.textContent.toLowerCase().includes('cucumber'));
-  li?.click();
-});
-await sleep(700);
+await addFood({ q: 'cucumber', pick: 'cucumber' });
 t = await text();
 check('add-from-database works', t.includes('cucumber'));
 const overrideOk = await page.evaluate(() => {
@@ -312,7 +342,7 @@ t = await text();
 check('combined Me’ein Shalosh (3 inserts)', t.includes('al hamichya + al hagefen + al ha’etz'));
 check('Borei Nefashos required (carrots)', t.includes('borei nefashos'));
 check('after-blessing why dropdowns present', (await page.evaluate(() => document.querySelectorAll('[data-why]').length)) >= 2);
-check('coverage note lists carrots', /borei nefashos.*carrots/s.test(t));
+check('coverage note lists the carrot', /borei nefashos.*carrot/s.test(t));
 check('streak day 1 celebrated', t.includes('day 1 of your streak') || t.includes('🔥'));
 const celebrateVideo = await page.evaluate(() => {
   const v = document.querySelector('video source');
@@ -409,6 +439,21 @@ t = await text();
 check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');
 check('league ranks by weekly points', t.includes('pts this week') && /⭐\s*\d+/.test(t));
 check('league shows weekly bracha counts', t.includes('brachos'));
+// the numbers must be REAL, not zeros: this account finished a 7-bracha meal
+const youRow = await page.evaluate(() => {
+  const chip = [...document.querySelectorAll('span')].find((s) => s.textContent.trim() === 'you');
+  let row = chip;
+  for (let i = 0; i < 6 && row; i++) {
+    row = row.parentElement;
+    if (row && /pts this week/i.test(row.innerText) && /brachos/i.test(row.innerText)) break;
+  }
+  return row ? row.innerText.replace(/\n/g, ' | ') : '';
+});
+check(
+  'my league row carries real week numbers (points + brachos > 0)',
+  /⭐\s*([1-9]\d*)/.test(youRow) && /\b[1-9]\d*[\s|]*brachos/i.test(youRow),
+  youRow,
+);
 
 // ------------------------------------------ NAMED BOARDS + GROUP CHAT (live)
 await clickText('+ New', 700);
