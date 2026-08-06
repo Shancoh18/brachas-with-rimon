@@ -26,7 +26,32 @@ interface Slide {
   title: string;
   body: string;
   demo?: 'walker' | 'foods' | 'streak';
+  /** 'eating' replaces the hero Rimon with the chewing food-cycle */
+  hero?: 'eating';
   cta: string;
+}
+
+/** Rimon happily eating his way through the food groups — the stills cycle
+ *  with a chew squash, so the blessing→bite lesson has a living picture. */
+const EATS = ['eats-apple', 'eats-bread', 'eats-grape-juice', 'eats-cake', 'eats-carrot', 'eats-treats'];
+function EatingRimon({ active, size }: { active: boolean; size: number }) {
+  const [bite, setBite] = useState(0);
+  useEffect(() => {
+    if (!active || reducedMotion()) return;
+    const id = setInterval(() => setBite((b) => (b + 1) % EATS.length), 1600);
+    return () => clearInterval(id);
+  }, [active]);
+  return (
+    <div className={active && !reducedMotion() ? 'rimon-chew' : ''} style={{ width: size, height: size }}>
+      <img
+        key={bite}
+        src={`${BASE}mascot/${EATS[bite]}.webp`}
+        alt="Rimon taking a bite"
+        draggable={false}
+        className="rimon-blend bubble-pop h-full w-full object-cover"
+      />
+    </div>
+  );
 }
 
 const SLIDES: Slide[] = [
@@ -60,10 +85,20 @@ const SLIDES: Slide[] = [
     cta: 'Next',
   },
   {
+    pose: 'idle',
+    rimonSize: 200,
+    tint: 'radial-gradient(ellipse 90% 62% at 50% 30%, rgba(161,51,39,0.12) 0%, rgba(0,0,0,0) 70%)',
+    eyebrow: 'Step three',
+    title: 'Then — take a bite!',
+    body: 'Right after each blessing, eat from that food — the blessing and the bite belong together, with nothing in between. Then on to the next one.',
+    hero: 'eating',
+    cta: 'Next',
+  },
+  {
     pose: 'celebrate',
     rimonSize: 190,
     tint: 'radial-gradient(ellipse 90% 62% at 50% 30%, rgba(168,126,47,0.14) 0%, rgba(0,0,0,0) 70%)',
-    eyebrow: 'Step three',
+    eyebrow: 'Step four',
     title: 'Make it a practice.',
     body: 'Streaks, challenges, a daily Learn library — and a league where friends see who gathers the most brachos.',
     demo: 'streak',
@@ -156,7 +191,11 @@ export function Onboarding() {
           >
             <div className="pointer-events-none absolute inset-0" style={{ background: s.tint }} />
             <div className={i === idx ? 'rise-in' : ''}>
-              <Rimon pose={s.pose} size={s.rimonSize} float={i === idx} />
+              {s.hero === 'eating' ? (
+                <EatingRimon active={i === idx} size={s.rimonSize} />
+              ) : (
+                <Rimon pose={s.pose} size={s.rimonSize} float={i === idx} />
+              )}
             </div>
 
             {s.demo === 'walker' && (

@@ -49,6 +49,13 @@ await clickText('Next', 900);
 t = await text();
 check('tutorial step 3 has walker demo', t.includes('walk the blessings') && (await page.evaluate(() => [...document.querySelectorAll('video source')].some((s) => s.src.includes('walk')))));
 await clickText('Next', 900);
+t = await text();
+check(
+  'tutorial teaches blessing → bite with eating Rimon',
+  t.includes('take a bite') &&
+    (await page.evaluate(() => [...document.querySelectorAll('img')].some((i) => i.src.includes('eats-') && i.alt.includes('bite')))),
+);
+await clickText('Next', 900);
 await clickText('Next', 900);
 t = await text();
 check('tutorial ends at account creation', t.includes('make it yours') && (await page.evaluate(() => !!document.querySelector('input[type="email"]'))));

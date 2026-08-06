@@ -30,11 +30,27 @@ export function Confirm() {
   const [adding, setAdding] = useState(manualEntry);
 
   const matches = useMemo(() => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
-    return FOODS.filter(
-      (f) => f.names.some((n) => n.includes(q)) || f.key.includes(q),
-    ).slice(0, 6);
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    // token search with relevance ranking: every word of the query must match
+    // somewhere in an alias (so "green apple", "apple green" and "appl" all
+    // land), exact and prefix hits float to the top
+    const tokens = q.split(/\s+/);
+    const scored: { f: (typeof FOODS)[number]; score: number }[] = [];
+    for (const f of FOODS) {
+      const names = f.names.map((n) => n.toLowerCase());
+      const hit = tokens.every((t) => names.some((n) => n.includes(t)) || f.key.includes(t));
+      if (!hit) continue;
+      let score = 3;
+      if (names.some((n) => n === q)) score = 0;
+      else if (names.some((n) => n.startsWith(q))) score = 1;
+      else if (names.some((n) => n.split(/[\s-]/).some((w) => tokens.some((t) => w.startsWith(t))))) score = 2;
+      scored.push({ f, score });
+    }
+    return scored
+      .sort((a, b) => a.score - b.score || a.f.names[0].length - b.f.names[0].length)
+      .map((x) => x.f)
+      .slice(0, 9);
   }, [query]);
 
   return (
@@ -156,6 +172,12 @@ export function Confirm() {
               placeholder="Search the food database…"
               className="w-full bg-transparent px-2 py-1.5 text-[14px] text-espresso outline-none placeholder:text-mocha"
             />
+            {query.trim().length >= 2 && matches.length === 0 && (
+              <p className="px-2 py-2.5 text-[11.5px] leading-snug text-mocha">
+                Nothing by that name yet. Try another word for it — or photograph the food and
+                Rimon will identify it and research its bracha from the approved sources.
+              </p>
+            )}
             {matches.length > 0 && (
               <ul className="mt-1 divide-y divide-espresso/[0.06]">
                 {matches.map((food) => (

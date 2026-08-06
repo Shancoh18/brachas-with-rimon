@@ -1,0 +1,764 @@
+[
+  {
+    "key": "corn-bread",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Corn Bread | Hamotzi | Birkat Hamazon\""
+  },
+  {
+    "key": "french-toast",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"French Toast | Hamotzi | Birkat Hamazon\""
+  },
+  {
+    "key": "melba-toast",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Rabbi Mendel Adelman for Chabad.org (on-page Q&A): \"As it was once bread, most opinions hold that it does not lose that status after toasting. So, the correct blessing is Hamotzi.\""
+  },
+  {
+    "key": "barley-soup",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Barley Soup | Mezonot | Al Hamichya\" with comment \"To say Al Hamichya one must eat a k'zayit of barley within 2-9 minutes\""
+  },
+  {
+    "key": "bourekas",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "Staff Q&A: \"Generally, if a dish is made of dough as its base, then it only has one blessing -- mezonot.\" Main text: pastries made of the five grains are Mezonot."
+  },
+  {
+    "key": "cheese-blintzes",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Cheese Blintzes | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "cheesecake",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Cheese Cake | Mezonot | Al Hamichya\" with comment \"As with all cakes, the dough is considered the primary ingredient and only Mezonot is necessary\""
+  },
+  {
+    "key": "cinnamon-toast-crunch",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Cinnamon Toast Crunch | Mezonot | Al Hamichya | Dairy\""
+  },
+  {
+    "key": "cocoa-puffs",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Cocoa Puffs | Shehakol | Borei Nefashot | Pareve\""
+  },
+  {
+    "key": "corn-chex",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Corn Chex | Shehakol | Borei Nefashot | Pareve\""
+  },
+  {
+    "key": "corn-flakes",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Corn Flakes Cereal | Ha-adamah | Borei Nefashot | Pareve\""
+  },
+  {
+    "key": "crepes",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "\"Food that is made from grain... but is not bread gets the blessing mezonot.\" Mezonot-page staff Q&A: \"if a dish is made of dough as its base, then it only has one blessing -- mezonot.\""
+  },
+  {
+    "key": "doughnut",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Doughnut | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "dumplings",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/dumplings/",
+    "evidence": "Dumplings fall under the Grain Products category: Mezonos; Al Hamichya."
+  },
+  {
+    "key": "farfel",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "\"Food that is made from grain... but is not bread gets the blessing mezonot. This includes... pasta and other cooked grain products like farfel and couscous.\""
+  },
+  {
+    "key": "farina",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/farina/",
+    "evidence": "Farina falls under grain products: Bracha Rishona Mezonos, Bracha Acharona Al Hamichya."
+  },
+  {
+    "key": "froot-loops",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Froot Loops Cereal | Mezonot | Al Hamichya | Pareve\""
+  },
+  {
+    "key": "golden-grahams",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Golden Grahams | Mezonot | Al Hamichya | Dairy\""
+  },
+  {
+    "key": "granola-bar",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Granola Bar | Ha-adamah | Borei Nefashot\" with comment about the stringency to avoid a k'zayit of five grains when they are ha-adamah"
+  },
+  {
+    "key": "hamantaschen",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Hamantaschen | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "honey-nut-cheerios",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Honey Nut Cheerios | Mezonot | Al Hamichya | Pareve\""
+  },
+  {
+    "key": "kasha-varnishkes",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Kashe Varnishkes | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "kishka",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/kishka/",
+    "evidence": "The Bracha Rishona on Kishka is Mezonos, and the Bracha Acharona is Al Hamichya."
+  },
+  {
+    "key": "kishke",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Kishke | Mezonot | Al Hamichya\" with comment \"Provided the ingredients include flour made of any of the Five Principal Species\""
+  },
+  {
+    "key": "kix",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Kix | Shehakol | Borei Nefashot | Pareve\""
+  },
+  {
+    "key": "kreplach",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/kreplach/",
+    "evidence": "The Bracha Rishona on Kreplach is Mezonos, and the Bracha Acharona is Al Hamichya."
+  },
+  {
+    "key": "lokshen-kugel",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Lokshen Kugel | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "matza-brei",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/matza-brei/",
+    "evidence": "The Bracha is Mezonos provided that none of the pieces of matza are as large as a K'zayis."
+  },
+  {
+    "key": "noodle-kugel",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/noodle-pudding/",
+    "evidence": "The Bracha Rishona on Noodle Pudding is Mezonos, and the Bracha Acharona is Al Hamichya."
+  },
+  {
+    "key": "pancakes",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Pancakes | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "pie",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Pie | Mezonot | Al Hamichya\" with comment \"As with all cakes, the dough is considered the primary ingredient\""
+  },
+  {
+    "key": "potato-knish",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Potato Knish | Mezonot | Al Hamichya\" with comment \"Provided the ingredients include flour made with one of the Five Principal Species\""
+  },
+  {
+    "key": "ptitim",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "\"This includes... pasta and other cooked grain products like farfel and couscous\" get Mezonot; ptitim is toasted wheat pasta."
+  },
+  {
+    "key": "raisin-bran",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Raisin Bran Cereal | Mezonot | Al Hamichya | Pareve\""
+  },
+  {
+    "key": "rice-chex",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Rice Chex | Mezonot | Borei Nefashot | Pareve\""
+  },
+  {
+    "key": "special-k",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Special K Original Cereal | Mezonot | Al Hamichya | Pareve\""
+  },
+  {
+    "key": "trix",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Trix | Shehakol | Borei Nefashot | Pareve\""
+  },
+  {
+    "key": "waffles",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Waffles | Mezonot | Al Hamichya\""
+  },
+  {
+    "key": "wheat-chex",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/blessings-on-cereals/",
+    "evidence": "Cereal chart row: \"Wheat Chex | Mezonot | Al Hamichya | Pareve\""
+  },
+  {
+    "key": "brazil-nut",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Ha'etz section: \"all nuts (except peanuts, which are a legume)\" get Ha'etz."
+  },
+  {
+    "key": "canned-peaches",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/91116/jewish/Blessings-on-Combination.htm",
+    "evidence": "\"if the food still resembles its original form and is conventionally eaten in such a manner, we say the blessing which would be made over the food in its raw form.\" Canned peach/pear halves remain in recognizable fruit form."
+  },
+  {
+    "key": "dragon-fruit",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278545/jewish/Borei-Pri-Haetz-The-Blessing-on-Fruits.htm",
+    "evidence": "Rabbi Mendel Adelman for chabad.org (on-page Q&A, re dragon fruit): \"HaEtz. It grows on a tree that lasts from year to year.\""
+  },
+  {
+    "key": "dried-fruit",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Ha'etz section: \"For all fruits from permanent trees, such as apples, oranges, and peaches, even if these fruits are dried.\" Ha'etz page staff Q&A: \"Haetz is said on dried fruits.\""
+  },
+  {
+    "key": "hazelnut",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/hazelnut/",
+    "evidence": "The Bracha Rishona on Hazelnut is Borei Pri Haetz, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "kiwi",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/kiwi/",
+    "evidence": "The Bracha Rishona on Kiwi is Borei Pri Haetz, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "macadamia",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Ha'etz section: \"all nuts (except peanuts, which are a legume)\" get Ha'etz."
+  },
+  {
+    "key": "persimmon",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/persimmon/",
+    "evidence": "The Bracha Rishona on Persimmon is Borei Pri Haetz, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "pistachio",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/pistachio/",
+    "evidence": "The Bracha Rishona on Pistachios is Borei Pri Haetz, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "pitanga",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278545/jewish/Borei-Pri-Haetz-The-Blessing-on-Fruits.htm",
+    "evidence": "Rabbi Mendel Adelman (on-page Q&A): \"It has a trunk that survives from year to year. Therefore, the proper blessing on pitanga (Suriname Cherries) is Ha'eitz.\""
+  },
+  {
+    "key": "tamarind",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278545/jewish/Borei-Pri-Haetz-The-Blessing-on-Fruits.htm",
+    "evidence": "Menachem Mendel Adelman (on-page Q&A): \"A tamarind is a fruit from a tree that lasts from year to year and the bracha would therefore be ha'eitz.\""
+  },
+  {
+    "key": "artichoke",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/artichokes/",
+    "evidence": "The Bracha Rishona on Artichokes is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "asparagus",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/asparagus/",
+    "evidence": "The Bracha Rishona on Asparagus is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "baked-beans",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/baked-beans/",
+    "evidence": "The Bracha Rishona on Baked Beans is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "beet",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Ha'adamah section: \"For all vegetables and greens from the ground, peanuts, legumes...\""
+  },
+  {
+    "key": "beets",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/beets/",
+    "evidence": "The Bracha Rishona on Beets is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "brussels-sprouts",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/brussel-sprouts/",
+    "evidence": "The Bracha Rishona on Brussel Sprouts is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "cabbage",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/cabbage/",
+    "evidence": "The Bracha Rishona on Cabbage is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "eggplant",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/eggplant/",
+    "evidence": "The Bracha Rishona on Eggplant is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "garlic",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/garlic/",
+    "evidence": "If the garlic is eaten raw or boiled, the Bracha is Shehakol. However, if it is fried in oil, the Bracha is Hoadama."
+  },
+  {
+    "key": "ginger",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/ginger/",
+    "evidence": "The Bracha is Hoadama if it is raw or dry and candied."
+  },
+  {
+    "key": "green-beans",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Ha'adamah section: \"For all vegetables and greens from the ground, peanuts, legumes...\""
+  },
+  {
+    "key": "hearts-of-palm",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/hearts-of-palm/",
+    "evidence": "The Bracha Rishona on Hearts of Palm is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "kasha",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/kasha-buckwheat/",
+    "evidence": "Buckwheat is not a kind of wheat, nor is it even one of the Chameshes Minei Dagan (five species of grain), rather it is a legume — Borei Pri Hoadama; Borei Nefashos."
+  },
+  {
+    "key": "kidney-beans",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/kidney-beans/",
+    "evidence": "The Bracha Rishona on Kidney Beans is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "papaya",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/papaya/",
+    "evidence": "Although papaya is classified a fruit, in the realm of Brachos, it is considered a vegetable — Borei Pri Hoadama; Bracha Acharona Borei Nefashos."
+  },
+  {
+    "key": "parsnip",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/parsnip/",
+    "evidence": "The Bracha Rishona on Parsnip is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "popcorn",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/popcorn/",
+    "evidence": "The Bracha Rishona on Popcorn is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "potato-chips",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/potato-chips/",
+    "evidence": "The Bracha Rishona on Potato Chips is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "potato-salad",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/potato-salad/",
+    "evidence": "The Bracha Rishona on Potato Salad is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "pringles",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/pringles/",
+    "evidence": "The Bracha is Hoadama as per Rav Belsky, since today most potatoes are processed into flakes and flour."
+  },
+  {
+    "key": "pumpkin-seeds",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/pumpkin-seeds/",
+    "evidence": "The Bracha Rishona on Pumpkin Seeds is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "quinoa",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/quinoa/",
+    "evidence": "The Bracha Rishona on Quinoa is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "radish",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/radish/",
+    "evidence": "The Bracha Rishona on Radish is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "scallion",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Ha'adamah section: \"For all vegetables and greens from the ground, peanuts, legumes...\""
+  },
+  {
+    "key": "string-beans",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/string-beans/",
+    "evidence": "The Bracha Rishona on String Beans is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "turnip",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/turnips/",
+    "evidence": "The Bracha Rishona on Turnips is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "tzimmes",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/tzimmes/",
+    "evidence": "The Bracha Rishona on Tzimmes is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "chicken-salad",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Chicken Salad | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "hot-dog",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Hotdog (without bun) | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "sardines",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278547/jewish/Shehakol-The-Blessing-on-All-Other-Foods.htm",
+    "evidence": "\"All foods that do not grow from the ground get the blessing 'shehakol.' This includes animal products: meat, chicken, fish, and eggs.\""
+  },
+  {
+    "key": "shawarma",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278547/jewish/Shehakol-The-Blessing-on-All-Other-Foods.htm",
+    "evidence": "\"All foods that do not grow from the ground get the blessing 'shehakol.' This includes animal products: meat, chicken, fish, and eggs.\""
+  },
+  {
+    "key": "tuna-salad",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Tuna Fish Salad | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "american-cheese",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/american-cheese/",
+    "evidence": "The Bracha Rishona on American Cheese is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "egg-salad",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Egg Salad | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "feta-cheese",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/feta-cheese/",
+    "evidence": "The Bracha Rishona on Feta Cheese is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "sour-cream",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/sour-cream/",
+    "evidence": "The Bracha Rishona on Sour Cream is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "swiss-cheese",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/swiss-cheese/",
+    "evidence": "The Bracha Rishona on Swiss Cheese is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "whipped-cream",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/whipped-cream/",
+    "evidence": "The Bracha Rishona on Whipped Cream is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "apple-pie",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/91116/jewish/Blessings-on-Combination.htm",
+    "evidence": "\"When foods contain mezonot ingredients, the mezonot is considered the main ingredient even if it is the minority ingredient... Examples are fruit pie and macaroni and cheese.\" Also Mezonot page Q&A: \"if a dish is made of dough as its base, then it only has one blessing -- mezonot.\""
+  },
+  {
+    "key": "babka",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "\"Food that is made from grain... but is not bread gets the blessing mezonot. This includes cakes and pastries.\" Mezonot-page staff Q&A: sweet dough (\"more sugar and flavoring than typical bread\") is Mezonot."
+  },
+  {
+    "key": "bread-pudding",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278542/jewish/Hamotzi-Blessing-Over-Bread.htm",
+    "evidence": "Eliezer Zalmanov for Chabad.org (on-page Q&A): \"Once the bread is turned into a pudding, it loses its original status as bread and is instead treated as a pastry. As such, the brachah is Mezonot.\""
+  },
+  {
+    "key": "caramel",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Shehakol section: \"For candy, dairy, eggs, fish, liquids, meat, mushrooms and everything else not included in the first five blessings above.\""
+  },
+  {
+    "key": "cotton-candy",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/cotton-candy/",
+    "evidence": "The Bracha Rishona on Cotton Candy is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "croissant",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "\"Food that is made from grain... but is not bread gets the blessing mezonot. This includes cakes and pastries.\" Hamotzi page: \"Dough that uses more oil or fruit juice than water (like pastries)... is not regarded as bread.\""
+  },
+  {
+    "key": "custard",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/custard/",
+    "evidence": "The Bracha Rishona on Custard is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "fruit-leather",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/fruit-leather/",
+    "evidence": "During the fruit leather processing, the fruit is first liquified and then reconstituted — Shehakol; Borei Nefashos."
+  },
+  {
+    "key": "fudge",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Chocolate Fudge | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "gluten-free-cake",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278543/jewish/Mezonot-The-Blessing-on-Grains.htm",
+    "evidence": "Rabbi Mendel Adelman for Chabad.org (on-page Q&A): \"mezonot and hamotzi may only be made on products of the five grains... anything that is gluten free without oat flour is shehakol. Almond flour cakes would be shehakol as well.\""
+  },
+  {
+    "key": "halva",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/halva/",
+    "evidence": "The Bracha Rishona on Halva is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "halvah",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Halavah | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "ices",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings row: \"Ices | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "jam",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/jam/",
+    "evidence": "The Bracha Rishona on Jam is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "jello",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/jell-o/",
+    "evidence": "The Bracha Rishona on Jell-O is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "jelly-jam",
+    "source": "OU",
+    "sourceUrl": "https://oukosher.org/guide-to-blessings/",
+    "evidence": "Guide to Blessings rows: \"Jelly | Shehakol | Borei Nefashot\" and \"Jam | Shehakol | Borei Nefashot\""
+  },
+  {
+    "key": "licorice",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/licorice/",
+    "evidence": "The Bracha Rishona on Licorice is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "marzipan",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/marzipan/",
+    "evidence": "The Bracha Rishona on Marzipan is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "pudding",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/pudding/",
+    "evidence": "The Bracha Rishona on Pudding is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "rice-pudding",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/rice-pudding/",
+    "evidence": "The Bracha Rishona on Rice Pudding is Mezonos, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "sherbet",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/sherbet/",
+    "evidence": "The Bracha Rishona on Sherbet is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "almond-milk",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/almond-milk/",
+    "evidence": "The Bracha Rishona on Almond Milk is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "carrot-juice",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/carrot-juice/",
+    "evidence": "The Bracha Rishona on Carrot Juice is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "coconut-water",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/coconut-water/",
+    "evidence": "If drinking directly from coconut Borei Pri Haetz. If drinking from a utensil Shehakol."
+  },
+  {
+    "key": "energy-drink",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Eliezer Zalmanov for Chabad.org (on-page Q&A): \"The blessing for all drinks (other than wine/grape juice) is Shehakol.\""
+  },
+  {
+    "key": "fruit-punch",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/278547/jewish/Shehakol-The-Blessing-on-All-Other-Foods.htm",
+    "evidence": "Eliezer Zalmanov for Chabad.org (on-page Q&A, re fruit-flavored juice with no real fruit): \"The bracha for that would be Shehakol.\" Main text: \"water and all other drinks (except for wine)\" are Shehakol."
+  },
+  {
+    "key": "ginger-ale",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/ginger-ale/",
+    "evidence": "The Bracha Rishona on Ginger Ale is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "oat-milk",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/oat-milk/",
+    "evidence": "The Bracha Rishona on Oat Milk is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "plant-milk",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Eliezer Zalmanov for Chabad.org (on-page Q&A): \"The blessing for all drinks (other than wine/grape juice) is Shehakol.\""
+  },
+  {
+    "key": "soy-milk",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/soy-milk/",
+    "evidence": "The Bracha Rishona on Soy Milk is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "sports-drink",
+    "source": "chabad.org",
+    "sourceUrl": "https://www.chabad.org/library/article_cdo/aid/90551/jewish/Texts-of-Blessings-Before-Eating.htm",
+    "evidence": "Eliezer Zalmanov for Chabad.org (on-page Q&A): \"The blessing for all drinks (other than wine/grape juice) is Shehakol.\""
+  },
+  {
+    "key": "applesauce",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/apple-sauce/",
+    "evidence": "If the apples are finely pureed, like in store bought apple sauce, the Bracha is Shehakol. But if there are chunks of apples in the sauce, the Bracha is Haetz."
+  },
+  {
+    "key": "borscht",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/borsht/",
+    "evidence": "If clear or with small pieces of beets recite Shehakol. If with large pieces of beets recite Borei Pri Hoadama."
+  },
+  {
+    "key": "corn-chips",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/corn-chips/",
+    "evidence": "The Bracha Rishona on Corn Chips is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "lentil-soup",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/lentil-soup/",
+    "evidence": "The Bracha Rishona on Lentil Soup is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "mushroom-soup",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/mushroom-soup/",
+    "evidence": "The Bracha Rishona on Mushroom Soup is Shehakol, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "onion-soup",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/onion-soup/",
+    "evidence": "The Bracha Rishona on Onion Soup is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  },
+  {
+    "key": "peanut-butter",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/peanut-butter/",
+    "evidence": "The Bracha Rishona on Peanut Butter is Shehakol, and the Bracha Acharona is Borei Nefashos — applies to peanut butter, both creamy and chunky."
+  },
+  {
+    "key": "tomato-soup",
+    "source": "brachos.org",
+    "sourceUrl": "https://www.brachos.org/brachos/tomato-soup/",
+    "evidence": "The Bracha Rishona on Tomato Soup is Borei Pri Hoadama, and the Bracha Acharona is Borei Nefashos."
+  }
+]
