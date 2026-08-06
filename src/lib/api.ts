@@ -148,6 +148,17 @@ export interface Board {
   owner: boolean;
   members: number;
   league: LeagueRow[];
+  /** chat messages from others since this member last opened the room */
+  unread?: number;
+}
+
+/** One message in a board's group chat. */
+export interface BoardMessage {
+  id: string;
+  name: string;
+  text: string;
+  created: number;
+  mine: boolean;
 }
 
 export const apiBoards = (token: string) => call<{ boards: Board[] }>('/api/boards', {}, token);
@@ -168,3 +179,17 @@ export const apiJoinBoard = (token: string, code: string) =>
 
 export const apiLeaveBoard = (token: string, id: string) =>
   call<{ ok: boolean }>('/api/boards/leave', { method: 'POST', body: JSON.stringify({ id }) }, token);
+
+export const apiBoardMessages = (token: string, boardId: string, since = 0) =>
+  call<{ messages: BoardMessage[]; now: number }>(
+    `/api/boards/messages?board=${encodeURIComponent(boardId)}&since=${since}`,
+    {},
+    token,
+  );
+
+export const apiSendBoardMessage = (token: string, boardId: string, text: string) =>
+  call<{ ok: boolean; id: string; created: number }>(
+    '/api/boards/message',
+    { method: 'POST', body: JSON.stringify({ board: boardId, text }) },
+    token,
+  );

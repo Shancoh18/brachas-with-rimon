@@ -149,6 +149,54 @@ export const boardMembers = (boardId) =>
     .map(hydrate);
 export const boardMemberCount = (boardId) =>
   db.prepare('SELECT COUNT(*) n FROM board_members WHERE board_id = ?').get(boardId).n;
+export const isBoardMember = (boardId, userId) =>
+  !!db.prepare('SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?').get(boardId, userId);
+
+// ------------------------------------------------------- board group chat
+const MAX_MESSAGES_PER_BOARD = 500; // a chat room, not an archive
+
+export function addBoardMessage(boardId, userId, text) {
+  const id = newId();
+  const created = Date.now();
+  db.prepare('INSERT INTO board_messages (id,board_id,user_id,text,created) VALUES (?,?,?,?,?)').run(
+    id, boardId, userId, String(text), created,
+  );
+  // trim the tail so one chatty board can't grow the volume forever
+  db.prepare(
+    `DELETE FROM board_messages WHERE board_id = ? AND id NOT IN
+       (SELECT id FROM board_messages WHERE board_id = ? ORDER BY created DESC, id DESC LIMIT ?)`,
+  ).run(boardId, boardId, MAX_MESSAGES_PER_BOARD);
+  return { id, created };
+}
+
+/** Messages after `since`, oldest first, with sender names resolved. */
+export const boardMessages = (boardId, since = 0, limit = 100) =>
+  db
+    .prepare(
+      `SELECT m.id, m.user_id, m.text, m.created, u.name
+         FROM board_messages m JOIN users u ON u.id = m.user_id
+        WHERE m.board_id = ? AND m.created > ?
+        ORDER BY m.created ASC, m.id ASC LIMIT ?`,
+    )
+    .all(boardId, since, limit);
+
+export const markBoardRead = (boardId, userId, ts) =>
+  db
+    .prepare(
+      `INSERT INTO board_reads (board_id,user_id,last_read) VALUES (?,?,?)
+       ON CONFLICT(board_id,user_id) DO UPDATE SET last_read = MAX(last_read, excluded.last_read)`,
+    )
+    .run(boardId, userId, ts);
+
+/** Unread messages from OTHERS since this member's read cursor. */
+export const boardUnread = (boardId, userId) =>
+  db
+    .prepare(
+      `SELECT COUNT(*) n FROM board_messages
+        WHERE board_id = ? AND user_id != ?
+          AND created > COALESCE((SELECT last_read FROM board_reads WHERE board_id = ? AND user_id = ?), 0)`,
+    )
+    .get(boardId, userId, boardId, userId).n;
 
 // ----------------------------------------------------------- learned foods
 export const allLearned = () =>

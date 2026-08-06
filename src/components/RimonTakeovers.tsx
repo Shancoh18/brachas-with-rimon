@@ -35,6 +35,18 @@ const EMBERS = [
   { dx: '14px', background: '#fffdf4', ed: '2.54s', size: 3 },
 ];
 
+/** Per-challenge medal art — every badge gets its own Rimon render (all
+ *  identity-locked Higgsfield stills; provenance in mascot-concepts/README.md).
+ *  Unknown ids fall back to the generic crown medal. */
+const BADGE_ART: Record<string, string> = {
+  'first-steps': `${BASE}mascot/eats-apple.webp`, // First Fruits
+  'seven-species': `${BASE}mascot/rimon-species.webp`, // the species minis
+  'week-of-blessing': `${BASE}mascot/rimon-flame.webp`, // the streak flame
+  'all-six': `${BASE}mascot/rimon-teaching.webp`, // teaching the six
+  scholar: `${BASE}mascot/rimon-scholar.webp`, // cap + open book
+  century: `${BASE}mascot/rimon-podium.webp`, // trophy podium
+};
+
 const SPARKS = [
   { sx: '-58px', sy: '-34px', sd: '2.35s' },
   { sx: '52px', sy: '-46px', sd: '2.4s' },
@@ -232,8 +244,11 @@ export function BadgeTakeover({
               <div className="relative overflow-hidden rounded-[20px] border border-hairline">
                 <span className="tk-shine" />
                 <img
-                  className="tk-inner block w-full"
-                  src={`${BASE}mascot/rimon-medal.webp`}
+                  className={`tk-inner block aspect-[3/4] w-full bg-[#fdfbf7] ${
+                    first.id === 'seven-species' ? 'object-contain' : 'object-cover'
+                  }`}
+                  style={{ objectPosition: '50% 70%' }}
+                  src={BADGE_ART[first.id] ?? `${BASE}mascot/rimon-medal.webp`}
                   alt=""
                   draggable={false}
                 />

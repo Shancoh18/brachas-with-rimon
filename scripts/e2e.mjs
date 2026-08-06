@@ -72,6 +72,11 @@ check('welcome renders title', t.includes('brachas with rimon'));
 check('nusach selector present', t.includes('ashkenaz') && t.includes('edot hamizrach'));
 check('disclaimer present', t.includes('consult a qualified rabbi'));
 check('tip of the day present', /tip of the day/i.test(t));
+check(
+  'home widgets: streak tracker + bracha-today nudge',
+  (await page.evaluate(() => !!document.querySelector('[data-home-widgets]'))) &&
+    t.includes('have you said your bracha today'),
+);
 
 // ------------------------------------------------- MEALTIME REMINDER NUDGE
 const nudgePlace = await page.evaluate(() => {
@@ -163,7 +168,10 @@ check('nusach switch persists', nusachStored === 'ashkenaz', nusachStored);
 await clickText('Nusach Ari', 600);
 
 // ------------------------------------------------------------ QUICK GUIDE
+await page.evaluate(() => window.scrollTo(0, 600)); // scroll away first…
+await sleep(300);
 await clickText('Quick blessing guide', 1300);
+check('screen change scrolls back to top', (await page.evaluate(() => window.scrollY)) < 5);
 t = await text();
 check('quick guide lists all six in order', ['hamotzi','mezonos','hagafen','ha’etz','ha’adama','shehakol'].every((x) => t.includes(x)));
 check('rimon eats the food groups', await page.evaluate(() => document.querySelectorAll('img[src*="eats-"]').length === 6));
@@ -337,6 +345,8 @@ await page.reload({ waitUntil: 'networkidle2' });
 await sleep(2000);
 const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.progress);
 check('progress persisted across reload', persisted.totalBrachos >= 6 && persisted.streakCurrent === 1, `total=${persisted.totalBrachos} streak=${persisted.streakCurrent}`);
+t = await text();
+check('today widget flips to Bracha said ✓', t.includes('bracha said'));
 
 // ---------------------------------------------------------------- JOURNEY
 await page.evaluate(() => [...document.querySelectorAll('nav button')][2]?.click());
@@ -400,11 +410,49 @@ check('add friend by code works', t.includes('test friend'), 'league shows Test 
 check('league ranks by weekly points', t.includes('pts this week') && /⭐\s*\d+/.test(t));
 check('league shows weekly bracha counts', t.includes('brachos'));
 
+// ------------------------------------------ NAMED BOARDS + GROUP CHAT (live)
+await clickText('+ New', 700);
+await page.type('input[placeholder="e.g. Cohen Family"]', 'E2E Chevra');
+await clickText('Create leaderboard', 2200);
+t = await text();
+check('board created with share code', t.includes('e2e chevra') && /code [a-z0-9]{4,}/.test(t));
+check(
+  'chat button sits left of the Share button',
+  await page.evaluate(() => {
+    const chat = [...document.querySelectorAll('button')].find((x) => x.textContent.includes('💬 Chat'));
+    const share = [...document.querySelectorAll('button')].find((x) => x.textContent.trim() === 'Share');
+    return !!chat && !!share && chat.getBoundingClientRect().left < share.getBoundingClientRect().left;
+  }),
+);
+await clickText('💬 Chat', 1800);
+t = await text();
+check('group chat opens scoped to the board', (await page.evaluate(() => !!document.querySelector('[data-board-chat]'))) && t.includes('e2e chevra'));
+await page.type('input[placeholder*="Message"]', 'Shalom from e2e! 🍎');
+await clickText('Send', 2000);
+t = await text();
+check('chat message sends and renders', t.includes('shalom from e2e'));
+await clickText('close', 900);
+
 // ---------------------------------------------------------------- DONATE TAB
 await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
 await sleep(1000);
 t = await text();
 check('donate tab opens next to the profile button', t.includes('help keep the app free') && t.includes('donate to the developers'));
+
+// ---------------------------------------------------------------- DARK MODE
+await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
+await page.reload({ waitUntil: 'networkidle2' });
+await sleep(2200);
+const dark = await page.evaluate(() => {
+  const body = getComputedStyle(document.body).backgroundColor;
+  const card = document.querySelector('[class*="bg-white/6"], [class*="bg-white/7"], [class*="bg-white/8"], [class*="bg-white/9"]');
+  return { body, card: card ? getComputedStyle(card).backgroundColor : null };
+});
+check('dark mode: canvas goes dark', dark.body === 'rgb(28, 22, 17)', dark.body);
+check('dark mode: cards stay cream paper', dark.card === 'rgb(248, 243, 230)', String(dark.card));
+await page.emulateMediaFeatures([]);
+await page.reload({ waitUntil: 'networkidle2' });
+await sleep(1800);
 
 // ------------------------------------------------- ACCOUNT TAB + PASSWORD AUTH (live server)
 await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());

@@ -53,6 +53,11 @@ export function Learn() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showParsha, setShowParsha] = useState(false);
 
+  // the reader views swap in-place — start each at the top, not mid-scroll
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [openId, showParsha]);
+
   // auto-update: merge remote lessons (cached offline via the store)
   useEffect(() => {
     if (!parshaIsFresh(parsha)) {

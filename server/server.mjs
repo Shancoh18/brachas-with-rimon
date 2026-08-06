@@ -137,6 +137,68 @@ setInterval(() => {
   for (const [k, v] of authHits) if (now - v.t0 > 600_000) authHits.delete(k);
   if (analyzeUse.size > 10_000) analyzeUse.clear(); // daily counters, bounded
 }, 300_000);
+// Chat + competition pushes: hard per-user caps so a chatty board can't spam.
+const chatHits = new Map(); // user id -> {t0, count} — 20 messages / 5 min
+const chatThrottled = (userId) => {
+  const now = Date.now();
+  const e = chatHits.get(userId);
+  if (!e || now - e.t0 > 300_000) {
+    chatHits.set(userId, { t0: now, count: 1 });
+    return false;
+  }
+  e.count++;
+  return e.count > 20;
+};
+const pushStamp = new Map(); // "kind:user:key" -> last-sent ms
+const pushAllowed = (kind, userId, key, gapMs) => {
+  const k = `${kind}:${userId}:${key}`;
+  const last = pushStamp.get(k) ?? 0;
+  const now = Date.now();
+  if (now - last < gapMs) return false;
+  pushStamp.set(k, now);
+  if (pushStamp.size > 20_000) pushStamp.clear(); // bounded
+  return true;
+};
+const sendPush = (user, title, body) => {
+  const sub = user?.push?.subscription;
+  if (!sub) return;
+  webpush
+    .sendNotification(sub, JSON.stringify({ title, body }), { timeout: 5000 })
+    .catch((e) => {
+      if (e.statusCode === 404 || e.statusCode === 410) store.setPush(user.id, null); // expired
+    });
+};
+
+/** New chat message → nudge the other members (≤1 chat push / 45min / board). */
+const notifyBoardChat = (board, sender, text) => {
+  for (const member of store.boardMembers(board.id)) {
+    if (member.id === sender.id || !member.push?.subscription) continue;
+    if (!pushAllowed('chat', member.id, board.id, 45 * 60_000)) continue;
+    sendPush(member, `💬 ${board.title}`, `${sender.name}: ${text.slice(0, 90)}`);
+  }
+};
+
+/** My week-points rose oldWeek → newWeek: everyone I just passed (in the
+ *  friends league or any shared board) gets a competitive nudge. */
+const notifyOvertaken = (me, oldWeek, newWeek) => {
+  const peers = new Map();
+  for (const f of store.friendsOf(me.id)) peers.set(f.id, f);
+  for (const b of store.boardsOf(me.id))
+    for (const m of store.boardMembers(b.id)) peers.set(m.id, m);
+  peers.delete(me.id);
+  for (const peer of peers.values()) {
+    if (!peer.push?.subscription) continue;
+    const pw = weekTotal(peer, 'points');
+    if (!(oldWeek < pw && pw <= newWeek)) continue; // strictly passed this sync
+    if (!pushAllowed('overtake', peer.id, me.id, 2 * 60 * 60_000)) continue;
+    sendPush(
+      peer,
+      '🏆 You’ve been passed!',
+      `${me.name} just moved ahead of you — ${newWeek} pts this week. Say a bracha to take it back!`,
+    );
+  }
+};
+
 /** People paste codes in every shape: bare, lowercased, spaced, prefixed. */
 const normalizeCode = (raw) => {
   const t = String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
@@ -658,6 +720,7 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/sync' && req.method === 'POST') {
       const { progress, name } = await readBody(req);
+      const oldWeek = weekTotal(a.user, 'points');
       if (progress)
         store.setProgress(a.user.id, {
           totalBrachos: progress.totalBrachos ?? 0,
@@ -667,6 +730,8 @@ const server = createServer(async (req, res) => {
         });
       if (name) store.setName(a.user.id, String(name).trim().slice(0, 20));
       const me = store.userById(a.user.id);
+      const newWeek = weekTotal(me, 'points');
+      if (newWeek > oldWeek) notifyOvertaken(me, oldWeek, newWeek);
       return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null });
     }
 
@@ -747,6 +812,7 @@ const server = createServer(async (req, res) => {
           owner: b.owner_id === me.id,
           members: members.length,
           league: standings(me, members),
+          unread: store.boardUnread(b.id, me.id),
         };
       });
       return json(res, 200, { boards });
@@ -792,6 +858,37 @@ const server = createServer(async (req, res) => {
       if (board.owner_id === a.user.id) store.deleteBoard(board.id);
       else store.leaveBoard(board.id, a.user.id);
       return json(res, 200, { ok: true });
+    }
+
+    // ------------------------------------------------------ board group chat
+    // One room per leaderboard; membership IS board membership, so joining or
+    // leaving a board automatically adds/removes chat access (rows cascade).
+    if (url.pathname === '/api/boards/messages' && req.method === 'GET') {
+      const boardId = String(url.searchParams.get('board') || '');
+      if (!store.isBoardMember(boardId, a.user.id)) return json(res, 404, { error: 'board_not_found' });
+      const since = Number(url.searchParams.get('since') || 0);
+      const messages = store.boardMessages(boardId, since, 100).map((m) => ({
+        id: m.id,
+        name: m.name,
+        text: m.text,
+        created: m.created,
+        mine: m.user_id === a.user.id,
+      }));
+      store.markBoardRead(boardId, a.user.id, Date.now()); // opening the room clears the badge
+      return json(res, 200, { messages, now: Date.now() });
+    }
+
+    if (url.pathname === '/api/boards/message' && req.method === 'POST') {
+      const { board: boardId, text } = await readBody(req);
+      const board = store.boardById(String(boardId || ''));
+      if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
+      const clean = String(text || '').trim().slice(0, 400);
+      if (!clean) return json(res, 400, { error: 'text_required' });
+      if (chatThrottled(a.user.id)) return json(res, 429, { error: 'slow_down' });
+      const m = store.addBoardMessage(board.id, a.user.id, clean);
+      store.markBoardRead(board.id, a.user.id, m.created);
+      notifyBoardChat(board, a.user, clean); // fire-and-forget, per-member throttled
+      return json(res, 200, { ok: true, id: m.id, created: m.created });
     }
 
     if (url.pathname === '/api/push/key') return json(res, 200, { key: vapid.publicKey });

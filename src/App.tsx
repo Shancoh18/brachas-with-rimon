@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { isNative } from './lib/native';
 import { apiSync } from './lib/api';
+import { syncWidgets } from './lib/widgetBridge';
 import { fetchLearnedFoods } from './lib/learnedFoods';
 import { showWebNotification } from './lib/useReminders';
 import { useBracha } from './store';
@@ -52,6 +53,18 @@ export default function App() {
   const screen = useBracha((s) => s.screen);
   const serverToken = useBracha((s) => s.serverToken);
   useReminderTicker();
+  // every screen/tab change starts at the top — without this, opening a
+  // screen from a scrolled page leaves the new screen mid-scroll
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab, screen]);
+  // keep the iPhone Home Screen widgets current (no-op on web / until the
+  // native RimonWidgets target is set up — see ios/widgets-staging/)
+  const progress = useBracha((s) => s.progress);
+  const dayStats = useBracha((s) => s.dayStats);
+  useEffect(() => {
+    void syncWidgets(progress, dayStats);
+  }, [progress, dayStats]);
   // Previously learned foods sync once per session — the DB keeps growing.
   useEffect(() => {
     void fetchLearnedFoods();

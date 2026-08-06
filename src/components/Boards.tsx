@@ -14,6 +14,7 @@ import {
 } from '../lib/api';
 import { useBracha } from '../store';
 import { Bezel, PillButton } from './ui';
+import { BoardChat } from './BoardChat';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -27,6 +28,7 @@ export function Boards() {
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
+  const [chat, setChat] = useState<Board | null>(null);
 
   const load = async () => {
     if (!serverToken) return;
@@ -197,12 +199,33 @@ export function Boards() {
                   {b.members} {b.members === 1 ? 'member' : 'members'} · code {b.code}
                 </p>
               </div>
-              <button
-                onClick={() => void share(b)}
-                className="shrink-0 rounded-full bg-gold/[0.12] px-3 py-1.5 text-[11px] font-bold text-gold"
-              >
-                {copied === b.id ? 'Copied!' : 'Share'}
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => {
+                    setChat(b);
+                    // opening the room reads it — clear the badge optimistically
+                    setBoards((all) => all?.map((x) => (x.id === b.id ? { ...x, unread: 0 } : x)) ?? all);
+                  }}
+                  aria-label={`open ${b.title} group chat`}
+                  className="relative rounded-full bg-espresso/[0.06] px-3 py-1.5 text-[11px] font-bold text-espresso-soft"
+                >
+                  💬 Chat
+                  {(b.unread ?? 0) > 0 && (
+                    <span
+                      data-chat-unread
+                      className="absolute -right-1 -top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-rimon px-1 text-[9px] font-black text-cream"
+                    >
+                      {b.unread! > 9 ? '9+' : b.unread}
+                    </span>
+                  )}
+                </button>
+                <button
+                  onClick={() => void share(b)}
+                  className="rounded-full bg-gold/[0.12] px-3 py-1.5 text-[11px] font-bold text-gold"
+                >
+                  {copied === b.id ? 'Copied!' : 'Share'}
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-1.5 border-t border-espresso/[0.07] pt-3">
@@ -222,8 +245,15 @@ export function Boards() {
                       <span className="ml-1.5 text-[10.5px] text-mocha">🔥{row.streak}</span>
                     )}
                   </p>
-                  <span className="shrink-0 text-[13px] font-bold text-espresso">
-                    ⭐ {row.weekPoints ?? 0}
+                  <span className="shrink-0 text-right">
+                    <span className="block text-[13px] font-bold leading-tight text-espresso">
+                      ⭐ {row.weekPoints ?? 0}
+                    </span>
+                    {(row.todayPoints ?? 0) > 0 && (
+                      <span className="block text-[9px] font-semibold leading-tight text-sage">
+                        +{row.todayPoints} today
+                      </span>
+                    )}
                   </span>
                 </div>
               ))}
@@ -263,6 +293,18 @@ export function Boards() {
           </Bezel>
         ))}
       </div>
+
+      {chat && serverToken && (
+        <BoardChat
+          boardId={chat.id}
+          title={chat.title}
+          token={serverToken}
+          onClose={() => {
+            setChat(null);
+            void load(); // refresh unread counts + standings on the way out
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -180,10 +180,13 @@ export function Rimon({
         type="button"
         onClick={boop}
         aria-label={`Rimon the pomegranate, ${pose} — tap to say hi`}
-        className={`${float && !reducedMotion() ? 'float-soft' : ''} ${booping ? 'rimon-boop' : ''} ${wiggling && !booping ? 'rimon-wiggle' : ''} cursor-pointer select-none border-0 bg-transparent p-0 outline-none`}
+        className={`${float && !reducedMotion() ? 'float-soft' : ''} ${booping ? 'rimon-boop' : ''} ${wiggling && !booping ? 'rimon-wiggle' : ''} relative cursor-pointer select-none border-0 bg-transparent p-0 outline-none`}
         style={{ width: size, height: size }}
       >
         {media}
+        {/* dark mode only (CSS-gated): warms the cream render and vignettes
+            its rim so the disc reads as candlelight, not a porthole */}
+        <span aria-hidden className="rimon-warm" />
       </button>
     </div>
   );

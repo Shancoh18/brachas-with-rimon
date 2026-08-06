@@ -119,6 +119,26 @@ export function Benching() {
           ))}
         </div>
 
+        {/* the COMPLETE text lives on chabad.org — the in-app version is a
+            study outline, so hand the full davening text over prominently */}
+        <a
+          href="https://www.chabad.org/library/article_cdo/aid/135366/jewish/Grace-After-Meals.htm"
+          target="_blank"
+          rel="noreferrer"
+          className="rise-in mt-5 block rounded-[1.25rem] border border-gold/30 bg-gold/[0.08] px-5 py-4"
+          data-full-text-link
+        >
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">The complete text</p>
+          <p className="mt-1 text-[13.5px] font-semibold leading-snug text-espresso">
+            Read the FULL Birkat Hamazon — every word, Hebrew &amp; English, with the weekday and
+            special-day intros and zimmun — on chabad.org →
+          </p>
+          <p className="mt-1.5 text-[10.5px] leading-snug text-mocha">
+            AI makes mistakes, to learn more information please read the article. This page is a
+            study outline; recite the full text from the link, a siddur, or a bentcher.
+          </p>
+        </a>
+
         {/* the pack's own custom notes + honesty about the outline */}
         <div className="rise-in mt-5 rounded-[1.25rem] bg-gold/[0.05] p-4 ring-1 ring-gold/20">
           {bh.notes.map((n) => (

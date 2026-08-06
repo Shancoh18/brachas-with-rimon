@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { NUSACHIM, type NusachId } from '../data/texts';
 import { useBracha } from '../store';
 import { LESSONS } from '../data/learn';
-import { streakAlive } from '../lib/progress';
+import { streakAlive, todayStamp } from '../lib/progress';
 import { Rimon } from '../components/Rimon';
 import { LeagueNudge } from '../components/LeagueNudge';
 import { ReminderNudge } from '../components/ReminderNudge';
@@ -12,12 +12,21 @@ import { analyzePhoto, demoMeal, resizeImage } from '../lib/analyze';
 import { toMealItems } from '../lib/classify';
 
 export function Welcome() {
-  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, setDemoFallback, notePhotoFlow, progress, setTab } =
+  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, setDemoFallback, notePhotoFlow, progress, dayStats, setTab } =
     useBracha();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
   const alive = streakAlive(progress);
+  const today = todayStamp();
+  const blessedToday = progress.lastActiveDay === today || (dayStats.day === today && dayStats.brachos > 0);
+  const brachosToday = dayStats.day === today ? dayStats.brachos : 0;
+  // last 7 local days, oldest first, for the streak widget's mini strip
+  const week = [...Array(7)].map((_, i) => {
+    const d = new Date(Date.now() - (6 - i) * 86_400_000);
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { day, active: progress.history.some((h) => h.day === day && h.brachos > 0) };
+  });
   // Rimon's tip of the day — rotates through the Learn library by date
   const tip = LESSONS[new Date().getDate() % LESSONS.length];
 
@@ -59,12 +68,6 @@ export function Welcome() {
         </div>
 
         <header className="rise-in rise-in-1 space-y-4">
-          {progress.totalBrachos > 0 && (
-            <div className="flex items-center justify-center gap-2">
-              <span className="rounded-full bg-rimon/[0.08] px-3.5 py-1.5 text-[12px] font-bold text-rimon">🔥 {alive ? progress.streakCurrent : 0}-day streak</span>
-              <span className="rounded-full bg-espresso/[0.05] px-3.5 py-1.5 text-[12px] font-bold text-espresso-soft">{progress.totalBrachos} brachos</span>
-            </div>
-          )}
           <Eyebrow>Blessings, beautifully guided</Eyebrow>
           <h1 className="font-display text-[44px] font-black leading-[1.05] tracking-tight text-espresso">
             Brachas <span className="text-rimon">with Rimon</span>
@@ -137,6 +140,36 @@ export function Welcome() {
               e.target.value = '';
             }}
           />
+        </div>
+
+        {/* home widget bar — streak tracker + today's bracha check, one glance.
+            Compact ON PURPOSE: a taller widget block pushed the primary CTA
+            under the tab bar on first paint (blind-QA blocker). */}
+        <div
+          className="rise-in rise-in-4 flex w-full max-w-[330px] items-center gap-3.5 rounded-[1.25rem] border border-hairline bg-white/60 px-4 py-3 text-left shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
+          data-home-widgets
+        >
+          <div className="flex shrink-0 items-baseline gap-1">
+            <span className="font-display text-[24px] font-black leading-none text-rimon">
+              {alive ? progress.streakCurrent : 0}
+            </span>
+            <span className="text-[13px]">🔥</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex gap-1" aria-label="last seven days">
+              {week.map((d) => (
+                <span
+                  key={d.day}
+                  className={`h-1.5 flex-1 rounded-full ${d.active ? 'bg-gold' : 'bg-espresso/10'}`}
+                />
+              ))}
+            </div>
+            <p className={`mt-1.5 text-[10.5px] font-semibold leading-tight ${blessedToday ? 'text-sage-deep' : 'text-espresso'}`}>
+              {blessedToday
+                ? `Bracha said today ✓ ${brachosToday > 0 ? `· ${brachosToday} so far` : ''}`
+                : 'Have you said your bracha today?'}
+            </p>
+          </div>
         </div>
 
         <button

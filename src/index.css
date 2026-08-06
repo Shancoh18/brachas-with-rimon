@@ -22,6 +22,71 @@
   --ease-lux: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* ------------------------------------------------------- dark mode (system)
+   Dark warm chrome; the paper stays paper. Flipping the palette variables
+   inverts every espresso/cream utility at runtime (Tailwind v4 resolves
+   var() at the use site): the canvas goes deep espresso, ink goes cream,
+   bg-espresso pills invert to light pills. White-literal Bezel cards keep
+   their cream-paper look on purpose, so liturgy, Rimon and all content sit
+   on light paper. Celebration takeovers stay bright (renders are cream-baked). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-cream: #1c1611;
+    --color-cream-deep: #262019;
+    --color-espresso: #f2e9d8;
+    --color-espresso-soft: #cfc2ae;
+    --color-mocha: #9c8d7d;
+    --color-gold: #c9a45c;
+    --color-hairline: rgba(242, 233, 216, 0.12);
+  }
+  html {
+    color-scheme: dark;
+  }
+  /* saturated rimon-red surfaces keep LIGHT text: re-scope the cream var so
+     their text-cream (and text-cream/70 etc.) resolves to paper again */
+  .bg-rimon,
+  .bg-rimon * {
+    --color-cream: #faf7e9;
+  }
+  /* the mascot renders are baked on cream — on a dark canvas, fade the glow
+     over most of the radius so it reads as candlelight, not a porthole */
+  .rimon-blend {
+    -webkit-mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
+    mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
+  }
+  .rimon-wide-blend {
+    -webkit-mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
+    mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
+  }
+  .rimon-warm {
+    display: block;
+    position: absolute;
+    inset: -6%;
+    pointer-events: none;
+    border-radius: 9999px;
+    background: radial-gradient(
+      circle,
+      rgba(226, 178, 96, 0.14) 0%,
+      rgba(28, 22, 17, 0.08) 40%,
+      rgba(28, 22, 17, 0.42) 68%,
+      rgba(28, 22, 17, 0.72) 100%
+    );
+  }
+  /* paper cards go SOLID cream (translucent white over a dark canvas reads
+     muddy) and keep dark ink even though the ink var flipped */
+  .bg-white\/60, .bg-white\/70, .bg-white\/75, .bg-white\/80, .bg-white\/90 {
+    background-color: #f8f3e6;
+  }
+  .bg-white\/60, .bg-white\/70, .bg-white\/75, .bg-white\/80, .bg-white\/90,
+  .bg-white\/60 *, .bg-white\/70 *, .bg-white\/75 *, .bg-white\/80 *, .bg-white\/90 * {
+    --color-espresso: #2b211a;
+    --color-espresso-soft: #57493e;
+    --color-mocha: #8a7a6d;
+    --color-hairline: rgba(43, 33, 26, 0.08);
+    --color-cream: #faf7e9;
+  }
+}
+
 /* ------------------------------------------------------------- base layer */
 html,
 body,
@@ -135,6 +200,11 @@ body {
 }
 
 /* ---------------------------------------------------------- Rimon life */
+/* dark-mode-only warmth vignette over the mascot disc (see dark block) */
+.rimon-warm {
+  display: none;
+}
+
 /* seamless blend: exact-cream assets + a wide feather, no visible disc */
 .rimon-blend {
   /* own compositor layer: a CSS-masked autoplaying video repaints per scroll
@@ -257,6 +327,9 @@ body {
   99% { opacity: 1; transform: translateY(0) rotate(0deg); }
   100% { opacity: 0; transform: translateY(0); }
 }
+/* bias the crop toward the raised arm: at 390/430 widths the cover crop
+   clipped the thumbs-up fist at the left edge (fits fine at 375) */
+.tk-fly, .tk-land { object-position: 44% 100%; }
 .tk-fly { opacity: 0; animation: tk-fly 1.9s var(--ease-lux) both; }
 @keyframes tk-land {
   0% { opacity: 0; transform: scale(1.05) translateY(10px); }

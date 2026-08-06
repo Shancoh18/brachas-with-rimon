@@ -77,6 +77,23 @@ export function openDb(dataDir) {
       entry TEXT NOT NULL,
       added INTEGER NOT NULL
     );
+
+    -- board group chat: one room per leaderboard, membership = board membership
+    CREATE TABLE IF NOT EXISTS board_messages (
+      id       TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      text     TEXT NOT NULL,
+      created  INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS board_messages_board ON board_messages(board_id, created);
+    -- per-member read cursor, for unread badges
+    CREATE TABLE IF NOT EXISTS board_reads (
+      board_id  TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      last_read INTEGER NOT NULL,
+      PRIMARY KEY (board_id, user_id)
+    );
   `);
   return db;
 }
