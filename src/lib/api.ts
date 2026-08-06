@@ -73,6 +73,15 @@ export const apiAddFriend = (token: string, code: string) =>
 
 export const apiPushKey = (token: string) => call<{ key: string }>('/api/push/key', {}, token);
 
+/** Register (or clear, with null) the native APNs device token — the push
+ *  channel for the iOS app, where Web Push doesn't exist. */
+export const apiPushNative = (token: string, deviceToken: string | null) =>
+  call<{ ok: boolean; enabled: boolean; delivery: string }>(
+    '/api/push/native',
+    { method: 'POST', body: JSON.stringify({ token: deviceToken }) },
+    token,
+  );
+
 export const apiPushSubscribe = (
   token: string,
   subscription: PushSubscription | null,

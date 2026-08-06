@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { isNative } from './lib/native';
-import { apiSync } from './lib/api';
+import { isNative, registerNativePush } from './lib/native';
+import { apiSync, apiPushNative } from './lib/api';
 import { syncWidgets } from './lib/widgetBridge';
 import { fetchLearnedFoods } from './lib/learnedFoods';
 import { showWebNotification } from './lib/useReminders';
@@ -76,6 +76,15 @@ export default function App() {
     apiSync(serverToken, progress)
       .then((r) => setLeagueSnapshot(r.league))
       .catch(() => undefined);
+  }, [serverToken]);
+  // Native iOS: register the APNs device token so server-initiated pushes
+  // (board chat, competitive nudges, broadcasts) reach this phone. Web Push
+  // doesn't exist in the WKWebView — this is the only channel. No-op on web.
+  useEffect(() => {
+    if (!serverToken || !isNative()) return;
+    void registerNativePush().then((t) => {
+      if (t) apiPushNative(serverToken, t).catch(() => undefined); // retried next boot
+    });
   }, [serverToken]);
 
   if (!onboarded) return <Onboarding />;

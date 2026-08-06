@@ -8,8 +8,40 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 export const isNative = () => Capacitor.isNativePlatform();
+
+/**
+ * Remote push (APNs) — the channel for chat + competition nudges, which are
+ * server-initiated and can't be local notifications. Registers with APNs and
+ * resolves the device token (hex) to hand to the API, or null when the user
+ * declines / registration fails. Safe to call repeatedly; iOS shows the
+ * permission alert only once (shared with local notifications).
+ */
+export async function registerNativePush(): Promise<string | null> {
+  if (!isNative()) return null;
+  try {
+    let perm = await PushNotifications.checkPermissions();
+    if (perm.receive === 'prompt') perm = await PushNotifications.requestPermissions();
+    if (perm.receive !== 'granted') return null;
+    await PushNotifications.removeAllListeners();
+    return await new Promise<string | null>((resolve) => {
+      const timer = setTimeout(() => resolve(null), 10_000);
+      void PushNotifications.addListener('registration', (t) => {
+        clearTimeout(timer);
+        resolve(t.value || null);
+      });
+      void PushNotifications.addListener('registrationError', () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+      void PushNotifications.register();
+    });
+  } catch {
+    return null; // plugin missing (older binary) or APNs unreachable — never break boot
+  }
+}
 
 const LINES = [
   'Eating soon? Ten seconds for the bracha first — your streak is waiting.',

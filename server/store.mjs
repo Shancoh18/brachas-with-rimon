@@ -29,6 +29,7 @@ const hydrate = (r) =>
     google: r.google_sub,
     progress: parse(r.progress),
     push: parse(r.push),
+    apns: r.apns ?? null,
     created: r.created,
   };
 
@@ -98,6 +99,13 @@ export const setPassword = (id, pass) =>
   db.prepare('UPDATE users SET pass_salt = ?, pass_hash = ? WHERE id = ?').run(pass.salt, pass.hash, id);
 export const setPush = (id, push) =>
   db.prepare('UPDATE users SET push = ? WHERE id = ?').run(push ? JSON.stringify(push) : null, id);
+/** APNs device token (native iOS). A token identifies the DEVICE, so signing
+ *  into another account on the same phone moves it — never fan out one push
+ *  to two accounts on one handset. */
+export const setApns = (id, token) => {
+  if (token) db.prepare('UPDATE users SET apns = NULL WHERE apns = ? AND id <> ?').run(token, id);
+  db.prepare('UPDATE users SET apns = ? WHERE id = ?').run(token || null, id);
+};
 export const deleteUser = (id) => db.prepare('DELETE FROM users WHERE id = ?').run(id); // cascades
 
 // ----------------------------------------------------------------- friends
@@ -215,3 +223,12 @@ export const pushSubscribers = () =>
     .all()
     .map(hydrate)
     .filter((u) => u.push?.subscription && u.push?.times?.length);
+
+/** Everyone reachable on ANY push channel (Web Push or native APNs) —
+ *  the owner-broadcast audience. */
+export const pushAudience = () =>
+  db
+    .prepare('SELECT * FROM users WHERE push IS NOT NULL OR apns IS NOT NULL')
+    .all()
+    .map(hydrate)
+    .filter((u) => u.push?.subscription || u.apns);

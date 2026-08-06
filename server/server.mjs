@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs
 import { createPublicKey, randomBytes, scryptSync, timingSafeEqual, verify as cryptoVerify } from 'crypto';
 import { join } from 'path';
 import webpush from 'web-push';
+import { apnsReady, sendApns } from './apns.mjs';
 import * as store from './store.mjs';
 
 const PORT = Number(process.env.PORT || 3300);
@@ -159,20 +160,29 @@ const pushAllowed = (kind, userId, key, gapMs) => {
   if (pushStamp.size > 20_000) pushStamp.clear(); // bounded
   return true;
 };
+/** True if we can reach this user on ANY push channel. The native iOS app has
+ *  no Web Push (WKWebView) — it registers an APNs device token instead. */
+const hasPushChannel = (user) => !!(user?.push?.subscription || (user?.apns && apnsReady()));
 const sendPush = (user, title, body) => {
   const sub = user?.push?.subscription;
-  if (!sub) return;
-  webpush
-    .sendNotification(sub, JSON.stringify({ title, body }), { timeout: 5000 })
-    .catch((e) => {
-      if (e.statusCode === 404 || e.statusCode === 410) store.setPush(user.id, null); // expired
-    });
+  if (sub)
+    webpush
+      .sendNotification(sub, JSON.stringify({ title, body }), { timeout: 5000 })
+      .catch((e) => {
+        if (e.statusCode === 404 || e.statusCode === 410) store.setPush(user.id, null); // expired
+      });
+  if (user?.apns && apnsReady())
+    sendApns(user.apns, title, body)
+      .then((r) => {
+        if (r.gone) store.setApns(user.id, null); // device unregistered
+      })
+      .catch(() => undefined);
 };
 
 /** New chat message → nudge the other members (≤1 chat push / 45min / board). */
 const notifyBoardChat = (board, sender, text) => {
   for (const member of store.boardMembers(board.id)) {
-    if (member.id === sender.id || !member.push?.subscription) continue;
+    if (member.id === sender.id || !hasPushChannel(member)) continue;
     if (!pushAllowed('chat', member.id, board.id, 45 * 60_000)) continue;
     sendPush(member, `💬 ${board.title}`, `${sender.name}: ${text.slice(0, 90)}`);
   }
@@ -187,7 +197,7 @@ const notifyOvertaken = (me, oldWeek, newWeek) => {
     for (const m of store.boardMembers(b.id)) peers.set(m.id, m);
   peers.delete(me.id);
   for (const peer of peers.values()) {
-    if (!peer.push?.subscription) continue;
+    if (!hasPushChannel(peer)) continue;
     const pw = weekTotal(peer, 'points');
     if (!(oldWeek < pw && pw <= newWeek)) continue; // strictly passed this sync
     if (!pushAllowed('overtake', peer.id, me.id, 2 * 60 * 60_000)) continue;
@@ -703,20 +713,36 @@ const server = createServer(async (req, res) => {
       const cleanTitle = String(title || 'Rimon here 🍎').slice(0, 60);
       const cleanBody = String(body || '').trim().slice(0, 180);
       if (!cleanBody) return json(res, 400, { error: 'body_required' });
-      const subs = store.pushSubscribers().filter((u) => u.push?.subscription);
+      // Both channels: Web Push subscribers AND native APNs devices.
+      const subs = store.pushAudience();
       let sent = 0, expired = 0, failed = 0;
       await Promise.allSettled(
-        subs.map((u) =>
-          webpush
-            .sendNotification(u.push.subscription, JSON.stringify({ title: cleanTitle, body: cleanBody }), { timeout: 5000 })
-            .then(() => sent++)
-            .catch((e) => {
-              if (e.statusCode === 404 || e.statusCode === 410) {
-                store.setPush(u.id, null); // expired
-                expired++;
-              } else failed++;
-            }),
-        ),
+        subs.flatMap((u) => {
+          const jobs = [];
+          if (u.push?.subscription)
+            jobs.push(
+              webpush
+                .sendNotification(u.push.subscription, JSON.stringify({ title: cleanTitle, body: cleanBody }), { timeout: 5000 })
+                .then(() => sent++)
+                .catch((e) => {
+                  if (e.statusCode === 404 || e.statusCode === 410) {
+                    store.setPush(u.id, null); // expired
+                    expired++;
+                  } else failed++;
+                }),
+            );
+          if (u.apns && apnsReady())
+            jobs.push(
+              sendApns(u.apns, cleanTitle, cleanBody).then((r) => {
+                if (r.ok) sent++;
+                else if (r.gone) {
+                  store.setApns(u.id, null);
+                  expired++;
+                } else failed++;
+              }),
+            );
+          return jobs;
+        }),
       );
       return json(res, 200, { ok: true, subscribers: subs.length, sent, expired, failed });
     }
@@ -923,6 +949,15 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/push/key') return json(res, 200, { key: vapid.publicKey });
+
+    // Native iOS registers its APNs device token here (WKWebView has no Web
+    // Push). {token:null} clears it — called on sign-out.
+    if (url.pathname === '/api/push/native' && req.method === 'POST') {
+      const { token } = await readBody(req);
+      if (token != null && !/^[0-9a-f]{16,200}$/i.test(String(token))) return json(res, 400, { error: 'bad_token' });
+      store.setApns(a.user.id, token ? String(token).toLowerCase() : null);
+      return json(res, 200, { ok: true, enabled: !!token, delivery: apnsReady() ? 'apns' : 'awaiting_server_key' });
+    }
 
     if (url.pathname === '/api/push/subscribe' && req.method === 'POST') {
       const { subscription, times, tzOffsetMinutes } = await readBody(req);

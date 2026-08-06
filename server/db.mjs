@@ -95,6 +95,10 @@ export function openDb(dataDir) {
       PRIMARY KEY (board_id, user_id)
     );
   `);
+  // additive migrations — guarded so re-running is a no-op
+  const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  // APNs device token for the native iOS app (WKWebView has no Web Push)
+  if (!userCols.includes('apns')) db.exec('ALTER TABLE users ADD COLUMN apns TEXT');
   return db;
 }
 

@@ -7,7 +7,8 @@
  * password set/change, friend code with copy, replay-the-intro, sign out.
  */
 import { useEffect, useState } from 'react';
-import { apiDeleteAccount, apiMe, apiSetPassword, apiUpdateAccount } from '../lib/api';
+import { apiDeleteAccount, apiMe, apiPushNative, apiSetPassword, apiUpdateAccount } from '../lib/api';
+import { isNative } from '../lib/native';
 import { useBracha } from '../store';
 import { AuthPanel } from '../components/AuthPanel';
 import { Rimon } from '../components/Rimon';
@@ -258,6 +259,8 @@ export function Account() {
               </PillButton>
               <button
                 onClick={() => {
+                  // stop server pushes chasing a signed-out device (best-effort)
+                  if (isNative() && serverToken) void apiPushNative(serverToken, null).catch(() => undefined);
                   clearServerAccount();
                   setNotice(null);
                 }}
