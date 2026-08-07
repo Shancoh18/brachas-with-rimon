@@ -6,6 +6,7 @@
 import { useMemo, useState } from 'react';
 import { BRACHA_LABEL, FOODS } from '../data/foods';
 import { mealItemFromKey, setItemState, type FoodState } from '../lib/classify';
+import { searchFoods } from '../lib/foodSearch';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
@@ -26,32 +27,15 @@ export function Confirm() {
   const [query, setQuery] = useState('');
   // manual entry (no photo, arrived with an empty plate): open the search
   // immediately — looking up foods IS the flow
-  const [manualEntry] = useState(() => !photo && items.length === 0);
+  // open search immediately when there's nothing on the plate — whether the
+  // user chose manual entry OR identification failed and left it empty
+  const [manualEntry] = useState(() => items.length === 0);
   const [adding, setAdding] = useState(manualEntry);
 
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    // token search with relevance ranking: every word of the query must match
-    // somewhere in an alias (so "green apple", "apple green" and "appl" all
-    // land), exact and prefix hits float to the top
-    const tokens = q.split(/\s+/);
-    const scored: { f: (typeof FOODS)[number]; score: number }[] = [];
-    for (const f of FOODS) {
-      const names = f.names.map((n) => n.toLowerCase());
-      const hit = tokens.every((t) => names.some((n) => n.includes(t)) || f.key.includes(t));
-      if (!hit) continue;
-      let score = 3;
-      if (names.some((n) => n === q)) score = 0;
-      else if (names.some((n) => n.startsWith(q))) score = 1;
-      else if (names.some((n) => n.split(/[\s-]/).some((w) => tokens.some((t) => w.startsWith(t))))) score = 2;
-      scored.push({ f, score });
-    }
-    return scored
-      .sort((a, b) => a.score - b.score || a.f.names[0].length - b.f.names[0].length)
-      .map((x) => x.f)
-      .slice(0, 9);
-  }, [query]);
+  // Search lives in src/lib/foodSearch.ts: same token ranking as before, plus
+  // Hebrew names, regional/spelling aliases, and typo tolerance. Searching
+  // FOODS (not a snapshot) keeps server-learned foods findable too.
+  const matches = useMemo(() => searchFoods(query, FOODS, 9), [query]);
 
   return (
     <ScreenShell>
@@ -81,9 +65,9 @@ export function Confirm() {
 
       {demoFallback && (
         <div className="rise-in rise-in-1 mb-5 rounded-[1.25rem] bg-rimon/8 p-4 text-[12px] leading-relaxed text-espresso ring-1 ring-rimon/20">
-          <strong className="text-rimon">Heads up:</strong> we couldn’t reach the identification
-          service just now, so this is Rimon’s <em>demo meal</em> — not what’s in your photo.
-          Check your connection and try the photo again.
+          <strong className="text-rimon">Heads up:</strong> Rimon couldn’t identify your photo just
+          now. Nothing has been added — search below and add what’s on your plate, and every
+          blessing will still be exactly right.
         </div>
       )}
 
@@ -169,7 +153,7 @@ export function Confirm() {
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search the food database…"
+              placeholder="Search foods — English or עברית"
               className="w-full bg-transparent px-2 py-1.5 text-[14px] text-espresso outline-none placeholder:text-mocha"
             />
             {query.trim().length >= 2 && matches.length === 0 && (

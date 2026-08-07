@@ -2,8 +2,9 @@
  * Preflight gate — runs before ANY upload (Pages deploy, master sync, and the
  * same suite runs on Codemagic before every TestFlight build).
  *
- *   1. tsc --noEmit                 (client type-check)
- *   2. server/test/scenarios.mjs    (server + push mock scenarios, 25 asserts)
+ *   1. tsc -b --force               (client type-check)
+ *   2. server/test/scenarios.mjs    (server + push mock scenarios)
+ *   3. server/test/search.mjs       (food search: aliases, Hebrew, typos)
  *
  * Called automatically by deploy-pages.mjs and sync-master.mjs; run it by hand
  * with `npm run preflight`. Escape hatch for emergencies: SKIP_PREFLIGHT=1
@@ -40,5 +41,8 @@ if (process.env.SKIP_PREFLIGHT === '1') {
 // --force so a stale .tsbuildinfo can never skip the check.
 run('client type-check', process.execPath, [join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '-b', '--force']);
 run('server push/chat scenarios', process.execPath, [join(ROOT, 'server', 'test', 'scenarios.mjs')]);
+// food search: alias keys must resolve and Hebrew/typo lookups must land on the
+// RIGHT entry — a mis-aimed alias would show a user the wrong bracha
+run('food search + aliases', process.execPath, ['--experimental-strip-types', join(ROOT, 'server', 'test', 'search.mjs')]);
 
 console.log('\nPREFLIGHT: ALL GREEN — clear to upload.');

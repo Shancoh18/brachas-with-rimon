@@ -43,8 +43,10 @@ export function Welcome() {
           result = await analyzePhoto(base64, mediaType);
           notePhotoFlow(); // Snap & Bless daily
         } catch {
-          // identification unreachable/timed out → demo fallback, labeled in Confirm
-          result = demoMeal();
+          // Identification unreachable/timed out. Hand back an EMPTY plate —
+          // never a substitute meal. Confirm explains and opens manual search,
+          // so the user adds what they are actually eating.
+          result = { items: [], unmatched: [] };
           fellBack = true;
         }
       } else {

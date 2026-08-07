@@ -522,6 +522,23 @@ which category a food belongs to, report found:false rather than guess.`,
   }
   const key = String(e.key || description).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
   if (!key || allFoodKeys().includes(key)) return null; // already known — nothing to learn
+  // CITATION RELEVANCE (added 2026-08-07 after a batch dry-run caught it):
+  // when no page rules on the food, the model would fall back to a broad essay
+  // and still answer — one Passover article got cited for stuffing, falafel,
+  // breadcrumbs AND matzah meal. A per-food/category ruling page is fine
+  // (ravioli→/brachos/pasta/); a general ARTICLE that never names the food is
+  // not. Reject those: better an honest "unknown" than a mis-sourced ruling.
+  if (/\/(blog|articles|news)\//.test(String(e.sourceUrl))) {
+    const slug = String(e.sourceUrl).toLowerCase();
+    const foodWords = [key, ...(Array.isArray(e.names) ? e.names : []), description]
+      .join(' ').toLowerCase().split(/[^a-z]+/)
+      .filter((w) => w.length >= 4)
+      .map((w) => w.replace(/(ies|es|s)$/, ''));
+    if (!foodWords.some((w) => slug.includes(w))) {
+      console.log(`research rejected (essay citation, food not named): ${description} -> ${e.sourceUrl}`);
+      return null;
+    }
+  }
   return {
     key,
     names: Array.isArray(e.names) && e.names.length ? e.names.map(String).slice(0, 6) : [description],
@@ -825,6 +842,42 @@ const server = createServer(async (req, res) => {
     // One-shot owner broadcast (release announcements). Requires the
     // BROADCAST_KEY service variable — without it the route plays dead, and a
     // wrong secret is indistinguishable from the route not existing.
+    // Owner-only batch pre-research: seeds the learned-foods table with common
+    // groceries BEFORE users hit them, so "unknown food" gets rarer. Same
+    // researchFood path as the live flow — three approved domains only, the
+    // model still never rules from its own knowledge. `dryRun` returns what it
+    // WOULD learn without persisting, so rulings can be eyeballed first.
+    if (url.pathname === '/api/admin/research' && req.method === 'POST') {
+      if (throttled(req, 10)) return json(res, 429, { error: 'slow_down' });
+      const key = process.env.BROADCAST_KEY || '';
+      const { secret, foods, dryRun } = await readBody(req);
+      const sBuf = Buffer.from(String(secret || ''));
+      const kBuf = Buffer.from(key);
+      if (!key || sBuf.length !== kBuf.length || !timingSafeEqual(sBuf, kBuf))
+        return json(res, 404, { error: 'not_found' });
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) return json(res, 503, { error: 'vision_not_configured' });
+      const list = (Array.isArray(foods) ? foods : []).map((s) => String(s).trim().slice(0, 60)).filter(Boolean).slice(0, 12);
+      if (!list.length) return json(res, 400, { error: 'foods_required' });
+      const known = new Set(allFoodKeys());
+      const learned = [], skipped = [], failed = [];
+      await Promise.allSettled(
+        list.map((desc) =>
+          researchFood(desc, apiKey)
+            .then((entry) => {
+              if (!entry) return failed.push({ desc, why: 'no ruling on approved sites' });
+              if (known.has(entry.key)) return skipped.push({ desc, key: entry.key, why: 'already known' });
+              if (store.learnedCount() >= LEARNED_MAX) return failed.push({ desc, why: 'learned cap reached' });
+              if (!dryRun) store.addLearned(entry);
+              known.add(entry.key);
+              learned.push({ desc, key: entry.key, names: entry.names, rishona: entry.brachaRishona, achrona: entry.brachaAchrona, source: entry.sourceUrl });
+            })
+            .catch((e) => failed.push({ desc, why: String(e.message).slice(0, 120) })),
+        ),
+      );
+      return json(res, 200, { ok: true, dryRun: !!dryRun, learned, skipped, failed, total: store.learnedCount() });
+    }
+
     if (url.pathname === '/api/admin/broadcast' && req.method === 'POST') {
       if (throttled(req)) return json(res, 429, { error: 'slow_down' });
       const key = process.env.BROADCAST_KEY || '';

@@ -204,8 +204,8 @@ t = await text();
 check('home offers manual add + Birkat Hamazon', t.includes('add it manually!') && t.includes('birkat hamazon'));
 await clickText('Add it manually', 1200);
 t = await text();
-check('manual entry opens with search ready', t.includes('what did you eat') && (await page.evaluate(() => !!document.querySelector('input[placeholder="Search the food database…"]'))));
-await page.type('input[placeholder="Search the food database…"]', 'banana');
+check('manual entry opens with search ready', t.includes('what did you eat') && (await page.evaluate(() => !!document.querySelector('input[placeholder="Search foods — English or עברית"]'))));
+await page.type('input[placeholder="Search foods — English or עברית"]', 'banana');
 await sleep(700);
 await page.evaluate(() => {
   const li = [...document.querySelectorAll('li button')].find((b) => b.textContent.toLowerCase().includes('banana'));
@@ -228,16 +228,16 @@ const MEAL = [
   { q: 'grilled chicken', pick: 'chicken' },
 ];
 const addFood = async ({ q, pick }) => {
-  const searchReady = await page.evaluate(() => !!document.querySelector('input[placeholder="Search the food database…"]'));
+  const searchReady = await page.evaluate(() => !!document.querySelector('input[placeholder="Search foods — English or עברית"]'));
   if (!searchReady) await clickText('+ add a food', 700);
   await page.evaluate(() => {
-    const inp = document.querySelector('input[placeholder="Search the food database…"]');
+    const inp = document.querySelector('input[placeholder="Search foods — English or עברית"]');
     if (inp) {
       Object.getOwnPropertyDescriptor(Object.getPrototypeOf(inp), 'value').set.call(inp, '');
       inp.dispatchEvent(new Event('input', { bubbles: true }));
     }
   });
-  await page.type('input[placeholder="Search the food database…"]', q);
+  await page.type('input[placeholder="Search foods — English or עברית"]', q);
   await sleep(650);
   const picked = await page.evaluate((label) => {
     // the li button's first text node is the food label; the bracha tag span follows
@@ -440,10 +440,18 @@ await sleep(1200);
 t = await text();
 const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
 check('league membership from gate signup - friend code shows', !!codeMatch, codeMatch?.[0]);
-await page.type('input[placeholder="RIMON-XXXX or friend@email.com"]', 'rimon-test-friend@example.com');
+// Friend-add is CODE-ONLY (email adds were removed 2026-08-06 — a security fix).
+// Mint a real friend via the API to get a genuine RIMON code, then add by it.
+const friendReg = await fetch('https://brachas-rimon-api-production-46ae.up.railway.app/api/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: 'https://shancoh18.github.io' },
+  body: JSON.stringify({ name: 'Test Friend', password: `e2e-friend-${Date.now()}` }),
+}).then((r) => r.json());
+check('minted a friend account via API for the code-add test', /^RIMON-[A-Z2-9]{4}$/.test(friendReg.code || ''), friendReg.code);
+await page.type('input[placeholder="RIMON-XXXX"]', friendReg.code);
 await clickText('Add', 2200);
 t = await text();
-check('add friend by code works', t.includes('test friend'), 'league shows Test Friend');
+check('add friend BY CODE works', t.includes('test friend'), 'league shows Test Friend');
 check('league ranks by weekly points', t.includes('pts this week') && /⭐\s*\d+/.test(t));
 check('league shows weekly bracha counts', t.includes('brachos'));
 // the numbers must be REAL, not zeros: this account finished a 7-bracha meal

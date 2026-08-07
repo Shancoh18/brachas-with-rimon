@@ -62,8 +62,9 @@ interface BrachaState {
 
   unmatched: string[];
   setUnmatched: (u: string[]) => void;
-  /** True when a REAL photo's identification failed and the demo meal was
-   *  substituted — Confirm must label it so it never poses as a real result. */
+  /** True when a REAL photo's identification failed. The plate is left EMPTY
+   *  and Confirm opens manual search — we never substitute a made-up meal,
+   *  because a user who taps past a banner would bless food they aren't eating. */
   demoFallback: boolean;
   setDemoFallback: (v: boolean) => void;
   /** One-shot message shown on the AuthGate (e.g. "account deleted") — set it

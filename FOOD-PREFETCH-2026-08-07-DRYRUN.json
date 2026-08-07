@@ -1,0 +1,976 @@
+{
+  "ranAt": "2026-08-07T05:41:26.904Z",
+  "dryRun": true,
+  "learned": [
+    {
+      "desc": "grits",
+      "key": "grits",
+      "names": [
+        "Grits",
+        "Corn Grits",
+        "Cooked Corn Grits"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cooked-corn-grits/"
+    },
+    {
+      "desc": "french bread",
+      "key": "french_bread",
+      "names": [
+        "French Bread",
+        "Baguette"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/french-bread/"
+    },
+    {
+      "desc": "corn tortilla",
+      "key": "corn_tortilla",
+      "names": [
+        "Corn Tortilla",
+        "Tortilla (corn)",
+        "Corn Tortilla Wrap"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/what-is-the-proper-bracha-for-corn-tortillas-or-tortilla-chips/"
+    },
+    {
+      "desc": "brioche",
+      "key": "brioche",
+      "names": [
+        "Brioche",
+        "Brioche Bun",
+        "Brioche Bread"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/brioche-buns/"
+    },
+    {
+      "desc": "raisin bran crunch",
+      "key": "raisin_bran_crunch",
+      "names": [
+        "Raisin Bran Crunch",
+        "Post Raisin Bran Crunch"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/raisin-bran-crunch/"
+    },
+    {
+      "desc": "taco shell",
+      "key": "taco_shell",
+      "names": [
+        "Taco Shell",
+        "Corn Taco Shell",
+        "Hard Taco Shell"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/what-is-the-proper-bracha-for-corn-tortillas-or-tortilla-chips/"
+    },
+    {
+      "desc": "flour tortilla",
+      "key": "flour_tortilla",
+      "names": [
+        "Flour Tortilla",
+        "Wheat Tortilla",
+        "Wheat Wrap"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/halacha-yomis/q-what-bracha-is-recited-on-a-wheat-wrap-or-wheat-tortilla/"
+    },
+    {
+      "desc": "english muffin",
+      "key": "english_muffin",
+      "names": [
+        "English Muffin"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/english-muffin/"
+    },
+    {
+      "desc": "frosted flakes cereal",
+      "key": "frosted_flakes",
+      "names": [
+        "Frosted Flakes",
+        "Sugar Frosted Flakes",
+        "Frosted Corn Flakes cereal"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/frosted-flakes/"
+    },
+    {
+      "desc": "udon noodles",
+      "key": "udon_noodles",
+      "names": [
+        "Udon Noodles",
+        "Udon"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/noodles/"
+    },
+    {
+      "desc": "grits casserole",
+      "key": "grits_casserole",
+      "names": [
+        "Grits Casserole",
+        "Corn Grits",
+        "Baked Grits"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cooked-corn-grits/"
+    },
+    {
+      "desc": "polenta",
+      "key": "polenta",
+      "names": [
+        "Polenta",
+        "Cooked Cornmeal",
+        "Corn Mush"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cooked-corn-grits/"
+    },
+    {
+      "desc": "pretzel roll",
+      "key": "pretzel_roll",
+      "names": [
+        "Pretzel Roll",
+        "Pretzel Bun"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/pretzel-buns/"
+    },
+    {
+      "desc": "tortellini",
+      "key": "tortellini",
+      "names": [
+        "Tortellini",
+        "Pasta",
+        "Noodles"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/pasta/"
+    },
+    {
+      "desc": "ravioli",
+      "key": "ravioli",
+      "names": [
+        "Ravioli",
+        "Cheese Ravioli",
+        "Meat Ravioli"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/pasta/"
+    },
+    {
+      "desc": "pierogi",
+      "key": "pierogi",
+      "names": [
+        "Pierogi",
+        "Pierogies",
+        "Perogi",
+        "Perogies"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/potato-knish/"
+    },
+    {
+      "desc": "gnocchi",
+      "key": "gnocchi",
+      "names": [
+        "Gnocchi",
+        "Potato Gnocchi",
+        "Shlishkes"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/potato-knish/"
+    },
+    {
+      "desc": "shakshuka",
+      "key": "shakshuka",
+      "names": [
+        "Shakshuka",
+        "Shakshouka"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/shakshuka/"
+    },
+    {
+      "desc": "labneh",
+      "key": "labneh",
+      "names": [
+        "Labneh",
+        "Labaneh",
+        "Yogurt Cheese",
+        "Strained Yogurt"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/yogurt/"
+    },
+    {
+      "desc": "turkey breast",
+      "key": "turkey_breast",
+      "names": [
+        "Turkey Breast",
+        "Turkey",
+        "Roast Turkey"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/meat/"
+    },
+    {
+      "desc": "skyr",
+      "key": "skyr",
+      "names": [
+        "Skyr",
+        "Icelandic skyr",
+        "Icelandic strained yogurt"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/yogurt/"
+    },
+    {
+      "desc": "laffa wrap",
+      "key": "laffa_wrap",
+      "names": [
+        "Laffa wrap",
+        "Laffa bread",
+        "Wheat wrap",
+        "Tortilla wrap"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/halacha-yomis/q-what-bracha-is-recited-on-a-wheat-wrap-or-wheat-tortilla/"
+    },
+    {
+      "desc": "halloumi",
+      "key": "halloumi",
+      "names": [
+        "Halloumi",
+        "Hallumi",
+        "Halloumi Cheese"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cheese/"
+    },
+    {
+      "desc": "ricotta",
+      "key": "ricotta",
+      "names": [
+        "Ricotta",
+        "Ricotta Cheese"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cheese/"
+    },
+    {
+      "desc": "stuffing",
+      "key": "stuffing",
+      "names": [
+        "Stuffing",
+        "Bread Stuffing",
+        "Dressing"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://oukosher.org/passover/articles/on-these-days-nights-even-the-brachos-may-be-different/"
+    },
+    {
+      "desc": "lox",
+      "key": "lox",
+      "names": [
+        "Lox",
+        "Smoked Salmon",
+        "Nova"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/lox/"
+    },
+    {
+      "desc": "tuna steak",
+      "key": "tuna_steak",
+      "names": [
+        "Tuna Steak",
+        "Tuna Fish",
+        "Grilled Tuna"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tuna-fish/"
+    },
+    {
+      "desc": "guava",
+      "key": "guava",
+      "names": [
+        "Guava"
+      ],
+      "rishona": "haetz",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/guava/"
+    },
+    {
+      "desc": "corned beef",
+      "key": "corned_beef",
+      "names": [
+        "Corned Beef",
+        "Salt Beef"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/meat/"
+    },
+    {
+      "desc": "whitefish salad",
+      "key": "whitefish_salad",
+      "names": [
+        "Whitefish Salad",
+        "Whitefish Spread"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tuna-fish-salad/"
+    },
+    {
+      "desc": "falafel ball",
+      "key": "falafel_ball",
+      "names": [
+        "Falafel ball",
+        "Falafel",
+        "Fried chickpea ball"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/passover/articles/on-these-days-nights-even-the-brachos-may-be-different/"
+    },
+    {
+      "desc": "acorn squash",
+      "key": "acorn_squash",
+      "names": [
+        "Acorn Squash",
+        "Squash"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/squash/"
+    },
+    {
+      "desc": "blood orange",
+      "key": "blood_orange",
+      "names": [
+        "Blood Orange",
+        "Moro Orange",
+        "Orange"
+      ],
+      "rishona": "haetz",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/orange/"
+    },
+    {
+      "desc": "pomelo",
+      "key": "pomelo",
+      "names": [
+        "Pomelo",
+        "Pummelo",
+        "Shaddock",
+        "Citrus maxima"
+      ],
+      "rishona": "haetz",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/grapefruit/"
+    },
+    {
+      "desc": "lima beans",
+      "key": "lima_beans",
+      "names": [
+        "Lima Beans",
+        "Butter Beans"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/lima-beans/"
+    },
+    {
+      "desc": "bean sprouts",
+      "key": "bean_sprouts",
+      "names": [
+        "Bean Sprouts",
+        "Sprouts",
+        "Mung Bean Sprouts"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/sprouts/"
+    },
+    {
+      "desc": "daikon",
+      "key": "daikon",
+      "names": [
+        "Daikon",
+        "Daikon Radish",
+        "White Radish",
+        "Japanese Radish"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/radish/"
+    },
+    {
+      "desc": "granola cluster",
+      "key": "granola_cluster",
+      "names": [
+        "Granola Cluster",
+        "Granola Bar",
+        "Granola"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/granola-bars/"
+    },
+    {
+      "desc": "snow peas",
+      "key": "snow_peas",
+      "names": [
+        "Snow Peas",
+        "Mange Tout",
+        "Sugar Peas"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/peas/"
+    },
+    {
+      "desc": "gingerbread",
+      "key": "gingerbread",
+      "names": [
+        "Gingerbread",
+        "Ginger Bread"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/ginger-bread/"
+    },
+    {
+      "desc": "tahini",
+      "key": "tahini",
+      "names": [
+        "Tahini",
+        "Sesame Paste"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/bracha-recited-tahini-subscribers-question/"
+    },
+    {
+      "desc": "biscotti",
+      "key": "biscotti",
+      "names": [
+        "Biscotti",
+        "Cantucci",
+        "Italian twice-baked cookie"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/cookies/"
+    },
+    {
+      "desc": "baba ganoush",
+      "key": "baba_ganoush",
+      "names": [
+        "Baba Ganoush",
+        "Baba Ghanoush",
+        "Eggplant Dip",
+        "Babaganoosh"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/eggplant/"
+    },
+    {
+      "desc": "nutella",
+      "key": "nutella",
+      "names": [
+        "Nutella",
+        "chocolate hazelnut spread"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/bracha-recited-nut-butters-almond-cashew-butter-subscribers-question/"
+    },
+    {
+      "desc": "rice crispy treat",
+      "key": "rice_crispy_treat",
+      "names": [
+        "Rice Crispy Treat",
+        "Rice Krispie Treat",
+        "Krispie Treat"
+      ],
+      "rishona": "mezonos",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/rice-cakes/"
+    },
+    {
+      "desc": "veggie straws",
+      "key": "veggie_straws",
+      "names": [
+        "Veggie Straws",
+        "Veggie Chips"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/veggie-straws/"
+    },
+    {
+      "desc": "churro",
+      "key": "churro",
+      "names": [
+        "Churro",
+        "Churros"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/churros/"
+    },
+    {
+      "desc": "chai latte",
+      "key": "chai_latte",
+      "names": [
+        "Chai Latte",
+        "Spiced Tea Latte",
+        "Masala Chai Latte"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tea/"
+    },
+    {
+      "desc": "matcha latte",
+      "key": "matcha_latte",
+      "names": [
+        "Matcha Latte",
+        "Matcha Tea Latte",
+        "Green Tea Latte"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tea/"
+    },
+    {
+      "desc": "pita chips",
+      "key": "pita_chips",
+      "names": [
+        "Pita Chips",
+        "Baked Pita Chips",
+        "Pita Crisps"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/blog/consumer-kosher/the-mezonos-roll-is-it-a-piece-of-cake/"
+    },
+    {
+      "desc": "funnel cake",
+      "key": "funnel_cake",
+      "names": [
+        "Funnel Cake"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/donut/"
+    },
+    {
+      "desc": "hard cider",
+      "key": "hard_cider",
+      "names": [
+        "Hard Cider",
+        "Cider",
+        "Apple Cider (alcoholic)"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cider/"
+    },
+    {
+      "desc": "ketchup",
+      "key": "ketchup",
+      "names": [
+        "Ketchup",
+        "Catsup"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/ketchup/"
+    },
+    {
+      "desc": "rum",
+      "key": "rum",
+      "names": [
+        "Rum"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/alcoholic-beverages/"
+    },
+    {
+      "desc": "cream soda",
+      "key": "cream_soda",
+      "names": [
+        "Cream Soda",
+        "Soda",
+        "Carbonated Soft Drink"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/soda-all-flavors/"
+    },
+    {
+      "desc": "tonic water",
+      "key": "tonic_water",
+      "names": [
+        "Tonic Water",
+        "Quinine Water"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/carbonated-water/"
+    },
+    {
+      "desc": "breadcrumbs",
+      "key": "bread_crumbs",
+      "names": [
+        "Breadcrumbs",
+        "Bread Crumbs"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/passover/articles/on-these-days-nights-even-the-brachos-may-be-different/"
+    },
+    {
+      "desc": "maple syrup",
+      "key": "maple_syrup",
+      "names": [
+        "Maple Syrup",
+        "Pancake Syrup",
+        "Syrup"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/syrup/"
+    },
+    {
+      "desc": "cream of mushroom soup",
+      "key": "cream_of_mushroom_soup",
+      "names": [
+        "Cream of Mushroom Soup",
+        "Mushroom Soup",
+        "Creamy Mushroom Soup"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/mushroom-soup/"
+    },
+    {
+      "desc": "cholent",
+      "key": "cholent",
+      "names": [
+        "Cholent",
+        "Chamin",
+        "Hamin",
+        "Dafina"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/cholent/"
+    },
+    {
+      "desc": "matzah meal",
+      "key": "matzah_meal",
+      "names": [
+        "Matzah Meal",
+        "Matzo Meal"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/passover/articles/on-these-days-nights-even-the-brachos-may-be-different/"
+    },
+    {
+      "desc": "apple butter",
+      "key": "apple_butter",
+      "names": [
+        "Apple Butter",
+        "Apple Spread"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/bracha-recited-nut-butters-almond-cashew-butter-subscribers-question/"
+    },
+    {
+      "desc": "gravy",
+      "key": "gravy",
+      "names": [
+        "Gravy",
+        "Meat gravy",
+        "Sauce gravy"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/broth/"
+    },
+    {
+      "desc": "silan date syrup",
+      "key": "silan_date_syrup",
+      "names": [
+        "Silan",
+        "Date Syrup",
+        "Date Honey"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/syrup/"
+    }
+  ],
+  "skipped": [],
+  "failed": [
+    {
+      "desc": "naan bread",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "focaccia",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "lucky charms cereal",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "bulgur",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "farro",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "soba noodles",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "rice noodles",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "sabich",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "jachnun",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "malawach",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "falafel",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "tempeh",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "passion fruit",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "starfruit",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "lychee",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "seitan",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "veggie burger",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "jackfruit",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "okra",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kohlrabi",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "bok choy",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "cherimoya",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kumquat",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "swiss chard",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "fennel",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "plantain",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "arugula",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "watercress",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "rutabaga",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "endive",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "shallot",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "jicama",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "chives",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "praline",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "salsa",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "protein bar",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "nougat",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "trail mix",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "pesto",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "cashew milk",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "sparkling juice",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kombucha",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "coconut milk drink",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "crouton",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "banana chips",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "mead",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "vitamin water",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "flavored seltzer",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "soy sauce",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "mayonnaise",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "mustard",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "vinegar",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kubbeh",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "olive oil",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "majadra",
+      "why": "no ruling on approved sites"
+    }
+  ]
+}
