@@ -9,9 +9,8 @@ import { AFTER_LABEL } from '../data/foods';
 import { NUSACHIM } from '../data/texts';
 import { apiSync } from '../lib/api';
 import { resolveAfterBrachos } from '../lib/afterBracha';
-import { groupForRecitation } from '../lib/kedima';
 import { streakAlive } from '../lib/progress';
-import { useBracha, type TextMode } from '../store';
+import { useBracha, type PendingAfterItem, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell, WhyDropdown } from '../components/ui';
@@ -20,50 +19,54 @@ import { WHY_AFTER } from '../data/why';
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
 
 export function After() {
-  const { items, updateItem, nusach, textMode, setTextMode, reset, completeMeal, progress, setScreen, setPartyTime, celebration } =
-    useBracha();
+  const {
+    items,
+    nusach,
+    textMode,
+    setTextMode,
+    reset,
+    progress,
+    setScreen,
+    setPartyTime,
+    celebration,
+    pendingAfter,
+    updatePendingItem,
+    clearPendingAfter,
+    completeAfter,
+  } = useBracha();
   const pack = NUSACHIM[nusach];
+  // Resumed from the home widget (no live meal in flight) → the meal is long
+  // over, skip the "enjoy your meal" pause and go straight to the shiur check.
+  const resumed = items.length === 0;
   /** ask → enjoy the meal first; shiur → how much; done → the after-brachos */
-  const [phase, setPhase] = useState<'ask' | 'shiur' | 'done'>('ask');
+  const [phase, setPhase] = useState<'ask' | 'shiur' | 'done'>(resumed ? 'shiur' : 'ask');
   const confirmed = phase === 'done';
+  // completeAfter clears pendingAfter, so freeze the item set at that moment
+  // for the 'done' phase to keep rendering from
+  const [frozen, setFrozen] = useState<PendingAfterItem[] | null>(null);
 
-  const result = useMemo(
-    () =>
-      resolveAfterBrachos(
-        items.map((i) => ({
-          id: i.id,
-          label: i.label,
-          achrona: i.entry.brachaAchrona,
-          shiurMet: i.shiurMet,
-          isBread: i.entry.brachaRishona === 'Hamotzi',
-          isFiveGrain: i.entry.isFiveGrain,
-          isShivaFruit: i.entry.shivasHaminim && i.entry.isTreeFruit,
-          isTreeFruit: i.entry.isTreeFruit,
-          isWineGrape: i.entry.isWineGrape,
-          isDrink: i.entry.isDrink,
-        })),
-      ),
-    [items],
-  );
+  // The guide-finish snapshot (persisted) is the single source of truth here —
+  // the meal itself is already logged, only its after-blessings are open.
+  const source = frozen ?? pendingAfter?.items ?? [];
 
-  const recordThisMeal = (withAfter: boolean) => {
-    const groups = groupForRecitation(
-      items.map((i) => ({ id: i.id, bracha: i.bracha, shivaKey: i.entry.shivaKey, whole: i.whole, chaviv: i.chaviv })),
-    );
-    const said: string[] = groups.map((g) => g.bracha);
-    if (withAfter) {
-      if (result.birkatHamazon) said.push('BirkatHamazon');
-      if (result.meeinInserts.length) said.push('MeeinShalosh');
-      if (result.boreiNefashos) said.push('BoreiNefashos');
-    }
-    const sevenSpecies = items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length;
-    completeMeal(said, sevenSpecies, {
-      foodKeys: items.map((i) => i.entry.key),
-      withAfter,
-    });
+  const result = useMemo(() => resolveAfterBrachos(source), [source]);
+
+  const sayAfterNow = () => {
+    const said: string[] = [];
+    if (result.birkatHamazon) said.push('BirkatHamazon');
+    if (result.meeinInserts.length) said.push('MeeinShalosh');
+    if (result.boreiNefashos) said.push('BoreiNefashos');
+    setFrozen(source);
+    completeAfter(said);
     const { serverToken, progress: p } = useBracha.getState();
     if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
   };
+
+  // nothing pending and nothing frozen — e.g. a stale deep-entry; go home
+  if (source.length === 0) {
+    setScreen('welcome');
+    return null;
+  }
 
   // ------------------------------------------------------------- ASK phase
   // Never abrupt: the blessings are said, the meal is HAPPENING. Rimon waits.
@@ -93,11 +96,23 @@ export function After() {
               I’m done eating — after-blessings
             </PillButton>
             <PillButton
+              icon="🔖"
+              onClick={() => {
+                // meal already logged at guide-finish; the persisted snapshot
+                // becomes the home-screen widget until the circle is closed
+                if (celebration) setPartyTime(true);
+                else reset();
+              }}
+            >
+              Save after-blessings for later
+            </PillButton>
+            <PillButton
               variant="ghost"
               icon="→"
               onClick={() => {
-                recordThisMeal(false);
-                setPartyTime(true);
+                clearPendingAfter();
+                if (celebration) setPartyTime(true);
+                else reset();
               }}
             >
               Skip after-blessings
@@ -118,7 +133,7 @@ export function After() {
     return (
       <ScreenShell>
         <header className="rise-in space-y-2 pb-2 text-center">
-          <Eyebrow>Almost done</Eyebrow>
+          <Eyebrow>{resumed ? 'Welcome back — let’s finish' : 'Almost done'}</Eyebrow>
           <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
             How much did you eat?
           </h2>
@@ -131,7 +146,7 @@ export function After() {
           <Rimon pose="thinking" size={100} />
         </div>
         <div className="flex flex-col gap-2.5">
-          {items.map((i, idx) => (
+          {source.map((i, idx) => (
             <label
               key={i.id}
               className={`rise-in rise-in-${Math.min(idx + 1, 4)} flex cursor-pointer items-center justify-between rounded-[1.25rem] bg-white/70 px-5 py-3.5 ring-1 ring-espresso/[0.07] transition-[background-color,color,transform] duration-150 ease-out ${
@@ -142,7 +157,7 @@ export function After() {
               <input
                 type="checkbox"
                 checked={i.shiurMet}
-                onChange={(e) => updateItem(i.id, { shiurMet: e.target.checked })}
+                onChange={(e) => updatePendingItem(i.id, { shiurMet: e.target.checked })}
                 className="h-5 w-5 accent-[#a13327]"
               />
             </label>
@@ -152,7 +167,7 @@ export function After() {
           <PillButton
             variant="rimon"
             onClick={() => {
-              recordThisMeal(true);
+              sayAfterNow();
               setPhase('done');
             }}
           >

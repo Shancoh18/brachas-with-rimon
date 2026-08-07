@@ -1,484 +1,953 @@
 {
-  "ranAt": "2026-08-07T05:45:40.698Z",
+  "ranAt": "2026-08-07T06:04:59.581Z",
   "dryRun": false,
-  "learned": [],
-  "skipped": [],
-  "failed": [
+  "learned": [
     {
       "desc": "english muffin",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "flour tortilla",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "french bread",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "brioche",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "focaccia",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "english_muffin",
+      "names": [
+        "English Muffin"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/english-muffin/"
     },
     {
       "desc": "grits",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "grits",
+      "names": [
+        "Grits",
+        "Corn Grits",
+        "Cooked Corn Grits"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cooked-corn-grits/"
     },
     {
       "desc": "corn tortilla",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "naan bread",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "frosted flakes cereal",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "taco shell",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "lucky charms cereal",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "corn_tortilla",
+      "names": [
+        "Corn Tortilla",
+        "Tortilla Wrap (Corn)"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/what-is-the-proper-bracha-for-corn-tortillas-or-tortilla-chips/"
     },
     {
       "desc": "raisin bran crunch",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "raisin_bran_crunch",
+      "names": [
+        "Raisin Bran Crunch",
+        "Raisin Bran Crunch cereal"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/raisin-bran-crunch/"
     },
     {
-      "desc": "udon noodles",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "french bread",
+      "key": "french_bread",
+      "names": [
+        "French Bread",
+        "Baguette"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/french-bread/"
+    },
+    {
+      "desc": "brioche",
+      "key": "brioche",
+      "names": [
+        "Brioche",
+        "Brioche Bun",
+        "Brioche Bread"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/brioche-buns/"
+    },
+    {
+      "desc": "flour tortilla",
+      "key": "flour_tortilla",
+      "names": [
+        "Flour Tortilla",
+        "Wheat Tortilla",
+        "Wheat Wrap"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/halacha-yomis/q-what-bracha-is-recited-on-a-wheat-wrap-or-wheat-tortilla/"
+    },
+    {
+      "desc": "taco shell",
+      "key": "taco_shell",
+      "names": [
+        "Taco Shell",
+        "Corn Taco Shell",
+        "Taco Shells"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/what-is-the-proper-bracha-for-corn-tortillas-or-tortilla-chips/"
+    },
+    {
+      "desc": "frosted flakes cereal",
+      "key": "frosted_flakes",
+      "names": [
+        "Frosted Flakes",
+        "Sugar Frosted Flakes",
+        "Frosted Corn Flakes"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/frosted-flakes/"
+    },
+    {
+      "desc": "naan bread",
+      "key": "naan",
+      "names": [
+        "Naan",
+        "Naan Bread"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/pita-bread/"
     },
     {
       "desc": "pretzel roll",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "pierogi",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "soba noodles",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "bulgur",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "pretzel_roll",
+      "names": [
+        "Pretzel Roll",
+        "Pretzel Bun"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/pretzel-buns/"
     },
     {
       "desc": "grits casserole",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "grits_casserole",
+      "names": [
+        "Grits Casserole",
+        "Corn Grits Casserole",
+        "Baked Grits"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cooked-corn-grits/"
     },
     {
       "desc": "polenta",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "polenta",
+      "names": [
+        "Polenta",
+        "Cornmeal Mush",
+        "Cooked Cornmeal"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cooked-corn-grits/"
     },
     {
-      "desc": "tortellini",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "ravioli",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "udon noodles",
+      "key": "udon_noodles",
+      "names": [
+        "Udon Noodles",
+        "Udon"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/noodles/"
     },
     {
       "desc": "gnocchi",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "gnocchi",
+      "names": [
+        "Gnocchi",
+        "Potato Gnocchi",
+        "Italian Potato Dumplings"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/dumplings/"
+    },
+    {
+      "desc": "tortellini",
+      "key": "tortellini",
+      "names": [
+        "Tortellini",
+        "Cheese Tortellini",
+        "Meat Tortellini"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/pasta/"
+    },
+    {
+      "desc": "ravioli",
+      "key": "ravioli",
+      "names": [
+        "Ravioli",
+        "Cheese Ravioli",
+        "Meat Ravioli"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/pasta/"
     },
     {
       "desc": "rice noodles",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "farro",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "stuffing",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "sabich",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "malawach",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "halloumi",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "jachnun",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "skyr",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "shakshuka",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "falafel",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "rice_noodles",
+      "names": [
+        "Rice Noodles",
+        "Rice Vermicelli",
+        "Rice Pasta"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/noodles-for-pesach/"
     },
     {
       "desc": "ricotta",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "labneh",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "ricotta",
+      "names": [
+        "Ricotta",
+        "Ricotta Cheese"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cheese/"
     },
     {
       "desc": "turkey breast",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "turkey_breast",
+      "names": [
+        "Turkey Breast",
+        "Turkey Meat",
+        "Sliced Turkey"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/meat/"
+    },
+    {
+      "desc": "skyr",
+      "key": "skyr",
+      "names": [
+        "Skyr",
+        "Icelandic yogurt",
+        "Icelandic skyr"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/yogurt/"
+    },
+    {
+      "desc": "shakshuka",
+      "key": "shakshuka",
+      "names": [
+        "Shakshuka",
+        "Shakshouka"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/shakshuka/"
+    },
+    {
+      "desc": "labneh",
+      "key": "labneh",
+      "names": [
+        "Labneh",
+        "Labaneh",
+        "Lebni",
+        "Strained Yogurt Cheese"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/yogurt/"
+    },
+    {
+      "desc": "halloumi",
+      "key": "halloumi",
+      "names": [
+        "Halloumi",
+        "Halloumi Cheese"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cheese/"
     },
     {
       "desc": "laffa wrap",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "laffa_wrap",
+      "names": [
+        "Laffa wrap",
+        "Laffa",
+        "Wheat wrap",
+        "Wheat tortilla"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://oukosher.org/halacha-yomis/q-what-bracha-is-recited-on-a-wheat-wrap-or-wheat-tortilla/"
     },
     {
-      "desc": "starfruit",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "passion fruit",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "tuna steak",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "corned beef",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "whitefish salad",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "sabich",
+      "key": "sabich",
+      "names": [
+        "Sabich",
+        "Sabich Sandwich",
+        "Sabich Pita"
+      ],
+      "rishona": "hamotzi",
+      "achrona": "birkat_hamazon",
+      "source": "https://www.brachos.org/brachos/sandwich-bread/"
     },
     {
       "desc": "guava",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "guava",
+      "names": [
+        "Guava"
+      ],
+      "rishona": "haetz",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/guava/"
     },
     {
-      "desc": "seitan",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "tempeh",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "lychee",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "tuna steak",
+      "key": "tuna_steak",
+      "names": [
+        "Tuna Steak",
+        "Tuna",
+        "Tuna Fish"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tuna-fish/"
     },
     {
       "desc": "lox",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "lox",
+      "names": [
+        "Lox",
+        "Smoked Salmon",
+        "Nova"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/lox/"
     },
     {
-      "desc": "veggie burger",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "corned beef",
+      "key": "corned_beef",
+      "names": [
+        "Corned Beef",
+        "Corned Beef Brisket"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/beef/"
+    },
+    {
+      "desc": "whitefish salad",
+      "key": "whitefish_salad",
+      "names": [
+        "Whitefish Salad",
+        "Smoked Whitefish Salad"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tuna-fish-salad/"
     },
     {
       "desc": "falafel ball",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "kohlrabi",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "blood orange",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "swiss chard",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "fennel",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "acorn squash",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "jackfruit",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "kumquat",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "okra",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "falafel",
+      "names": [
+        "Falafel",
+        "Falafel ball"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/chickpeas/"
     },
     {
       "desc": "bok choy",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "bok_choy",
+      "names": [
+        "Bok Choy",
+        "Pak Choi",
+        "Pok Choi",
+        "Chinese Cabbage"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/bok-choy/"
     },
     {
-      "desc": "plantain",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "acorn squash",
+      "key": "acorn_squash",
+      "names": [
+        "Acorn Squash",
+        "Squash"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/squash/"
     },
     {
-      "desc": "pomelo",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "cherimoya",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "blood orange",
+      "key": "blood_orange",
+      "names": [
+        "Blood Orange",
+        "Moro Orange"
+      ],
+      "rishona": "haetz",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/orange/"
     },
     {
       "desc": "lima beans",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "watercress",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "jicama",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "granola cluster",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "chives",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "endive",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "snow peas",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "rutabaga",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "arugula",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "bean sprouts",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "shallot",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "lima_beans",
+      "names": [
+        "Lima Beans",
+        "Butter Beans"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/lima-beans/"
     },
     {
       "desc": "daikon",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "daikon",
+      "names": [
+        "Daikon",
+        "Daikon radish",
+        "White radish",
+        "Japanese radish"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/radish/"
     },
     {
-      "desc": "baba ganoush",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "bean sprouts",
+      "key": "bean_sprouts",
+      "names": [
+        "Bean Sprouts",
+        "Sprouts",
+        "Mung Bean Sprouts"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/sprouts/"
     },
     {
-      "desc": "trail mix",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "praline",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "pesto",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "rice crispy treat",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "salsa",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "tahini",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "biscotti",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "snow peas",
+      "key": "snow_peas",
+      "names": [
+        "Snow Peas",
+        "Mangetout",
+        "Sugar Peas"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/peas/"
     },
     {
       "desc": "gingerbread",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "gingerbread",
+      "names": [
+        "Gingerbread"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/ginger-bread/"
     },
     {
-      "desc": "protein bar",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "tahini",
+      "key": "tahini",
+      "names": [
+        "Tahini",
+        "Sesame Paste",
+        "Sesame Spread"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/bracha-recited-tahini-subscribers-question/"
     },
     {
-      "desc": "nougat",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "baba ganoush",
+      "key": "baba_ganoush",
+      "names": [
+        "Baba Ganoush",
+        "Babaganoosh",
+        "Eggplant Dip"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/eggplant/"
+    },
+    {
+      "desc": "biscotti",
+      "key": "biscotti",
+      "names": [
+        "Biscotti",
+        "Italian twice-baked cookie"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/cookies/"
     },
     {
       "desc": "nutella",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "nutella",
+      "names": [
+        "Nutella",
+        "chocolate hazelnut spread",
+        "chocolate-hazelnut butter"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://oukosher.org/halacha-yomis/bracha-recited-nut-butters-almond-cashew-butter-subscribers-question/"
+    },
+    {
+      "desc": "rice crispy treat",
+      "key": "rice_crispy_treat",
+      "names": [
+        "Rice Crispy Treat",
+        "Rice Krispie Treat",
+        "Rice Krispies Treat",
+        "Marshmallow Rice Cereal Bar"
+      ],
+      "rishona": "mezonos",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/rice-krispies/"
+    },
+    {
+      "desc": "praline",
+      "key": "praline",
+      "names": [
+        "Praline",
+        "Pralines",
+        "Sugared Almonds",
+        "Candied Nuts"
+      ],
+      "rishona": "haetz",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/sugar-coated-almonds/"
     },
     {
       "desc": "veggie straws",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "cashew milk",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "matcha latte",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "sparkling juice",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "banana chips",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "crouton",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "coconut milk drink",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "funnel cake",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "kombucha",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "veggie_straws",
+      "names": [
+        "Veggie Straws",
+        "Vegetable Straws"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/veggie-straws/"
     },
     {
       "desc": "churro",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "pita chips",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "churro",
+      "names": [
+        "Churro",
+        "Churros"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/churros/"
     },
     {
       "desc": "chai latte",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "chai_latte",
+      "names": [
+        "Chai Latte",
+        "Spiced Tea Latte",
+        "Chai Tea Latte"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/tea/"
     },
     {
-      "desc": "cream soda",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "cashew milk",
+      "key": "cashew_milk",
+      "names": [
+        "Cashew Milk",
+        "Cashew Beverage"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/almond-milk/"
     },
     {
-      "desc": "flavored seltzer",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "mayonnaise",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "rum",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "hard cider",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "tonic water",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "banana chips",
+      "key": "banana_chips",
+      "names": [
+        "Banana Chips",
+        "Dried Banana Slices",
+        "Fried Banana Chips"
+      ],
+      "rishona": "haadama",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/banana/"
     },
     {
       "desc": "ketchup",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "ketchup",
+      "names": [
+        "Ketchup"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/ketchup/"
     },
     {
-      "desc": "vinegar",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "rum",
+      "key": "rum",
+      "names": [
+        "Rum"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/alcoholic-beverages/"
     },
     {
-      "desc": "vitamin water",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "tonic water",
+      "key": "tonic_water",
+      "names": [
+        "Tonic Water",
+        "Quinine Water"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/soda-all-flavors/"
     },
     {
-      "desc": "soy sauce",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "cream soda",
+      "key": "cream_soda",
+      "names": [
+        "Cream Soda",
+        "Soda (All Flavors)"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/soda-all-flavors/"
     },
     {
-      "desc": "mead",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "flavored seltzer",
+      "key": "flavored_seltzer",
+      "names": [
+        "Flavored Seltzer",
+        "Flavored Sparkling Water",
+        "Flavored Soda Water"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/soda-all-flavors/"
+    },
+    {
+      "desc": "hard cider",
+      "key": "hard_cider",
+      "names": [
+        "Hard Cider",
+        "Alcoholic Cider",
+        "Cider"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/cider/"
     },
     {
       "desc": "mustard",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "cholent",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "matzah meal",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "silan date syrup",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "kubbeh",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "mustard",
+      "names": [
+        "Mustard",
+        "Mustard Sauce",
+        "Prepared Mustard"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/mustard/"
     },
     {
       "desc": "maple syrup",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "maple_syrup",
+      "names": [
+        "Maple Syrup",
+        "Syrup"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/syrup/"
     },
     {
-      "desc": "breadcrumbs",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "olive oil",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "majadra",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "gravy",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
-    },
-    {
-      "desc": "apple butter",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "desc": "cholent",
+      "key": "cholent",
+      "names": [
+        "Cholent",
+        "Chamin",
+        "Dafina"
+      ],
+      "rishona": "mezonos",
+      "achrona": "al_hamichya",
+      "source": "https://www.brachos.org/brachos/cholent/"
     },
     {
       "desc": "cream of mushroom soup",
-      "why": "research http 400: {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to "
+      "key": "cream_of_mushroom_soup",
+      "names": [
+        "Cream of Mushroom Soup",
+        "Mushroom Soup",
+        "Creamy Mushroom Soup"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/mushroom-soup/"
+    },
+    {
+      "desc": "apple butter",
+      "key": "apple_butter",
+      "names": [
+        "Apple Butter"
+      ],
+      "rishona": "shehakol",
+      "achrona": "borei_nefashos",
+      "source": "https://www.brachos.org/brachos/apple-sauce/"
+    }
+  ],
+  "skipped": [],
+  "failed": [
+    {
+      "desc": "focaccia",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "lucky charms cereal",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "bulgur",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "farro",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "soba noodles",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "pierogi",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "jachnun",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "stuffing",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "malawach",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "falafel",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "tempeh",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "passion fruit",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "veggie burger",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "lychee",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "starfruit",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "seitan",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "jackfruit",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "cherimoya",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "okra",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "swiss chard",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kohlrabi",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "fennel",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "plantain",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "pomelo",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kumquat",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "jicama",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "rutabaga",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "granola cluster",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "shallot",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "arugula",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "watercress",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "chives",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "endive",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "pesto",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "protein bar",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "trail mix",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "salsa",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "nougat",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "crouton",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "sparkling juice",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kombucha",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "matcha latte",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "coconut milk drink",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "pita chips",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "funnel cake",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "mead",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "vitamin water",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "soy sauce",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "mayonnaise",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "vinegar",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "breadcrumbs",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "matzah meal",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "gravy",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "majadra",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "olive oil",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "silan date syrup",
+      "why": "no ruling on approved sites"
+    },
+    {
+      "desc": "kubbeh",
+      "why": "no ruling on approved sites"
     }
   ]
 }

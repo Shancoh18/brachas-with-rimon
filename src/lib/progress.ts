@@ -106,6 +106,40 @@ export function recordMeal(
   };
 }
 
+/** Record after-blessings said on their own (the save-for-later flow —
+ *  before-brachos were already banked by recordMeal at guide-finish).
+ *  Same streak/history bookkeeping as recordMeal, but NO mealsCompleted /
+ *  sevenSpecies increment: the meal itself was counted once already. */
+export function recordAfterBrachos(p: ProgressState, brachosSaid: string[]): ProgressState {
+  if (brachosSaid.length === 0) return p;
+  const day = todayStamp();
+  const byBracha = { ...p.byBracha };
+  for (const b of brachosSaid) byBracha[b] = (byBracha[b] ?? 0) + 1;
+
+  let streakCurrent = p.streakCurrent;
+  if (p.lastActiveDay == null) streakCurrent = 1;
+  else {
+    const gap = dayDiff(p.lastActiveDay, day);
+    if (gap === 1) streakCurrent += 1;
+    else if (gap > 1) streakCurrent = 1;
+  }
+
+  const history = [...p.history];
+  const last = history[history.length - 1];
+  if (last?.day === day) history[history.length - 1] = { ...last, brachos: last.brachos + brachosSaid.length };
+  else history.push({ day, brachos: brachosSaid.length });
+
+  return {
+    ...p,
+    totalBrachos: p.totalBrachos + brachosSaid.length,
+    byBracha,
+    streakCurrent,
+    streakBest: Math.max(p.streakBest, streakCurrent),
+    lastActiveDay: day,
+    history: history.slice(-90),
+  };
+}
+
 /** Streak is alive if last activity was today or yesterday. */
 export function streakAlive(p: ProgressState): boolean {
   if (!p.lastActiveDay) return false;

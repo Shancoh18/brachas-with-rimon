@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import { BRACHA_LABEL, type Bracha } from '../data/foods';
 import { NUSACHIM } from '../data/texts';
+import { apiSync } from '../lib/api';
 import { groupForRecitation } from '../lib/kedima';
 import { useBracha, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
@@ -41,7 +42,8 @@ const AUDIO_FILE: Record<Bracha, string> = {
 };
 
 export function Guide() {
-  const { items, nusach, textMode, setTextMode, guideIndex, setGuideIndex, setScreen } = useBracha();
+  const { items, nusach, textMode, setTextMode, guideIndex, setGuideIndex, setScreen, completeMeal, mergePendingAfter } =
+    useBracha();
   const pack = NUSACHIM[nusach];
 
   const groups = useMemo(
@@ -183,6 +185,33 @@ export function Guide() {
           icon={isLast ? '✓' : '→'}
           onClick={() => {
             if (isLast) {
+              // Log the meal THE MOMENT the last blessing is said — before the
+              // "enjoy your meal" pause — so closing the app loses nothing.
+              // (completeMeal self-guards on mealRecorded, so re-entering the
+              // guide via "back to the blessings" can't double-count.)
+              completeMeal(
+                groups.map((g) => g.bracha),
+                items.filter((i) => i.entry.shivasHaminim && i.shiurMet).length,
+                { foodKeys: items.map((i) => i.entry.key), withAfter: false },
+              );
+              // snapshot the after-blessing inputs — persisted, drives the
+              // home-screen "after-blessings saved" widget + the After screen
+              mergePendingAfter(
+                items.map((i) => ({
+                  id: i.id,
+                  label: i.label,
+                  achrona: i.entry.brachaAchrona,
+                  shiurMet: i.shiurMet,
+                  isBread: i.entry.brachaRishona === 'Hamotzi',
+                  isFiveGrain: i.entry.isFiveGrain,
+                  isShivaFruit: i.entry.shivasHaminim && i.entry.isTreeFruit,
+                  isTreeFruit: i.entry.isTreeFruit,
+                  isWineGrape: i.entry.isWineGrape,
+                  isDrink: i.entry.isDrink,
+                })),
+              );
+              const { serverToken, progress: p } = useBracha.getState();
+              if (serverToken) void apiSync(serverToken, p).catch(() => undefined);
               setGuideIndex(0);
               setScreen('after');
             } else {

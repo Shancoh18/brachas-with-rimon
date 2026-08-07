@@ -434,6 +434,35 @@ await sleep(600);
 t = await text();
 check('starring pins a lesson', t.includes('starred'));
 
+// -------------------------------------------- DAILY PARSHA + weekly takeaway
+// external feeds (hebcal leyning + Sefaria text) fetch on Learn mount — poll
+{
+  let cardUp = false;
+  for (let i = 0; i < 24 && !cardUp; i++) {
+    cardUp = await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Daily Torah')));
+    if (!cardUp) await sleep(500);
+  }
+  check('daily parsha card renders (hebcal + sefaria feeds)', cardUp);
+  if (cardUp) {
+    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Daily Torah'))?.click());
+    await sleep(1000);
+    t = await text();
+    const parshaHe = await page.evaluate(() => document.querySelector('[lang="he"].hebrew')?.textContent?.length ?? 0);
+    check('parsha reader opens with hebrew text', parshaHe > 40 && t.includes('of 7'), `heLen=${parshaHe}`);
+    const tk = await page.evaluate(() => {
+      const el = document.querySelector('[data-parsha-takeaway]');
+      if (!el) return { err: 'takeaway card missing' };
+      return {
+        text: el.innerText.toLowerCase(),
+        link: [...el.querySelectorAll('a')].some((a) => a.href.includes('chabad.org')),
+      };
+    });
+    check('this week’s takeaway at the reader bottom', !tk.err && tk.text.includes('this week’s takeaway') && tk.text.length > 120, tk.err || '');
+    check('takeaway cites chabad.org + carries AI-mistakes line', !tk.err && tk.link === true && tk.text.includes('ai makes mistakes'));
+    await clickText('back to Learn', 800);
+  }
+}
+
 // ---------------------------------------------------------------- FRIENDS (live server)
 await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());
 await sleep(1200);
@@ -538,6 +567,51 @@ await sleep(1200);
 t = await text();
 const restoredName = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => v.includes('E2E')) ?? '');
 check('email + password sign-in restores the account', t.includes('your account') && restoredName.includes('E2E Debug'), `name=${restoredName}`);
+
+// ------------------------------------------ SAVE-FOR-LATER after-blessings
+// second meal (one apple): guide → meal logs at guide-finish (crash safety) →
+// Save for later → Kol hakavod → home widget → survives reload → resume →
+// Borei Nefashos → Finish → widget gone.
+await page.evaluate(() => [...document.querySelectorAll('nav button')][0]?.click());
+await sleep(1000);
+await clickText('Add it manually', 1300);
+check('save-later: second manual meal starts', await addFood({ q: 'apple', pick: 'apple' }));
+await clickText('Guide me through', 1500);
+await clickText('finish the meal', 1600); // single blessing → the finish CTA
+t = await text();
+check('ask phase offers Save-for-later between done and skip', t.indexOf('done eating') < t.indexOf('save after-blessings for later') && t.indexOf('save after-blessings for later') < t.indexOf('skip after-blessings'));
+const pendingEarly = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.pendingAfter);
+check('meal logged at guide-finish (crash-safe pendingAfter)', !!pendingEarly && pendingEarly.items.some((i) => i.label.toLowerCase() === 'apple') && typeof pendingEarly.savedAt === 'number');
+await clickText('Save after-blessings for later', 1800);
+t = await text();
+check('save-later: Kol hakavod takeover plays', t.includes('kol hakavod'));
+await clickText('Continue', 1400);
+t = await text();
+check('home widget: After-blessings saved appears', t.includes('after-blessings saved') && t.includes('apple') && t.includes('saved just now'));
+await page.reload({ waitUntil: 'networkidle2' });
+await sleep(2200);
+t = await text();
+check('saved widget survives an app close (reload)', t.includes('after-blessings saved') && t.includes('apple'));
+await page.evaluate(() => document.querySelector('[data-after-widget]')?.click());
+await sleep(1000);
+t = await text();
+check('widget resumes straight at the shiur check', t.includes('how much did you eat') && t.includes('welcome back'));
+await clickText('Show my after-blessings', 1500);
+t = await text();
+check('resumed after-blessing resolves (apple → Borei Nefashos)', t.includes('borei nefashos'));
+const pendingGone = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.pendingAfter);
+check('pendingAfter cleared once the circle closes', pendingGone === null);
+await clickText('Finish meal', 1600);
+t = await text();
+check('closing celebration plays after the resumed blessing', t.includes('kol hakavod'));
+await page.evaluate(() => { const b = [...document.querySelectorAll('[data-takeover] button')].pop(); b?.click(); });
+await sleep(1200);
+t = await text();
+check('widget gone after the after-blessing is said', !t.includes('after-blessings saved'));
+
+// back to Account for the sign-out / friend-code checks below
+await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
+await sleep(1000);
 // friend-code fallback link present on the gate sign-in for legacy accounts
 await clickText('sign out on this device', 1200);
 await clickText('Sign in', 700);

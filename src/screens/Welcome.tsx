@@ -11,8 +11,19 @@ import { Eyebrow, PillButton, ScreenShell } from '../components/ui';
 import { analyzePhoto, demoMeal, resizeImage } from '../lib/analyze';
 import { toMealItems } from '../lib/classify';
 
+/** epoch ms → "just now" / "25m ago" / "2h ago" / "yesterday" / "3 days ago" */
+function savedAgo(ts: number): string {
+  const mins = Math.max(0, Math.floor((Date.now() - ts) / 60_000));
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'yesterday' : `${days} days ago`;
+}
+
 export function Welcome() {
-  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, setDemoFallback, notePhotoFlow, progress, dayStats, setTab } =
+  const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, setDemoFallback, notePhotoFlow, progress, dayStats, setTab, pendingAfter } =
     useBracha();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -137,6 +148,34 @@ export function Welcome() {
             }}
           />
         </div>
+
+        {/* after-blessings saved for later — the reminder-style home widget.
+            Persisted (pendingAfter), so it survives closing the app; it
+            disappears the moment the circle is closed on the After screen. */}
+        {pendingAfter && pendingAfter.items.length > 0 && (
+          <button
+            data-after-widget
+            onClick={() => setScreen('after')}
+            className="rise-in rise-in-3 mx-auto flex w-full max-w-[320px] items-center gap-3 rounded-[1.5rem] border border-gold/30 bg-gold/[0.07] px-5 py-4 text-left transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-gold/50"
+          >
+            <span className="text-[19px] leading-none">🔖</span>
+            <span className="flex-1">
+              <span className="block text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">
+                After-blessings saved
+              </span>
+              <span className="mt-1 block text-[13px] font-semibold capitalize leading-snug text-espresso">
+                {pendingAfter.items
+                  .slice(0, 3)
+                  .map((i) => i.label.toLowerCase())
+                  .join(' · ')}
+                {pendingAfter.items.length > 3 ? ` +${pendingAfter.items.length - 3} more` : ''}
+              </span>
+              <span className="mt-0.5 block text-[10.5px] text-mocha">
+                saved {savedAgo(pendingAfter.savedAt)} · tap when you’re done eating →
+              </span>
+            </span>
+          </button>
+        )}
 
         {/* home widget bar — streak tracker + today's bracha check, one glance.
             Compact ON PURPOSE: a taller widget block pushed the primary CTA

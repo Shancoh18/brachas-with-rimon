@@ -14,6 +14,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { LESSONS, type Lesson } from '../data/learn';
+import { takeawayFor } from '../data/parshaTakeaways';
 import { apiLessons } from '../lib/api';
 import { fetchDailyParsha, parshaIsFresh } from '../lib/parsha';
 import { useBracha } from '../store';
@@ -138,6 +139,7 @@ export function Learn() {
 
   // ------------------------------------------------------- Parsha reader
   if (showParsha && parsha) {
+    const takeaway = takeawayFor(parsha.parsha);
     return (
       <ScreenShell wide>
         <div className="pb-24">
@@ -178,6 +180,37 @@ export function Learn() {
               Torah text: {parsha.license}. One aliyah a day — by Shabbat you’ve met the whole parsha.
             </p>
           </Bezel>
+
+          {/* this week's takeaway — one lesson from the parsha, plain and small
+              enough to carry all week (owner request 2026-08-07) */}
+          {takeaway && (
+            <div data-parsha-takeaway>
+            <Bezel className="rise-in rise-in-2 mt-5" innerClassName="px-6 py-6">
+              <div className="flex items-start gap-3">
+                <Rimon pose="thinking" size={62} className="shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-rimon">
+                    💡 This week’s takeaway
+                  </p>
+                  <p className="mt-2 font-display text-[17px] font-medium italic leading-relaxed text-espresso">
+                    {takeaway.takeaway}
+                  </p>
+                  <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] italic leading-relaxed text-mocha">
+                    AI makes mistakes, to learn more information please read the article.{' '}
+                    <a
+                      href={takeaway.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium not-italic underline decoration-gold/40 underline-offset-2 hover:text-espresso"
+                    >
+                      Study {takeaway.name} on chabad.org →
+                    </a>
+                  </p>
+                </div>
+              </div>
+            </Bezel>
+            </div>
+          )}
         </div>
       </ScreenShell>
     );

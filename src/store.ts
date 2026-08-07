@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
+import type { AfterBracha } from './data/foods';
 import type { NusachId } from './data/texts';
-import { addPoints, badges, EMPTY_PROGRESS, recordMeal, todayStamp, type ProgressState } from './lib/progress';
+import { addPoints, badges, EMPTY_PROGRESS, recordAfterBrachos, recordMeal, todayStamp, type ProgressState } from './lib/progress';
 import { AFTER_BRACHA_KEYS, EMPTY_DAY, POINTS_PER_AFTER_BRACHA, POINTS_PER_BRACHA, settleChallenges, type DayStats } from './lib/dailyChallenges';
 import type { LeagueRow } from './lib/api';
 import type { Lesson } from './data/learn';
@@ -31,6 +32,30 @@ export interface ReminderSettings {
   /** True once the user has actually set their own mealtimes (vs the defaults).
    *  Drives the home-page nudge copy; absent on stores saved before 2026-08-02. */
   configured?: boolean;
+}
+
+/** One meal item snapshotted for a deferred after-blessing — exactly the
+ *  fields `resolveAfterBrachos` + the shiur checklist need, nothing else,
+ *  so the snapshot survives in localStorage without dragging FoodEntry along. */
+export interface PendingAfterItem {
+  id: string;
+  label: string;
+  achrona: AfterBracha;
+  shiurMet: boolean;
+  isBread?: boolean;
+  isFiveGrain?: boolean;
+  isShivaFruit?: boolean;
+  isTreeFruit?: boolean;
+  isWineGrape?: boolean;
+  isDrink?: boolean;
+}
+
+/** After-blessings owed from a finished-but-not-closed meal. Persisted, so an
+ *  accidental app close loses nothing; surfaced as the home-screen widget. */
+export interface PendingAfter {
+  items: PendingAfterItem[];
+  /** epoch ms of the FIRST save — drives the "saved 2h ago" line */
+  savedAt: number;
 }
 
 /** The three mealtime slots, in `times` index order. */
@@ -87,6 +112,17 @@ interface BrachaState {
   ) => void;
   /** photo-identify flow ran on a real photo (feeds the Snap & Bless daily) */
   notePhotoFlow: () => void;
+  /** after-blessings owed (save-for-later / crash safety) — see PendingAfter */
+  pendingAfter: PendingAfter | null;
+  /** merge a fresh meal's items into the pending set (union by id; keeps the
+   *  earliest savedAt so "saved 2h ago" never resets on a second meal) */
+  mergePendingAfter: (items: PendingAfterItem[]) => void;
+  updatePendingItem: (id: string, patch: Partial<PendingAfterItem>) => void;
+  clearPendingAfter: () => void;
+  /** record the after-blessings actually said (now or resumed from the home
+   *  widget): +3/each, closes the meal's circle, clears pendingAfter, and
+   *  merges into any still-unshown meal celebration */
+  completeAfter: (afterSaid: string[]) => void;
   /** latest friends-league standings (for the catch-up nudge) */
   leagueSnapshot: LeagueRow[] | null;
   setLeagueSnapshot: (rows: LeagueRow[] | null) => void;
@@ -207,6 +243,75 @@ export const useBracha = create<BrachaState>()(
             },
           };
         }),
+      pendingAfter: null,
+      mergePendingAfter: (items) =>
+        set((s) => {
+          if (!items.length) return s;
+          if (!s.pendingAfter) return { pendingAfter: { items, savedAt: Date.now() } };
+          const have = new Set(s.pendingAfter.items.map((i) => i.id));
+          return {
+            pendingAfter: {
+              ...s.pendingAfter,
+              items: [...s.pendingAfter.items, ...items.filter((i) => !have.has(i.id))],
+            },
+          };
+        }),
+      updatePendingItem: (id, patch) =>
+        set((s) =>
+          s.pendingAfter
+            ? {
+                pendingAfter: {
+                  ...s.pendingAfter,
+                  items: s.pendingAfter.items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+                },
+              }
+            : s,
+        ),
+      clearPendingAfter: () => set({ pendingAfter: null }),
+      completeAfter: (afterSaid) =>
+        set((s) => {
+          if (!s.pendingAfter) return s; // already closed (double-tap guard)
+          const before = badges(s.progress);
+          let progress = recordAfterBrachos(s.progress, afterSaid);
+
+          // ------ today's counters → dailies → points (after-brachos rate)
+          const base = s.dayStats.day === todayStamp() ? s.dayStats : EMPTY_DAY(todayStamp());
+          const byBracha = { ...base.byBracha };
+          for (const b of afterSaid) byBracha[b] = (byBracha[b] ?? 0) + 1;
+          const day: DayStats = {
+            ...base,
+            brachos: base.brachos + afterSaid.length,
+            byBracha,
+            mealsWithAfter: base.mealsWithAfter + 1,
+          };
+          const settled = settleChallenges(day);
+          day.challengesDone = [...day.challengesDone, ...settled.done];
+          const pointsEarned = afterSaid.length * POINTS_PER_AFTER_BRACHA + settled.points;
+          progress = addPoints(progress, pointsEarned);
+
+          const newBadges = badges(progress)
+            .filter((b) => b.earned && !before.find((x) => x.id === b.id)?.earned)
+            .map((b) => ({ id: b.id, label: b.label }));
+
+          // A meal celebration created at guide-finish and not yet shown
+          // (inline flow) absorbs this; the resumed-from-widget flow starts fresh.
+          const held = s.celebration?.kind === 'meal' && !s.partyTime ? s.celebration : null;
+          return {
+            progress,
+            dayStats: day,
+            pendingAfter: null,
+            celebration: {
+              kind: 'meal',
+              streak: progress.streakCurrent,
+              streakExtended:
+                (held?.streakExtended ?? false) || progress.streakCurrent > s.progress.streakCurrent,
+              brachosSaid: (held?.brachosSaid ?? 0) + afterSaid.length,
+              newBadges: [...(held?.newBadges ?? []), ...newBadges],
+              pointsEarned: (held?.pointsEarned ?? 0) + pointsEarned,
+              challengesCompleted: [...(held?.challengesCompleted ?? []), ...settled.done],
+            },
+          };
+        }),
       notePhotoFlow: () =>
         set((s) => {
           const base = s.dayStats.day === todayStamp() ? s.dayStats : EMPTY_DAY(todayStamp());
@@ -314,6 +419,7 @@ export const useBracha = create<BrachaState>()(
         textMode: s.textMode,
         progress: s.progress,
         dayStats: s.dayStats,
+        pendingAfter: s.pendingAfter,
         reminders: s.reminders,
         displayName: s.displayName,
         serverToken: s.serverToken,
