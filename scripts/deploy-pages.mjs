@@ -8,7 +8,11 @@ import { createHash } from 'crypto';
 import { readdirSync, readFileSync, statSync } from 'fs';
 import { join, relative } from 'path';
 
-// Build first — IN-PROCESS args, because Git Bash mangles leading-slash args
+// Preflight gate: type-check + server push/chat scenario suite. A deploy that
+// fails these never reaches the live site. SKIP_PREFLIGHT=1 = emergency hatch.
+execFileSync('node', ['scripts/preflight.mjs'], { cwd: 'D:/Claude GROUP APP/bracha-app', stdio: 'inherit' });
+
+// Build — IN-PROCESS args, because Git Bash mangles leading-slash args
 // (--base=/x/ became a Windows path once and shipped a blank site).
 execFileSync('node', ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { cwd: 'D:/Claude GROUP APP/bracha-app', stdio: 'inherit' });
 

@@ -10,6 +10,10 @@ import { join, relative } from 'path';
 
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
 const ROOT = 'D:/Claude GROUP APP/bracha-app';
+
+// Preflight gate: every master sync fires a TestFlight build, so nothing
+// broken should ever reach GitHub. SKIP_PREFLIGHT=1 = emergency hatch.
+execFileSync('node', ['scripts/preflight.mjs'], { cwd: ROOT, stdio: 'inherit' });
 // .claude = local harness config/worktrees — never publish, and a half-removed
 // worktree inside it can EPERM the walk
 const SKIP = new Set(['.git', '.github', 'node_modules', 'dist', '.env', '.env.local', '.claude']);
@@ -24,7 +28,17 @@ const SKIP_PATHS = new Set([
   'ios/App/App/capacitor.config.json',
   'ios/App/App/config.xml',
   'ios-wedged',
+  // SQLite data dirs (real + test) — private keys + user PII, NEVER publish.
+  // The repo is public; on 2026-08-06 the audit found these had shipped.
+  'server/data',
+  'server/data-test',
 ]);
+// Secret-class FILENAMES — a defense-in-depth net so a new .env/.p8/.db/.key
+// anywhere in the tree can never be published even if its dir isn't SKIP'd.
+// The repo is PUBLIC, so this gate is load-bearing, not hygiene.
+const SKIP_FILE_RE = /\.(bak|p8|pem|key|db|db-wal|db-shm|sqlite3?|mobileprovision|p12|cer)$/i;
+const isSecretFile = (name) =>
+  SKIP_FILE_RE.test(name) || (name.startsWith('.env') && name !== '.env.example');
 
 const gh = (args, input) => {
   const out = execFileSync('gh', ['api', ...args], {
@@ -45,7 +59,7 @@ const walk = (dir) => {
     return;
   }
   for (const name of names) {
-    if (SKIP.has(name)) continue;
+    if (SKIP.has(name) || isSecretFile(name)) continue;
     const p = join(dir, name);
     if (SKIP_PATHS.has(relative(ROOT, p).replace(/\\/g, '/'))) continue;
     let st;

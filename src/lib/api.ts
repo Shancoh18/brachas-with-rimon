@@ -33,7 +33,13 @@ const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Pr
       ...(opts.headers ?? {}),
     },
   });
-  if (!res.ok) throw Object.assign(new Error(`api ${res.status}`), { status: res.status });
+  if (!res.ok) {
+    // carry the server's error code so callers can branch (e.g. use_provider
+    // vs use_password vs no_password on sign-in)
+    let body: { error?: string } = {};
+    try { body = await res.json(); } catch { /* non-JSON error */ }
+    throw Object.assign(new Error(`api ${res.status}`), { status: res.status, code: body.error });
+  }
   return (await res.json()) as T;
 };
 
@@ -43,8 +49,9 @@ export const apiRegister = (name: string, email: string, password?: string) =>
     body: JSON.stringify({ name, email, ...(password ? { password } : {}) }),
   });
 
+export type ServerProgress = Pick<ProgressState, 'totalBrachos' | 'streakCurrent' | 'points' | 'history'>;
 export const apiSync = (token: string, progress: ProgressState, name?: string) =>
-  call<{ league: LeagueRow[]; code: string }>(
+  call<{ league: LeagueRow[]; code: string; progress: ServerProgress | null }>(
     '/api/sync',
     {
       method: 'POST',

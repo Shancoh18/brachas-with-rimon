@@ -13,6 +13,18 @@ export function initStore(dataDir) {
   return db;
 }
 
+/** Raw DB handle — for the backup module's VACUUM INTO. */
+export const getDb = () => db;
+
+/** Flush the WAL and close — called on graceful shutdown so a deploy can
+ *  never catch half-written pages (synchronous=NORMAL doesn't fsync per commit). */
+export function closeStore() {
+  try {
+    db?.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    db?.close();
+  } catch { /* already closed / mid-shutdown — nothing better to do */ }
+}
+
 const parse = (s, fallback = null) => {
   if (!s) return fallback;
   try { return JSON.parse(s); } catch { return fallback; }
@@ -187,6 +199,11 @@ export const boardMessages = (boardId, since = 0, limit = 100) =>
         ORDER BY m.created ASC, m.id ASC LIMIT ?`,
     )
     .all(boardId, since, limit);
+
+/** When this member last read the board (0 if never) — lets the notifier skip
+ *  pushing to someone who's actively looking at the chat right now. */
+export const boardLastRead = (boardId, userId) =>
+  db.prepare('SELECT last_read FROM board_reads WHERE board_id = ? AND user_id = ?').get(boardId, userId)?.last_read ?? 0;
 
 export const markBoardRead = (boardId, userId, ts) =>
   db

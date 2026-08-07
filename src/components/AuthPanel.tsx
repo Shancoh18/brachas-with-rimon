@@ -77,17 +77,23 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       const r = await apiSignIn(mail, useCode ? { code: codeIn.trim() } : { password });
       finish(r);
     } catch (e) {
-      const status = (e as { status?: number }).status;
-      setNotice(
-        status === 403
-          ? 'This account has no password yet — sign in with your RIMON friend code below, then set a password in Account.'
-          : status === 404
-            ? useCode
-              ? 'No account matches that email + code pair. Check both, or create a new account.'
-              : 'Email or password doesn’t match. Try again, or use your friend code.'
-            : 'Couldn’t reach the league right now — try again in a moment.',
-      );
-      if (status === 403) setUseCode(true);
+      const { status, code } = e as { status?: number; code?: string };
+      if (status === 403 && code === 'use_provider') {
+        // account is linked to Apple/Google — the code can't unlock it
+        setNotice('This account signs in with Apple or Google. Use that button above, or set a password in Account after signing in.');
+      } else if (status === 403) {
+        // genuinely legacy (no password) — offer the friend-code path
+        setNotice('This account has no password yet — sign in with your RIMON friend code below, then set a password in Account.');
+        setUseCode(true);
+      } else if (status === 404) {
+        setNotice(
+          useCode
+            ? 'No account matches that email + code pair. Check both, or create a new account.'
+            : 'Email or password doesn’t match. Try again, or use your friend code.',
+        );
+      } else {
+        setNotice('Couldn’t reach the league right now — try again in a moment.');
+      }
     }
     setBusy(false);
   };

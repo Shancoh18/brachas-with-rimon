@@ -69,12 +69,17 @@ export default function App() {
   useEffect(() => {
     void fetchLearnedFoods();
   }, []);
-  // Boot league sync: pushes progress+points up and fills the catch-up nudge.
+  // Boot league sync: adopts server progress onto a fresh device FIRST (so a
+  // reinstall restores the account instead of syncing empty state up), then
+  // pushes and fills the catch-up nudge.
   useEffect(() => {
     if (!serverToken) return;
-    const { progress, setLeagueSnapshot } = useBracha.getState();
+    const { progress, setLeagueSnapshot, adoptServerProgress } = useBracha.getState();
     apiSync(serverToken, progress)
-      .then((r) => setLeagueSnapshot(r.league))
+      .then((r) => {
+        adoptServerProgress(r.progress); // no-op unless this device is blank
+        setLeagueSnapshot(r.league);
+      })
       .catch(() => undefined);
   }, [serverToken]);
   // Native iOS: register the APNs device token so server-initiated pushes
@@ -86,6 +91,24 @@ export default function App() {
       if (t) apiPushNative(serverToken, t).catch(() => undefined); // retried next boot
     });
   }, [serverToken]);
+  // Any progress change syncs up (debounced 3s) — not just meals. Without
+  // this, points from lessons/challenges sat local-only until the next boot,
+  // so friends' leaderboards showed stale bracha counts (owner-reported
+  // 2026-08-06). This is also what lets overtake pushes fire in near-realtime.
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!serverToken) return;
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+    syncTimer.current = setTimeout(() => {
+      const { progress: p, setLeagueSnapshot } = useBracha.getState();
+      apiSync(serverToken, p)
+        .then((r) => setLeagueSnapshot(r.league))
+        .catch(() => undefined); // offline — next change or boot retries
+    }, 3000);
+    return () => {
+      if (syncTimer.current) clearTimeout(syncTimer.current);
+    };
+  }, [serverToken, progress]);
 
   if (!onboarded) return <Onboarding />;
   // Account-first: everything past onboarding requires a signed-in account.
@@ -127,7 +150,10 @@ export default function App() {
 
   return (
     <>
-      {body}
+      {/* pb clearance when the floating tab bar shows — without it the page's
+          last content (the disclaimer) scrolls UNDER the bar and ghosts
+          through it at the bottom of every root screen */}
+      <div className={inFlow ? '' : 'pb-24'}>{body}</div>
       {!inFlow && <TabBar />}
       <Celebration />
     </>

@@ -72,10 +72,10 @@ export function TabBar() {
   const { tab, setTab, reset } = useBracha();
   return (
     <nav className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-6">
-      {/* near-solid bg instead of backdrop-blur: backdrop-filter on a fixed
-          element re-samples the page every scroll frame in WKWebView — the
-          textbook iOS scroll-flicker trigger. 95% warm white reads the same. */}
-      <div className="pointer-events-auto flex transform-gpu items-center gap-0.5 rounded-full border border-espresso/10 bg-[#fdfaf1]/95 p-1 shadow-[0_18px_50px_-12px_rgba(43,33,26,0.28)]">
+      {/* SOLID bg — no backdrop-blur (WKWebView scroll-flicker) and no alpha:
+          at 95% the disclaimer used to ghost through the pill when a page was
+          scrolled to the bottom (owner-reported 2026-08-06). */}
+      <div className="pointer-events-auto flex transform-gpu items-center gap-0.5 rounded-full border border-espresso/10 bg-[#fdfaf1] p-1 shadow-[0_18px_50px_-12px_rgba(43,33,26,0.28)]">
         {TABS.map((t) => (
           <button
             key={t.id}

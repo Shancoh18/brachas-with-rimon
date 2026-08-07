@@ -29,21 +29,35 @@ export function Friends() {
   const [copied, setCopied] = useState(false);
   const alive = streakAlive(progress);
 
-  // sync progress + pull league whenever the tab opens
+  // sync progress + pull league whenever the tab opens, then keep it LIVE
+  // while the screen stays open (30s poll) — friends' bracha counts used to
+  // freeze at whatever they were on mount (owner-reported 2026-08-06)
   useEffect(() => {
     if (!serverToken) return;
-    setStatus('busy');
-    apiSync(serverToken, progress, displayName || undefined)
-      .then((r) => {
-        setLeague(r.league);
-        setStatus('idle');
-      })
-      .catch((e) => {
-        if ((e as { status?: number }).status === 401) {
-          clearServerAccount(); // server no longer knows us — re-join cleanly
+    let cancelled = false;
+    const pull = (first: boolean) => {
+      if (first) setStatus('busy');
+      const { progress: p, displayName: name } = useBracha.getState();
+      apiSync(serverToken, p, name || undefined)
+        .then((r) => {
+          if (cancelled) return;
+          setLeague(r.league);
           setStatus('idle');
-        } else setStatus('offline');
-      });
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          if ((e as { status?: number }).status === 401) {
+            clearServerAccount(); // server no longer knows us — re-join cleanly
+            setStatus('idle');
+          } else if (first) setStatus('offline'); // background polls fail silently
+        });
+    };
+    pull(true);
+    const id = setInterval(() => pull(false), 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverToken]);
 
@@ -57,10 +71,13 @@ export function Friends() {
       setCodeInput('');
       setStatus('idle');
     } catch (e) {
+      const { status, code } = e as { status?: number; code?: string };
       setNotice(
-        (e as { status?: number }).status === 404
-          ? 'No league member has that code or email yet — invite them below!'
-          : 'Couldn’t reach the league — try again in a moment.',
+        code === 'use_code'
+          ? 'Add friends by their RIMON code (not email) — ask them to share it from their Account.'
+          : status === 404
+            ? 'No league member has that code yet — invite them below!'
+            : 'Couldn’t reach the league — try again in a moment.',
       );
       setStatus('idle');
     }
@@ -157,14 +174,14 @@ export function Friends() {
         {serverToken && (
           <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
             <label className="text-[10px] font-bold uppercase tracking-[0.18em] text-mocha">
-              Add a friend — code or email
+              Add a friend by their code
             </label>
             <div className="mt-1 flex items-center gap-3">
               <input
                 value={codeInput}
-                onChange={(e) => setCodeInput(e.target.value.includes('@') ? e.target.value.toLowerCase() : e.target.value.toUpperCase())}
-                placeholder="RIMON-XXXX or friend@email.com"
-                maxLength={254}
+                onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                placeholder="RIMON-XXXX"
+                maxLength={16}
                 className="w-full bg-transparent font-display text-[16px] font-bold tracking-wide text-espresso outline-none placeholder:text-[12px] placeholder:text-mocha/40"
               />
               <PillButton icon="+" onClick={() => void addFriend()} disabled={status === 'busy' || !codeInput.trim()}>

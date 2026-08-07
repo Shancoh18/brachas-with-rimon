@@ -15,14 +15,32 @@
  */
 import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { createPublicKey, randomBytes, scryptSync, timingSafeEqual, verify as cryptoVerify } from 'crypto';
+import { createPublicKey, randomBytes, scrypt as scryptCb, timingSafeEqual, verify as cryptoVerify } from 'crypto';
+import { promisify } from 'util';
 import { join } from 'path';
 import webpush from 'web-push';
 import { apnsReady, sendApns } from './apns.mjs';
+import { backupReady, runBackup } from './backup.mjs';
 import * as store from './store.mjs';
 
 const PORT = Number(process.env.PORT || 3300);
 const DATA_DIR = process.env.DATA_DIR || './data';
+
+// Volume guard: on Railway the DB MUST live on the mounted volume. Booting on
+// ephemeral disk (DATA_DIR unset, or mangled to a non-volume path — both have
+// happened) silently starts an EMPTY database and strands every new write. We
+// refuse to boot instead: a loud crash-loop is recoverable and shows up in the
+// crash-mail; a quiet empty DB looks like every account vanished. No RAILWAY_*
+// vars locally, so dev and the scenario suite (explicit temp DATA_DIR) are
+// unaffected.
+const onRailway = !!(process.env.RAILWAY_ENVIRONMENT_NAME || process.env.RAILWAY_PROJECT_ID);
+if (onRailway) {
+  const VOL = process.env.RAILWAY_VOLUME_MOUNT_PATH;
+  if (!VOL) throw new Error('FATAL: no Railway volume mounted — refusing to boot on ephemeral disk (data would be lost)');
+  const norm = (s) => s.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!process.env.DATA_DIR || (norm(DATA_DIR) !== norm(VOL) && !norm(DATA_DIR).startsWith(norm(VOL) + '/')))
+    throw new Error(`FATAL: DATA_DIR (${process.env.DATA_DIR ?? 'unset'}) is not on the volume ${VOL} — refusing to boot`);
+}
 mkdirSync(DATA_DIR, { recursive: true });
 
 const VAPID_FILE = join(DATA_DIR, 'vapid.json');
@@ -66,12 +84,16 @@ const json = (res, code, body) => {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(body));
 };
-const readBody = (req) =>
+// Default 64KB cap — every JSON route (auth, sync, chat, broadcast) fits easily.
+// /api/analyze passes a larger cap explicitly for the base64 photo. Previously
+// EVERY route accepted 12MB, so an unauthenticated broadcast probe could make
+// the server buffer 12MB before the secret was even checked.
+const readBody = (req, maxBytes = 64 * 1024) =>
   new Promise((resolve, reject) => {
     let d = '';
     req.on('data', (c) => {
       d += c;
-      if (d.length > 12 * 1024 * 1024) {
+      if (d.length > maxBytes) {
         // stop buffering AND kill the stream, or the closure keeps growing
         req.destroy();
         reject(new Error('too large'));
@@ -122,17 +144,45 @@ let analyzeInFlight = 0;
 // Auth endpoints: crude per-IP throttle against credential stuffing and
 // friend-code enumeration (923k code space). Window resets every 10 min.
 const authHits = new Map(); // ip -> {t0, count}
+// Railway's Envoy edge APPENDS the caller's address to X-Forwarded-For, so the
+// FIRST element is client-supplied and forgeable (spoof it to a new value per
+// request and a naive throttle never triggers). Trust Envoy's single-value
+// header, else the LAST hop (edge-appended), else the socket. Bounded length.
+const clientIp = (req) => {
+  const chain = String(req.headers['x-forwarded-for'] || '')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  return String(
+    String(req.headers['x-envoy-external-address'] || '').trim() ||
+    chain[chain.length - 1] ||
+    req.socket.remoteAddress || '?',
+  ).slice(0, 64);
+};
 const throttled = (req, max = 30) => {
-  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || '?';
+  const ip = clientIp(req);
   const now = Date.now();
   const e = authHits.get(ip);
   if (!e || now - e.t0 > 600_000) {
+    if (authHits.size > 50_000) authHits.clear(); // spoofed keys can't grow it unbounded
     authHits.set(ip, { t0: now, count: 1 });
     return false;
   }
   e.count++;
   return e.count > max;
 };
+// Per-email sign-in failure cap — hop-independent, so it holds even if the IP
+// throttle is somehow bypassed, and it hard-bounds total scrypt CPU.
+const pwFails = new Map(); // email -> {t0, count}
+const emailThrottled = (mail) => {
+  const now = Date.now();
+  const e = pwFails.get(mail);
+  if (!e || now - e.t0 > 600_000) {
+    if (pwFails.size > 50_000) pwFails.clear();
+    pwFails.set(mail, { t0: now, count: 0 });
+    return false;
+  }
+  return e.count >= 10;
+};
+const noteFail = (mail) => { const e = pwFails.get(mail); if (e) e.count++; };
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of authHits) if (now - v.t0 > 600_000) authHits.delete(k);
@@ -179,11 +229,20 @@ const sendPush = (user, title, body) => {
       .catch(() => undefined);
 };
 
-/** New chat message → nudge the other members (≤1 chat push / 45min / board). */
+/** New chat message → nudge the other members. Smarter than a flat cooldown:
+ *  (a) never buzz someone who's actively in the room (read it in the last 60s —
+ *      the sheet marks read every 5s while open), and
+ *  (b) at most one push per member per board per 5 minutes otherwise.
+ *  So an active reader is never interrupted, and someone away gets one prompt
+ *  per burst instead of one per message. */
+const CHAT_PUSH_GAP_MS = 5 * 60_000;
+const CHAT_ACTIVE_MS = 60_000;
 const notifyBoardChat = (board, sender, text) => {
+  const now = Date.now();
   for (const member of store.boardMembers(board.id)) {
     if (member.id === sender.id || !hasPushChannel(member)) continue;
-    if (!pushAllowed('chat', member.id, board.id, 45 * 60_000)) continue;
+    if (now - store.boardLastRead(board.id, member.id) < CHAT_ACTIVE_MS) continue; // in the room
+    if (!pushAllowed('chat', member.id, board.id, CHAT_PUSH_GAP_MS)) continue;
     sendPush(member, `💬 ${board.title}`, `${sender.name}: ${text.slice(0, 90)}`);
   }
 };
@@ -199,7 +258,10 @@ const notifyOvertaken = (me, oldWeek, newWeek) => {
   for (const peer of peers.values()) {
     if (!hasPushChannel(peer)) continue;
     const pw = weekTotal(peer, 'points');
-    if (!(oldWeek < pw && pw <= newWeek)) continue; // strictly passed this sync
+    // strictly passed this sync — pw < newWeek means the sender is now ahead on
+    // the primary sort key (so "moved ahead" is always true), and oldWeek <= pw
+    // includes rivals the sender was tied with and genuinely overtook.
+    if (!(oldWeek <= pw && pw < newWeek)) continue;
     if (!pushAllowed('overtake', peer.id, me.id, 2 * 60 * 60_000)) continue;
     sendPush(
       peer,
@@ -218,14 +280,18 @@ const normalizeCode = (raw) => {
 
 // ------------------------------------------------------------ auth (passwords)
 // scrypt with a per-user salt; stored as { salt, hash } hex pair.
-const hashPassword = (password) => {
+// scrypt is deliberately CPU-heavy; scryptSync BLOCKS the single event loop, so
+// a burst of sign-ins froze the whole API. Use the async form — hashing now
+// degrades throughput instead of freezing every other request.
+const scryptAsync = promisify(scryptCb);
+const hashPassword = async (password) => {
   const salt = randomBytes(16).toString('hex');
-  const hash = scryptSync(String(password).slice(0, 200), salt, 64).toString('hex');
+  const hash = (await scryptAsync(String(password).slice(0, 200), salt, 64)).toString('hex');
   return { salt, hash };
 };
-const checkPassword = (password, pass) => {
+const checkPassword = async (password, pass) => {
   if (!pass?.salt || !pass?.hash) return false;
-  const candidate = scryptSync(String(password).slice(0, 200), pass.salt, 64);
+  const candidate = await scryptAsync(String(password).slice(0, 200), pass.salt, 64);
   const stored = Buffer.from(pass.hash, 'hex');
   return candidate.length === stored.length && timingSafeEqual(candidate, stored);
 };
@@ -299,18 +365,68 @@ const leagueRows = (me, people) =>
         b.weekPoints - a.weekPoints || b.weekBrachos - a.weekBrachos || b.totalBrachos - a.totalBrachos,
     );
 
-const leagueFor = (me) => leagueRows(me, [me, ...store.friendsOf(me.id)]);
+// A user's friend code is a SIGN-IN credential (email + code unlocks a
+// password-less account), so it must never ship to anyone but its owner.
+// standings() masks board rows separately; this covers the friends league
+// on /api/league, /api/sync, and /api/friends/add. Masked ids stay unique so
+// the client can keep using them as React keys.
+const leagueFor = (me) =>
+  leagueRows(me, [me, ...store.friendsOf(me.id)]).map((r, i) => ({ ...r, code: r.you ? r.code : `f${i}` }));
 
 const weekTotal = (u, field = 'brachos') => {
-  const hist = u.progress?.history ?? [];
+  // tolerant of already-stored malformed rows so one bad account can't 500
+  // every board/league it appears in
+  const hist = Array.isArray(u.progress?.history) ? u.progress.history : [];
   const cutoff = Date.now() - 7 * 86_400_000;
-  return hist.filter((h) => new Date(h.day).getTime() >= cutoff).reduce((s, h) => s + (h[field] ?? 0), 0);
+  return hist
+    .filter((h) => h && new Date(h.day).getTime() >= cutoff)
+    .reduce((s, h) => s + (Number.isFinite(h[field]) ? h[field] : 0), 0);
+};
+
+// --------------------------------------------------------- progress merge
+// /api/sync used to REPLACE stored progress with whatever the client sent, so
+// signing in on a fresh device (local points 0, empty history) wiped the
+// account server-side and blasted a spurious "you've been passed" to nobody.
+// We now MERGE: cumulative fields take the max, history unions by day taking
+// the per-day max. A payload can only ever raise a total, never lower it.
+const num = (v, max = 1e9) => (Number.isFinite(+v) ? Math.min(max, Math.max(0, Math.trunc(+v))) : 0);
+const cleanHistory = (h) =>
+  (Array.isArray(h) ? h : [])
+    .filter((e) => e && typeof e === 'object')
+    .slice(-60)
+    .map((e) => ({ day: String(e.day ?? '').slice(0, 10), brachos: num(e.brachos, 1e6), points: num(e.points, 1e6) }))
+    .filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.day));
+const mergeByDay = (a, b) => {
+  const byDay = new Map();
+  for (const e of [...cleanHistory(a), ...cleanHistory(b)]) {
+    const prev = byDay.get(e.day);
+    byDay.set(e.day, prev
+      ? { day: e.day, brachos: Math.max(prev.brachos, e.brachos), points: Math.max(prev.points, e.points) }
+      : e);
+  }
+  return [...byDay.values()].sort((x, y) => (x.day < y.day ? -1 : 1)).slice(-30);
+};
+const mergeProgress = (cur, incoming) => {
+  cur = cur ?? {};
+  incoming = incoming ?? {};
+  const incFresh = num(incoming.points) === 0 && cleanHistory(incoming.history).length === 0;
+  return {
+    totalBrachos: Math.max(num(cur.totalBrachos), num(incoming.totalBrachos)),
+    points: Math.max(num(cur.points), num(incoming.points)),
+    // a fresh/empty device must not reset an established streak
+    streakCurrent: incFresh && num(cur.points) > 0 ? num(cur.streakCurrent) : num(incoming.streakCurrent),
+    history: mergeByDay(cur.history, incoming.history),
+  };
 };
 const dayTotal = (u, field = 'points') => {
-  const d = new Date();
-  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const hist = u.progress?.history ?? [];
-  return hist.filter((h) => h.day === today).reduce((s, h) => s + (h[field] ?? 0), 0);
+  // history day-strings are the USER's local day; Railway runs UTC, so compare
+  // against the user's local "today", not the server's. The offset rides push
+  // prefs (Date.getTimezoneOffset, same convention the reminder scheduler uses);
+  // users without reminders fall back to UTC as before — no regression.
+  const off = u.push?.tzOffsetMinutes ?? 0;
+  const today = new Date(Date.now() - off * 60_000).toISOString().slice(0, 10);
+  const hist = Array.isArray(u.progress?.history) ? u.progress.history : [];
+  return hist.filter((h) => h && h.day === today).reduce((s, h) => s + (Number.isFinite(h[field]) ? h[field] : 0), 0);
 };
 
 // --------------------------------------------------------- Claude vision
@@ -617,7 +733,7 @@ const server = createServer(async (req, res) => {
       let pass = null;
       if (password != null && String(password) !== '') {
         if (String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
-        pass = hashPassword(String(password).slice(0, 200));
+        pass = await hashPassword(String(password).slice(0, 200));
       }
       const created = store.createUser({ name: String(name).trim().slice(0, 20), email: mail, pass });
       return json(res, 200, { token: created.token, code: created.code, email: mail });
@@ -631,10 +747,12 @@ const server = createServer(async (req, res) => {
       const { email, code, password } = await readBody(req);
       const mail = String(email || '').trim().toLowerCase();
       if (password != null && String(password) !== '') {
+        if (emailThrottled(mail)) return json(res, 429, { error: 'slow_down' });
         const u = store.userByEmail(mail);
-        if (!u) return json(res, 404, { error: 'no_match' });
+        if (!u) { noteFail(mail); return json(res, 404, { error: 'no_match' }); }
         if (!u.pass) return json(res, 403, { error: 'no_password' }); // account predates passwords
-        if (!checkPassword(password, u.pass)) return json(res, 404, { error: 'no_match' });
+        if (!(await checkPassword(password, u.pass))) { noteFail(mail); return json(res, 404, { error: 'no_match' }); }
+        pwFails.delete(mail); // success clears the counter
         return json(res, 200, { token: store.issueToken(u.id), code: u.code, name: u.name, email: u.email });
       }
       // Friend-code sign-in is ONLY for accounts that predate passwords. The
@@ -643,7 +761,11 @@ const server = createServer(async (req, res) => {
       const c = normalizeCode(code);
       const u = store.userByEmail(mail);
       if (!u || u.code !== c) return json(res, 404, { error: 'no_match' });
+      // The code unlocks ONLY genuinely legacy accounts (no password, no OAuth
+      // provider). An account with a password or an Apple/Google link must sign
+      // in through that — otherwise the published invite code is a back door.
       if (u.pass) return json(res, 403, { error: 'use_password' });
+      if (u.apple || u.google) return json(res, 403, { error: 'use_provider' });
       return json(res, 200, { token: store.issueToken(u.id), code: u.code, name: u.name, email: u.email });
     }
 
@@ -704,6 +826,7 @@ const server = createServer(async (req, res) => {
     // BROADCAST_KEY service variable — without it the route plays dead, and a
     // wrong secret is indistinguishable from the route not existing.
     if (url.pathname === '/api/admin/broadcast' && req.method === 'POST') {
+      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
       const key = process.env.BROADCAST_KEY || '';
       const { secret, title, body } = await readBody(req);
       const sBuf = Buffer.from(String(secret || ''));
@@ -753,12 +876,20 @@ const server = createServer(async (req, res) => {
       const who = auth(req);
       if (!who) return json(res, 401, { error: 'unauthorized' });
       if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return json(res, 429, { error: 'busy' });
+      // cheap fast-fail (may be stale after the await below)
+      const pre = analyzeUse.get(who.user.id);
       const today = new Date().toISOString().slice(0, 10);
+      if (pre?.day === today && pre.count >= ANALYZE_MAX_PER_DAY)
+        return json(res, 429, { error: 'daily_limit' });
+      const body = await readBody(req, 12 * 1024 * 1024); // base64 photo
+      if (!body.image) return json(res, 400, { error: 'no_image' });
+      // Re-check AND increment atomically after the await: Node is single-
+      // threaded, so a get/check/set with no await between them can't interleave.
+      // Without this, parallel requests all read the same pre-await count and
+      // could each pass the cap (multiplying vision spend).
       const use = analyzeUse.get(who.user.id);
       if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
         return json(res, 429, { error: 'daily_limit' });
-      const body = await readBody(req);
-      if (!body.image) return json(res, 400, { error: 'no_image' });
       // charge the quota only once the request is valid — a malformed or
       // oversized body shouldn't burn one of the user's 30 daily calls
       analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
@@ -778,18 +909,14 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/sync' && req.method === 'POST') {
       const { progress, name } = await readBody(req);
       const oldWeek = weekTotal(a.user, 'points');
-      if (progress)
-        store.setProgress(a.user.id, {
-          totalBrachos: progress.totalBrachos ?? 0,
-          streakCurrent: progress.streakCurrent ?? 0,
-          points: progress.points ?? 0,
-          history: (progress.history ?? []).slice(-30),
-        });
+      if (progress) store.setProgress(a.user.id, mergeProgress(a.user.progress, progress));
       if (name) store.setName(a.user.id, String(name).trim().slice(0, 20));
       const me = store.userById(a.user.id);
       const newWeek = weekTotal(me, 'points');
       if (newWeek > oldWeek) notifyOvertaken(me, oldWeek, newWeek);
-      return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null });
+      // return the authoritative stored progress so a fresh device can adopt
+      // it instead of pushing its empty state up (the wipe this merge prevents)
+      return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null, progress: me.progress ?? null });
     }
 
     // Who am I — lets a device restore its profile card from just the token.
@@ -827,8 +954,8 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/account/password' && req.method === 'POST') {
       const { password, current } = await readBody(req);
       if (!password || String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
-      if (a.user.pass && !checkPassword(current ?? '', a.user.pass)) return json(res, 403, { error: 'wrong_password' });
-      store.setPassword(a.user.id, hashPassword(String(password).slice(0, 200)));
+      if (a.user.pass && !(await checkPassword(current ?? '', a.user.pass))) return json(res, 403, { error: 'wrong_password' });
+      store.setPassword(a.user.id, await hashPassword(String(password).slice(0, 200)));
       // a changed password must lock out anyone holding an old session —
       // revoke every other token, keeping only the one that made this request
       store.revokeOtherTokens(a.user.id, a.token);
@@ -848,7 +975,11 @@ const server = createServer(async (req, res) => {
       if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
       const { code } = await readBody(req);
       const raw = String(code || '').trim();
-      const other = raw.includes('@') ? store.userByEmail(raw) : store.userByCode(normalizeCode(raw));
+      // Code only — never email. Resolving a bare email into a friendship both
+      // leaked the target's name/activity without consent AND turned any known
+      // email into a takeover primitive (the response used to carry codes).
+      if (raw.includes('@')) return json(res, 400, { error: 'use_code' });
+      const other = store.userByCode(normalizeCode(raw));
       if (!other) return json(res, 404, { error: 'code_not_found' });
       if (other.id === a.user.id) return json(res, 400, { error: 'thats_you' });
       store.addFriend(a.user.id, other.id);
@@ -985,3 +1116,41 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => console.log(`brachas-rimon-api on :${PORT} — vision ${process.env.ANTHROPIC_API_KEY ? 'LIVE' : 'demo (no ANTHROPIC_API_KEY)'}`));
+
+// ------------------------------------------------------- process lifecycle
+// Railway sends SIGTERM on every deploy/restart. Without a handler node dies
+// with a non-zero exit, Railway records a CRASH, and the owner gets a crash
+// email for every routine deploy. Exit 0 after flushing SQLite instead.
+const shutdown = (sig) => {
+  console.log(`${sig} received — draining connections, flushing SQLite`);
+  server.close(() => {
+    store.closeStore();
+    process.exit(0);
+  });
+  // a hung keep-alive socket must not stall the deploy: hard-stop after 5s
+  setTimeout(() => {
+    store.closeStore();
+    process.exit(0);
+  }, 5000).unref();
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// ------------------------------------------------------- off-volume backups
+// Guards against total loss of the Railway volume. Inert until BACKUP_KEY /
+// BACKUP_REPO / BACKUP_TOKEN are set (see backup.mjs). Runs at boot, then daily.
+if (backupReady()) {
+  const dayStr = () => new Date().toISOString().slice(0, 10);
+  const doBackup = () => runBackup(store.getDb(), DATA_DIR, dayStr()).catch(() => undefined);
+  setTimeout(doBackup, 30_000).unref(); // shortly after boot, once traffic settles
+  setInterval(doBackup, 24 * 60 * 60_000).unref();
+  console.log('backups: ENABLED (daily off-volume snapshot)');
+} else {
+  console.log('backups: disabled — set BACKUP_KEY + BACKUP_REPO + BACKUP_TOKEN to enable');
+}
+
+// A stray rejection (push service hiccup, vision timeout) must LOG, not kill
+// the API for every user. Sync work is SQLite-synchronous, so continuing is
+// safe; anything that reaches here is a bug to fix, not a reason to go dark.
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e?.stack ?? e));
+process.on('uncaughtException', (e) => console.error('uncaughtException:', e?.stack ?? e));

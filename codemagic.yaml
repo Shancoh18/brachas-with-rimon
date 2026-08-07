@@ -32,6 +32,12 @@ workflows:
     scripts:
       - name: Install dependencies
         script: npm ci
+      - name: Server scenario tests (push + chat mocks)
+        # Boots the real API against a mock APNs server and asserts every push
+        # scenario (25 checks). A red suite blocks the TestFlight upload.
+        script: |
+          cd server && npm ci && cd ..
+          node server/test/scenarios.mjs
       - name: Build web app
         script: npm run build
       - name: Sync Capacitor iOS

@@ -89,6 +89,9 @@ interface BrachaState {
   /** latest friends-league standings (for the catch-up nudge) */
   leagueSnapshot: LeagueRow[] | null;
   setLeagueSnapshot: (rows: LeagueRow[] | null) => void;
+  /** adopt server-stored progress onto a FRESH device (local at defaults) so a
+   *  reinstall/new phone restores the account instead of pushing empty state up */
+  adoptServerProgress: (sp: Partial<ProgressState> | null | undefined) => void;
   markLessonRead: (id: string) => void;
   starredLessons: string[];
   toggleStar: (id: string) => void;
@@ -216,6 +219,27 @@ export const useBracha = create<BrachaState>()(
         }),
       leagueSnapshot: null,
       setLeagueSnapshot: (leagueSnapshot) => set({ leagueSnapshot }),
+      adoptServerProgress: (sp) =>
+        set((s) => {
+          const local = s.progress;
+          const localEmpty = !(local.points ?? 0) && local.history.length === 0;
+          const serverHasData = !!sp && (!!(sp.points ?? 0) || (sp.history?.length ?? 0) > 0);
+          // only adopt onto a blank device, and only from a non-empty server —
+          // once local has any progress this is a no-op, so it can't clobber
+          if (!localEmpty || !serverHasData) return {};
+          const history = sp!.history ?? [];
+          return {
+            progress: {
+              ...local,
+              totalBrachos: sp!.totalBrachos ?? 0,
+              points: sp!.points ?? 0,
+              streakCurrent: sp!.streakCurrent ?? 0,
+              streakBest: Math.max(local.streakBest, sp!.streakCurrent ?? 0),
+              history,
+              lastActiveDay: history.length ? history[history.length - 1].day : local.lastActiveDay,
+            },
+          };
+        }),
       markLessonRead: (id) =>
         set((s) => {
           if (s.progress.lessonsRead.includes(id)) return s;
