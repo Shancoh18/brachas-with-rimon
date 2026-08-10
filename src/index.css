@@ -22,69 +22,77 @@
   --ease-lux: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* ------------------------------------------------------- dark mode (system)
+/* ------------------------------------------------------------- dark mode
    Dark warm chrome; the paper stays paper. Flipping the palette variables
    inverts every espresso/cream utility at runtime (Tailwind v4 resolves
    var() at the use site): the canvas goes deep espresso, ink goes cream,
    bg-espresso pills invert to light pills. White-literal Bezel cards keep
    their cream-paper look on purpose, so liturgy, Rimon and all content sit
-   on light paper. Celebration takeovers stay bright (renders are cream-baked). */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-cream: #1c1611;
-    --color-cream-deep: #262019;
-    --color-espresso: #f2e9d8;
-    --color-espresso-soft: #cfc2ae;
-    --color-mocha: #9c8d7d;
-    --color-gold: #c9a45c;
-    --color-hairline: rgba(242, 233, 216, 0.12);
-  }
-  html {
-    color-scheme: dark;
-  }
-  /* saturated rimon-red surfaces keep LIGHT text: re-scope the cream var so
-     their text-cream (and text-cream/70 etc.) resolves to paper again */
-  .bg-rimon,
-  .bg-rimon * {
-    --color-cream: #faf7e9;
-  }
-  /* the mascot renders are baked on cream — on a dark canvas, fade the glow
-     over most of the radius so it reads as candlelight, not a porthole */
-  .rimon-blend {
-    -webkit-mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
-    mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
-  }
-  .rimon-wide-blend {
-    -webkit-mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
-    mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
-  }
-  .rimon-warm {
-    display: block;
-    position: absolute;
-    inset: -6%;
-    pointer-events: none;
-    border-radius: 9999px;
-    background: radial-gradient(
-      circle,
-      rgba(226, 178, 96, 0.14) 0%,
-      rgba(28, 22, 17, 0.08) 40%,
-      rgba(28, 22, 17, 0.42) 68%,
-      rgba(28, 22, 17, 0.72) 100%
-    );
-  }
-  /* paper cards go SOLID cream (translucent white over a dark canvas reads
-     muddy) and keep dark ink even though the ink var flipped */
-  .bg-white\/60, .bg-white\/70, .bg-white\/75, .bg-white\/80, .bg-white\/90 {
-    background-color: #f8f3e6;
-  }
-  .bg-white\/60, .bg-white\/70, .bg-white\/75, .bg-white\/80, .bg-white\/90,
-  .bg-white\/60 *, .bg-white\/70 *, .bg-white\/75 *, .bg-white\/80 *, .bg-white\/90 * {
-    --color-espresso: #2b211a;
-    --color-espresso-soft: #57493e;
-    --color-mocha: #8a7a6d;
-    --color-hairline: rgba(43, 33, 26, 0.08);
-    --color-cream: #faf7e9;
-  }
+   on light paper. Celebration takeovers stay bright (renders are cream-baked).
+
+   Dark is ATTRIBUTE-driven, not media-driven (owner ruling 2026-08-10): a
+   device that *reports* dark (auto schedule, low-power, WKWebView quirks) was
+   forcing the app dark on first open. The app now defaults to LIGHT; dark (or
+   follow-system) is an explicit choice in Account. src/lib/theme.ts resolves
+   the preference and stamps html[data-theme]. */
+html[data-theme='dark'] {
+  --color-cream: #1c1611;
+  --color-cream-deep: #262019;
+  --color-espresso: #f2e9d8;
+  --color-espresso-soft: #cfc2ae;
+  --color-mocha: #9c8d7d;
+  --color-gold: #c9a45c;
+  --color-hairline: rgba(242, 233, 216, 0.12);
+  color-scheme: dark;
+}
+/* saturated rimon-red surfaces keep LIGHT text: re-scope the cream var so
+   their text-cream (and text-cream/70 etc.) resolves to paper again */
+html[data-theme='dark'] .bg-rimon,
+html[data-theme='dark'] .bg-rimon * {
+  --color-cream: #faf7e9;
+}
+/* the mascot renders are baked on cream — on a dark canvas, fade the glow
+   over most of the radius so it reads as candlelight, not a porthole */
+html[data-theme='dark'] .rimon-blend {
+  -webkit-mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
+  mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
+}
+html[data-theme='dark'] .rimon-wide-blend {
+  -webkit-mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
+  mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
+}
+html[data-theme='dark'] .rimon-warm {
+  display: block;
+  position: absolute;
+  inset: -6%;
+  pointer-events: none;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    rgba(226, 178, 96, 0.14) 0%,
+    rgba(28, 22, 17, 0.08) 40%,
+    rgba(28, 22, 17, 0.42) 68%,
+    rgba(28, 22, 17, 0.72) 100%
+  );
+}
+/* paper cards go SOLID cream (translucent white over a dark canvas reads
+   muddy) and keep dark ink even though the ink var flipped */
+html[data-theme='dark'] .bg-white\/60, html[data-theme='dark'] .bg-white\/70,
+html[data-theme='dark'] .bg-white\/75, html[data-theme='dark'] .bg-white\/80,
+html[data-theme='dark'] .bg-white\/90 {
+  background-color: #f8f3e6;
+}
+html[data-theme='dark'] .bg-white\/60, html[data-theme='dark'] .bg-white\/70,
+html[data-theme='dark'] .bg-white\/75, html[data-theme='dark'] .bg-white\/80,
+html[data-theme='dark'] .bg-white\/90,
+html[data-theme='dark'] .bg-white\/60 *, html[data-theme='dark'] .bg-white\/70 *,
+html[data-theme='dark'] .bg-white\/75 *, html[data-theme='dark'] .bg-white\/80 *,
+html[data-theme='dark'] .bg-white\/90 * {
+  --color-espresso: #2b211a;
+  --color-espresso-soft: #57493e;
+  --color-mocha: #8a7a6d;
+  --color-hairline: rgba(43, 33, 26, 0.08);
+  --color-cream: #faf7e9;
 }
 
 /* ------------------------------------------------------------- base layer */
@@ -635,6 +643,37 @@ body {
   animation: tk-spark 1.1s var(--ease-lux) var(--sd, 2.35s) both;
 }
 
+/* --- podium reveal: 3rd rises, 2nd rises, beat, champion bursts in.
+   Rows reuse tk-rise/tk-chip/tk-pop with --td stagger; these add only the
+   champion's entrance. Base styles = finished composition, so reduced-motion
+   lands on the full podium still. */
+@keyframes pr-champ {
+  0% { opacity: 0; transform: translateY(26px) scale(0.82); }
+  62% { opacity: 1; transform: translateY(-4px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.pr-champ { opacity: 0; animation: pr-champ 0.85s var(--ease-lux) var(--td, 4s) both; }
+@keyframes pr-crown {
+  0% { opacity: 0; transform: translateY(-26px) rotate(-10deg); }
+  70% { opacity: 1; transform: translateY(3px) rotate(3deg); }
+  100% { opacity: 1; transform: translateY(0) rotate(0); }
+}
+.pr-crown { display: inline-block; opacity: 0; animation: pr-crown 0.7s var(--ease-lux) var(--td, 4.6s) both; }
+@keyframes pr-halo {
+  0% { opacity: 0; transform: scale(0.4); }
+  30% { opacity: 0.5; }
+  100% { opacity: 0; transform: scale(1.9); }
+}
+.pr-halo {
+  position: absolute;
+  inset: -16px;
+  border-radius: 9999px;
+  border: 2px solid rgba(200, 164, 92, 0.55);
+  pointer-events: none;
+  opacity: 0;
+  animation: pr-halo 1.3s var(--ease-lux) var(--td, 4.45s) both;
+}
+
 /* ------------------------------------------------ reduced motion (a11y) */
 @media (prefers-reduced-motion: reduce) {
   .rise-in, .rimon-enter, .bubble-pop, .float-soft, .rimon-boop, .rimon-wiggle, .rimon-chew, .typing-dot, .story-fill, .sheet-rise { animation: none !important; }
@@ -642,9 +681,9 @@ body {
   /* takeovers land on their finished still: transients vanish, base = final */
   .tk-fly, .tk-land, .tk-jolt, .tk-flame, .tk-floor, .tk-bloom, .tk-core,
   .tk-rise, .tk-pop, .tk-chip, .tk-card, .tk-swing, .tk-inner, .tk-aura,
-  .tk-card-shadow { animation: none !important; }
-  .tk-rise, .tk-pop, .tk-chip, .tk-land { opacity: 1 !important; }
-  .tk-fly, .tk-halo, .tk-ring, .tk-shine { display: none; }
+  .tk-card-shadow, .pr-champ, .pr-crown { animation: none !important; }
+  .tk-rise, .tk-pop, .tk-chip, .tk-land, .pr-champ, .pr-crown { opacity: 1 !important; }
+  .tk-fly, .tk-halo, .tk-ring, .tk-shine, .pr-halo { display: none; }
   .tk-embers i, .tk-sparks i, .tk-confetti i { display: none; }
   * { transition-duration: 0.01ms !important; }
 }

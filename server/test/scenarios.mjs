@@ -71,6 +71,8 @@ const child = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
     APNS_HOST: `http://127.0.0.1:${mock.port}`,
     BROADCAST_KEY: 'scenario-broadcast-secret',
     ANTHROPIC_API_KEY: '', // vision stays demo — never spend on tests
+    ROUND_SWEEP_MS: '0', // keep the round sweep quiet — count-based asserts
+    // below must only ever see the pushes they trigger themselves
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -78,14 +80,50 @@ let serverLog = '';
 child.stdout.on('data', (c) => (serverLog += c));
 child.stderr.on('data', (c) => (serverLog += c));
 
-// wait for the port to accept
-{
+// Second server for the timed-round lifecycle: rounds shrunk to ~2.5s and a
+// 400ms sweep so finalize → reveal → run-it-back can be asserted end-to-end.
+// Separate DB + port; SAME mock APNs, so token-filtered waits work unchanged.
+const PORT2 = 5189;
+const B2 = `http://127.0.0.1:${PORT2}`;
+const dataDir2 = mkdtempSync(join(tmpdir(), 'rimon-rounds-'));
+const child2 = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
+  env: {
+    ...process.env,
+    DATA_DIR: dataDir2,
+    PORT: String(PORT2),
+    APNS_KEY: p8,
+    APNS_KEY_ID: 'SCENARIOKEY',
+    APNS_TEAM_ID: '6WT5WK8MLZ',
+    APNS_HOST: `http://127.0.0.1:${mock.port}`,
+    ANTHROPIC_API_KEY: '',
+    ROUND_SWEEP_MS: '400',
+    ROUND_DURATIONS_OVERRIDE: JSON.stringify({ week: 2500 }),
+    MORNING_HOUR: '0', // last-day push fires at any local hour
+    EVENING_HOUR: '25', // daily-leader pushes never fire — keeps counts exact
+  },
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+child2.stdout.on('data', (c) => (serverLog += c));
+child2.stderr.on('data', (c) => (serverLog += c));
+const api2 = async (path, { method = 'GET', token, body } = {}) => {
+  const res = await fetch(B2 + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+  let json = null;
+  try { json = await res.json(); } catch {}
+  return { status: res.status, json };
+};
+
+// wait for both ports to accept
+for (const base of [B, B2]) {
   let up = false;
   for (let i = 0; i < 60 && !up; i++) {
-    try { await fetch(B + '/api/lessons'); up = true; } catch { await sleep(250); }
+    try { await fetch(base + '/api/lessons'); up = true; } catch { await sleep(250); }
   }
   if (!up) {
-    console.log('FAIL  server boot — never accepted connections');
+    console.log(`FAIL  server boot (${base}) — never accepted connections`);
     console.log(serverLog.slice(-2000));
     process.exit(1);
   }
@@ -93,8 +131,10 @@ child.stderr.on('data', (c) => (serverLog += c));
 
 const cleanup = async (code) => {
   child.kill();
+  child2.kill();
   await mock.close();
   try { rmSync(dataDir, { recursive: true, force: true }); } catch {} // WAL handles may lag on Windows
+  try { rmSync(dataDir2, { recursive: true, force: true }); } catch {}
   process.exit(code);
 };
 
@@ -335,6 +375,78 @@ try {
   });
   // (may be 429 if the cap window is still open — accept either, but a wrong-only lockout of the owner is the real risk; success proves the counter clears)
   check('per-email cap does not permanently lock the real owner', capOk.status === 200 || capOk.status === 429);
+
+  // ------------------------------------------- timed rounds (fast server #2)
+  // Rounds on server 2 last ~2.5s with a 400ms sweep, so the full lifecycle —
+  // everyone starts at 0 → last-day push → clock ends → podium frozen → winner
+  // crowned (+1 win) → reveal seen once → owner runs it back — runs for real.
+  const reg2 = async (name) => {
+    const rr = await api2('/api/register', { method: 'POST', body: { name, password: 'scenario-pass-1' } });
+    if (!rr.json?.token) throw new Error(`register2 failed: ${JSON.stringify(rr.json)}`);
+    return rr.json.token;
+  };
+  const tokE = await reg2('Racer E');
+  const tokF = await reg2('Racer F');
+  const E_TOKEN = 'e1'.repeat(32);
+  const F_TOKEN = 'f1'.repeat(32);
+  await api2('/api/push/native', { method: 'POST', token: tokE, body: { token: E_TOKEN } });
+  await api2('/api/push/native', { method: 'POST', token: tokF, body: { token: F_TOKEN } });
+
+  // E arrives with existing lifetime points — the round must still start at 0
+  await api2('/api/sync', { method: 'POST', token: tokE, body: { progress: { totalBrachos: 30, streakCurrent: 3, points: 70, history: [{ day: today(), brachos: 3, points: 9 }] } } });
+
+  r = await api2('/api/boards/create', { method: 'POST', token: tokE, body: { title: 'Sprint Board', duration: 'week' } });
+  const sprint = r.json.id;
+  check('timed create returns duration + end time', r.json.duration === 'week' && Number.isFinite(r.json.endsAt), JSON.stringify({ d: r.json.duration, e: r.json.endsAt }));
+  await api2('/api/boards/join', { method: 'POST', token: tokF, body: { code: r.json.code } });
+
+  r = await api2('/api/boards', { token: tokE });
+  let sb = r.json.boards.find((x) => x.id === sprint);
+  check('everyone starts the round at 0 (baselines snapshotted)', !!sb && sb.league.every((row) => row.points === 0), JSON.stringify(sb?.league.map((x) => x.points)));
+  check('board carries countdown fields', sb.duration === 'week' && sb.endsAt > Date.now() - 60_000 && sb.round === 1 && sb.ended === false, JSON.stringify({ d: sb.duration, r: sb.round }));
+
+  // F scores 6 round points; E adds nothing this round
+  await api2('/api/sync', { method: 'POST', token: tokF, body: { progress: { totalBrachos: 2, streakCurrent: 1, points: 6, history: [{ day: today(), brachos: 2, points: 6 }] } } });
+
+  // at this duration the round is instantly inside its final 24h
+  got = await mock.waitFor((reqs) => reqs.some((x) => x.token === F_TOKEN && /last/i.test(x.title + x.body)));
+  check('last-day push fires inside the final 24h', got, mock.forToken(F_TOKEN).map((x) => x.title).join(' | ') || 'none');
+
+  // clock runs out → sweep freezes the podium; the push must NOT spoil who won
+  got = await mock.waitFor((reqs) => reqs.some((x) => x.token === E_TOKEN && /ended/i.test(x.body)));
+  const endedPush = mock.forToken(E_TOKEN).find((x) => /ended/i.test(x.body));
+  check('round-ended push arrives', got);
+  check('ended push does NOT spoil the winner', !!endedPush && !/Racer F/.test(endedPush.body), endedPush?.body);
+
+  r = await api2('/api/boards', { token: tokE });
+  sb = r.json.boards.find((x) => x.id === sprint);
+  check('ended round exposes a frozen result', sb.ended === true && !!sb.result, JSON.stringify({ ended: sb.ended, hasResult: !!sb.result }));
+  check('winner is the round’s top scorer', sb.result?.winnerName === 'Racer F', sb.result?.winnerName);
+  check('reveal starts unseen', sb.result?.seen === false);
+  check('result standings are round-scoped (F 6, E 0)', sb.result?.standings?.[0]?.points === 6 && sb.result?.standings?.[1]?.points === 0, JSON.stringify(sb.result?.standings));
+  check('winner’s lifetime win count increments', sb.league.find((x) => x.name === 'Racer F')?.wins === 1, JSON.stringify(sb.league.map((x) => ({ n: x.name, w: x.wins }))));
+
+  r = await api2('/api/boards/seen', { method: 'POST', token: tokE, body: { id: sprint } });
+  check('reveal-seen accepted', r.status === 200 && r.json.ok);
+  r = await api2('/api/boards', { token: tokE });
+  sb = r.json.boards.find((x) => x.id === sprint);
+  check('reveal never replays once seen', sb.result?.seen === true);
+
+  r = await api2('/api/boards/restart', { method: 'POST', token: tokF, body: { id: sprint } });
+  check('non-owner cannot run it back', r.status === 403 && r.json.error === 'owner_only');
+  r = await api2('/api/boards/restart', { method: 'POST', token: tokE, body: { id: sprint, duration: 'week' } });
+  check('owner runs it back → round 2', r.status === 200 && r.json.round === 2, JSON.stringify(r.json));
+  got = await mock.waitFor((reqs) => reqs.some((x) => x.token === F_TOKEN && /started/i.test(x.title + x.body)));
+  check('run-it-back sends the started push to members', got);
+  r = await api2('/api/boards', { token: tokF });
+  sb = r.json.boards.find((x) => x.id === sprint);
+  check('round 2 starts everyone at 0 again', sb.round === 2 && sb.league.every((row) => row.points === 0), JSON.stringify({ round: sb.round, pts: sb.league.map((x) => x.points) }));
+
+  // the all-time friends league: lifetime points rank it and rows carry wins
+  const lgE = await api2('/api/friends/add', { method: 'POST', token: tokE, body: { code: (await api2('/api/me', { token: tokF })).json.code } });
+  const allTime = lgE.json.league ?? [];
+  check('all-time league ranks by lifetime points (E 70 over F 6)', allTime[0]?.name === 'Racer E' && allTime[0]?.points === 70, JSON.stringify(allTime.map((x) => ({ n: x.name, p: x.points }))));
+  check('all-time league rows carry win counts', allTime.find((x) => x.name === 'Racer F')?.wins === 1 && allTime.find((x) => x.name === 'Racer E')?.wins === 0, JSON.stringify(allTime.map((x) => ({ n: x.name, w: x.wins }))));
 } catch (e) {
   check('scenario suite ran to completion', false, String(e.message ?? e));
   console.log('--- server log tail ---');

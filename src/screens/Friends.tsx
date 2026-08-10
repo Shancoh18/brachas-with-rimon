@@ -95,16 +95,17 @@ export function Friends() {
     }
   };
 
-  // local fallback rows (offline / not joined): you + Rimon the pacer
+  // local fallback rows (offline / not joined): you + Rimon the pacer.
+  // Sorted like the server: all-time points.
   const localLeague: LeagueRow[] = useMemo(() => {
     const rimonScore =
       progress.totalBrachos >= 25 ? Math.floor(progress.totalBrachos * 0.8) : progress.totalBrachos + 3;
     const myPoints = progress.points ?? 0;
     const rimonPoints = rimonScore * 2;
     return [
-      { name: displayName || 'You', code: '', totalBrachos: progress.totalBrachos, weekBrachos: progress.totalBrachos, points: myPoints, weekPoints: myPoints, todayPoints: 0, streak: alive ? progress.streakCurrent : 0, you: true },
-      { name: 'Rimon 🍎', code: '', totalBrachos: rimonScore, weekBrachos: rimonScore, points: rimonPoints, weekPoints: rimonPoints, todayPoints: 0, streak: 999, you: false },
-    ].sort((a, b) => b.weekPoints - a.weekPoints);
+      { name: displayName || 'You', code: '', totalBrachos: progress.totalBrachos, weekBrachos: progress.totalBrachos, points: myPoints, weekPoints: myPoints, todayPoints: 0, streak: alive ? progress.streakCurrent : 0, wins: 0, you: true },
+      { name: 'Rimon 🍎', code: '', totalBrachos: rimonScore, weekBrachos: rimonScore, points: rimonPoints, weekPoints: rimonPoints, todayPoints: 0, streak: 999, wins: 0, you: false },
+    ].sort((a, b) => b.points - a.points);
   }, [progress, displayName, alive]);
 
   const rows = league ?? localLeague;
@@ -133,7 +134,8 @@ export function Friends() {
             <Eyebrow>Blessings were meant to be heard</Eyebrow>
             <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Friends</h2>
             <p className="text-[13px] leading-relaxed text-espresso-soft">
-              Your league syncs across everyone — most brachos this week leads.
+              Your league syncs across everyone — all-time points lead, and
+              leaderboard wins are counted forever.
             </p>
           </div>
           <Rimon pose="pointing" size={88} />
@@ -203,7 +205,7 @@ export function Friends() {
         {/* league */}
         <div className="flex items-center justify-between pb-3 pt-7">
           <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-mocha">
-            This week's league
+            All-time leaderboard
           </h3>
           {serverToken && (
             <button onClick={() => void refresh()} className="text-[11px] font-semibold text-mocha hover:text-espresso">
@@ -225,6 +227,11 @@ export function Friends() {
                       you
                     </span>
                   )}
+                  {(row.wins ?? 0) > 0 && (
+                    <span className="ml-2 text-[11px] font-semibold text-gold" title="leaderboard wins">
+                      🏆{row.wins}
+                    </span>
+                  )}
                   {row.streak > 0 && row.streak < 999 && (
                     <span className="ml-2 text-[11px] text-mocha">🔥{row.streak}</span>
                   )}
@@ -232,14 +239,14 @@ export function Friends() {
               </div>
               <div className="text-right">
                 <p className="text-[15px] font-bold text-espresso">
-                  ⭐ {row.weekPoints ?? 0}
+                  ⭐ {row.points ?? 0}
                 </p>
                 <p className="text-[9px] font-bold uppercase tracking-wider text-mocha">
-                  pts this week
+                  pts all-time
                 </p>
               </div>
               <div className="w-14 text-right">
-                <p className="text-[13px] font-bold text-espresso-soft">{row.weekBrachos}</p>
+                <p className="text-[13px] font-bold text-espresso-soft">{row.totalBrachos}</p>
                 <p className="text-[9px] font-bold uppercase tracking-wider text-mocha">brachos</p>
               </div>
             </div>

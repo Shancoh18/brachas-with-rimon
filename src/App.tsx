@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { isNative, registerNativePush } from './lib/native';
-import { apiSync, apiPushNative } from './lib/api';
+import { apiSync, apiPushNative, apiBoards, apiBoardRevealSeen, type Board } from './lib/api';
+import { PodiumReveal } from './components/PodiumReveal';
 import { syncWidgets } from './lib/widgetBridge';
 import { fetchLearnedFoods } from './lib/learnedFoods';
 import { showWebNotification } from './lib/useReminders';
@@ -82,6 +83,40 @@ export default function App() {
       })
       .catch(() => undefined);
   }, [serverToken]);
+  // Podium reveals: whenever the app opens (boot or return from background),
+  // check for leaderboard rounds that ended since the member last looked. The
+  // first unseen finished round with a winner plays the full 3rd → 2nd → 1st
+  // takeover; no-winner rounds are retired silently so they don't linger.
+  const [reveal, setReveal] = useState<Board | null>(null);
+  const revealBusy = useRef(false);
+  const checkReveals = async (token: string) => {
+    if (revealBusy.current) return;
+    revealBusy.current = true;
+    try {
+      const { boards } = await apiBoards(token);
+      const pending = boards.filter((b) => b.ended && b.result && !b.result.seen);
+      const withWinner = pending.find((b) => b.result?.winnerName);
+      for (const b of pending) {
+        if (b !== withWinner && !b.result?.winnerName) void apiBoardRevealSeen(token, b.id).catch(() => undefined);
+      }
+      if (withWinner) setReveal(withWinner);
+    } catch {
+      /* offline — next open retries */
+    } finally {
+      revealBusy.current = false;
+    }
+  };
+  useEffect(() => {
+    if (!serverToken) return;
+    void checkReveals(serverToken);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void checkReveals(serverToken);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverToken]);
+
   // Native iOS: register the APNs device token so server-initiated pushes
   // (board chat, competitive nudges, broadcasts) reach this phone. Web Push
   // doesn't exist in the WKWebView — this is the only channel. No-op on web.
@@ -156,6 +191,18 @@ export default function App() {
       <div className={inFlow ? '' : 'pb-24'}>{body}</div>
       {!inFlow && <TabBar />}
       <Celebration />
+      {reveal && serverToken && (
+        <PodiumReveal
+          board={reveal}
+          onContinue={() => {
+            const id = reveal.id;
+            setReveal(null);
+            apiBoardRevealSeen(serverToken, id)
+              .catch(() => undefined) // offline: server still unseen → replays next open, acceptable
+              .finally(() => void checkReveals(serverToken)); // another round may be waiting
+          }}
+        />
+      )}
     </>
   );
 }

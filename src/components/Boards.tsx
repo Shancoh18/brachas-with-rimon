@@ -2,7 +2,10 @@
  * Named leaderboards — create one (family, shul, chevrusa), share its code,
  * and anyone who enters that code joins the same standings.
  *
- * Ranking matches the friends league: points this week, then brachos.
+ * Every board is a timed ROUND (owner spec 2026-08-10): pick one week, one
+ * month, or one year at creation; everyone starts at 0; a countdown rides the
+ * card; when the clock ends the podium freezes, the winner's lifetime wins
+ * count goes up, and the owner can "run it back" for a fresh round.
  */
 import { useEffect, useState } from 'react';
 import {
@@ -10,13 +13,61 @@ import {
   apiCreateBoard,
   apiJoinBoard,
   apiLeaveBoard,
+  apiRestartBoard,
   type Board,
+  type BoardDuration,
 } from '../lib/api';
 import { useBracha } from '../store';
 import { Bezel, PillButton } from './ui';
 import { BoardChat } from './BoardChat';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
+
+export const DURATIONS: { id: BoardDuration; label: string; blurb: string; icon: string }[] = [
+  { id: 'week', label: '1 week', blurb: 'a quick sprint', icon: '⚡' },
+  { id: 'month', label: '1 month', blurb: 'the steady race', icon: '🌙' },
+  { id: 'year', label: '1 year', blurb: 'the long game', icon: '🏛️' },
+];
+
+/** Live countdown chip — ticks every second under an hour, every minute above. */
+export function Countdown({ endsAt, ended }: { endsAt: number; ended: boolean }) {
+  const [, force] = useState(0);
+  const left = (endsAt ?? 0) - Date.now();
+  const fast = left > 0 && left < 3_600_000;
+  const running = !!endsAt && !ended && left > 0;
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => force((n) => n + 1), fast ? 1000 : 30_000);
+    return () => clearInterval(id);
+  }, [running, fast]);
+  if (!endsAt) return null; // API predates timed rounds (mid-deploy) — show nothing
+  if (ended || left <= 0)
+    return (
+      <span
+        data-board-countdown
+        className="rounded-full bg-espresso/[0.08] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-espresso-soft"
+      >
+        🏁 Finished
+      </span>
+    );
+  const d = Math.floor(left / 86_400_000);
+  const h = Math.floor((left % 86_400_000) / 3_600_000);
+  const m = Math.floor((left % 3_600_000) / 60_000);
+  const s = Math.floor((left % 60_000) / 1000);
+  const text =
+    d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  const lastDay = left <= 86_400_000;
+  return (
+    <span
+      data-board-countdown
+      className={`rounded-full px-2.5 py-1 text-[10px] font-bold tabular-nums tracking-wider ${
+        lastDay ? 'animate-pulse bg-rimon/[0.1] text-rimon' : 'bg-gold/[0.12] text-gold'
+      }`}
+    >
+      ⏳ {text}
+    </span>
+  );
+}
 
 export function Boards() {
   const serverToken = useBracha((s) => s.serverToken);
@@ -25,6 +76,7 @@ export function Boards() {
   const [notice, setNotice] = useState<string | null>(null);
   const [mode, setMode] = useState<'none' | 'create' | 'join'>('none');
   const [title, setTitle] = useState('');
+  const [duration, setDuration] = useState<BoardDuration>('week');
   const [joinCode, setJoinCode] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<string | null>(null);
@@ -51,10 +103,11 @@ export function Boards() {
     if (!clean) return setNotice('Give your leaderboard a name first.');
     setBusy(true);
     try {
-      const r = await apiCreateBoard(serverToken, clean);
+      const r = await apiCreateBoard(serverToken, clean, duration);
       setTitle('');
       setMode('none');
-      setNotice(`“${r.title}” created — share the code ${r.code} to invite people.`);
+      const label = DURATIONS.find((x) => x.id === r.duration)?.label ?? r.duration;
+      setNotice(`“${r.title}” is live — ${label} on the clock! Share the code ${r.code} to invite people.`);
       await load();
     } catch {
       setNotice('Couldn’t create that leaderboard — try again in a moment.');
@@ -71,7 +124,7 @@ export function Boards() {
       const r = await apiJoinBoard(serverToken, clean);
       setJoinCode('');
       setMode('none');
-      setNotice(`You’re in “${r.title}”.`);
+      setNotice(`You’re in “${r.title}” — you start at 0. Go!`);
       await load();
     } catch (e) {
       setNotice(
@@ -115,6 +168,19 @@ export function Boards() {
     setBusy(false);
   };
 
+  const runItBack = async (b: Board) => {
+    if (!serverToken) return;
+    setBusy(true);
+    try {
+      const r = await apiRestartBoard(serverToken, b.id);
+      setNotice(`Round ${r.round} of “${b.title}” is on — everyone's back at 0!`);
+      await load();
+    } catch {
+      setNotice('Couldn’t start the next round — try again in a moment.');
+    }
+    setBusy(false);
+  };
+
   if (!serverToken) return null;
 
   return (
@@ -141,9 +207,18 @@ export function Boards() {
 
       {mode === 'create' && (
         <Bezel className="rise-in mb-3" innerClassName="px-5 py-4">
-          <p className="pb-2 text-[12px] leading-snug text-espresso-soft">
-            Name it something everyone will recognise — “Cohen Family”, “Shul Chevrusa”.
-          </p>
+          <div className="flex items-start justify-between gap-3 pb-2">
+            <p className="text-[12px] leading-snug text-espresso-soft">
+              Name it something everyone will recognise — “Cohen Family”, “Shul Chevrusa”.
+            </p>
+            <button
+              aria-label="cancel creating a leaderboard"
+              onClick={() => setMode('none')}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-espresso/[0.06] text-[13px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
+            >
+              ✕
+            </button>
+          </div>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -151,6 +226,41 @@ export function Boards() {
             maxLength={40}
             className="w-full rounded-2xl border border-espresso/10 bg-white/70 px-4 py-3 text-[14px] text-espresso outline-none placeholder:text-mocha/60 focus:border-rimon/40"
           />
+          <p className="pb-2 pt-4 text-[10px] font-bold uppercase tracking-[0.18em] text-mocha">
+            How long is the race?
+          </p>
+          <div data-duration-picker className="grid grid-cols-3 gap-2">
+            {DURATIONS.map((d, i) => {
+              const active = duration === d.id;
+              return (
+                <button
+                  key={d.id}
+                  onClick={() => setDuration(d.id)}
+                  aria-pressed={active}
+                  className={`rise-in rise-in-${i + 1} rounded-2xl border px-2 py-3 text-center transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                    active
+                      ? 'scale-[1.04] border-rimon/40 bg-rimon/[0.07] shadow-[0_10px_24px_rgba(161,51,39,0.12)]'
+                      : 'border-espresso/10 bg-white/60 hover:-translate-y-0.5'
+                  }`}
+                >
+                  <span
+                    className={`block text-[20px] transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${active ? 'scale-110' : ''}`}
+                  >
+                    {d.icon}
+                  </span>
+                  <span className={`mt-1 block text-[12.5px] font-bold ${active ? 'text-rimon' : 'text-espresso'}`}>
+                    {d.label}
+                  </span>
+                  <span className="mt-0.5 block text-[9.5px] font-semibold uppercase tracking-wider text-mocha">
+                    {d.blurb}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="pt-3 text-[11px] leading-snug text-mocha">
+            Everyone starts at 0. Most points when the clock runs out takes the crown 👑
+          </p>
           <div className="pt-3">
             <PillButton variant="rimon" icon="🏆" onClick={() => void create()} disabled={busy}>
               Create leaderboard
@@ -161,9 +271,18 @@ export function Boards() {
 
       {mode === 'join' && (
         <Bezel className="rise-in mb-3" innerClassName="px-5 py-4">
-          <p className="pb-2 text-[12px] leading-snug text-espresso-soft">
-            Enter the code someone shared with you.
-          </p>
+          <div className="flex items-start justify-between gap-3 pb-2">
+            <p className="text-[12px] leading-snug text-espresso-soft">
+              Enter the code someone shared with you.
+            </p>
+            <button
+              aria-label="cancel joining a leaderboard"
+              onClick={() => setMode('none')}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-espresso/[0.06] text-[13px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
+            >
+              ✕
+            </button>
+          </div>
           <input
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
@@ -184,8 +303,8 @@ export function Boards() {
 
       {boards?.length === 0 && mode === 'none' && (
         <p className="text-[11.5px] leading-relaxed text-mocha">
-          Make a leaderboard for your family, your shul, or your chevrusa — then share its code
-          so everyone races the same week.
+          Make a leaderboard for your family, your shul, or your chevrusa — pick a week, a month,
+          or a year, share its code, and race from 0 to the crown.
         </p>
       )}
 
@@ -197,9 +316,11 @@ export function Boards() {
                 <p className="truncate text-[15px] font-bold text-espresso">{b.title}</p>
                 <p className="text-[10.5px] font-semibold uppercase tracking-wider text-mocha">
                   {b.members} {b.members === 1 ? 'member' : 'members'} · code {b.code}
+                  {b.round > 1 ? ` · round ${b.round}` : ''}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                <Countdown endsAt={b.endsAt} ended={b.ended} />
                 <button
                   onClick={() => {
                     setChat(b);
@@ -228,36 +349,87 @@ export function Boards() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 border-t border-espresso/[0.07] pt-3">
-              {b.league.map((row, i) => (
-                <div key={row.code} className="flex items-center gap-2.5">
-                  <span className="w-6 shrink-0 text-center text-[12px]">
-                    {MEDALS[i] ?? <span className="text-mocha">{i + 1}</span>}
-                  </span>
-                  <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-espresso">
-                    {row.name}
-                    {row.you && (
-                      <span className="ml-1.5 rounded-full bg-rimon/10 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-rimon">
-                        you
-                      </span>
-                    )}
-                    {row.streak > 0 && row.streak < 999 && (
-                      <span className="ml-1.5 text-[10.5px] text-mocha">🔥{row.streak}</span>
-                    )}
+            {/* finished round: the frozen podium + (owner) run it back */}
+            {b.ended && b.result ? (
+              <div data-board-finished className="border-t border-espresso/[0.07] pt-3">
+                <div className="rounded-2xl bg-gold/[0.08] px-4 py-3 text-center ring-1 ring-gold/25">
+                  {b.result.winnerName ? (
+                    <>
+                      <p className="text-[20px] leading-none">👑</p>
+                      <p className="mt-1 text-[14px] font-bold text-espresso">
+                        {b.result.winnerName} takes the crown!
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[13px] font-semibold text-espresso-soft">
+                      The clock ran out with the podium empty — nobody scored this round.
+                    </p>
+                  )}
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-gold">
+                    final standings · round {b.round}
                   </p>
-                  <span className="shrink-0 text-right">
-                    <span className="block text-[13px] font-bold leading-tight text-espresso">
-                      ⭐ {row.weekPoints ?? 0}
-                    </span>
-                    {(row.todayPoints ?? 0) > 0 && (
-                      <span className="block text-[9px] font-semibold leading-tight text-sage">
-                        +{row.todayPoints} today
-                      </span>
-                    )}
-                  </span>
                 </div>
-              ))}
-            </div>
+                <div className="flex flex-col gap-1.5 pt-3">
+                  {b.result.standings.slice(0, 10).map((row, i) => (
+                    <div key={`${row.name}-${i}`} className="flex items-center gap-2.5">
+                      <span className="w-6 shrink-0 text-center text-[12px]">
+                        {MEDALS[i] ?? <span className="text-mocha">{i + 1}</span>}
+                      </span>
+                      <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-espresso">
+                        {row.name}
+                        {row.you && (
+                          <span className="ml-1.5 rounded-full bg-rimon/10 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-rimon">
+                            you
+                          </span>
+                        )}
+                      </p>
+                      <span className="shrink-0 text-[13px] font-bold text-espresso">⭐ {row.points}</span>
+                    </div>
+                  ))}
+                </div>
+                {b.owner && (
+                  <div className="pt-3" data-run-it-back>
+                    <PillButton variant="rimon" icon="🔄" onClick={() => void runItBack(b)} disabled={busy}>
+                      Run it back ({DURATIONS.find((d) => d.id === b.duration)?.label ?? b.duration})
+                    </PillButton>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5 border-t border-espresso/[0.07] pt-3">
+                {b.league.map((row, i) => (
+                  <div key={row.code} className="flex items-center gap-2.5">
+                    <span className="w-6 shrink-0 text-center text-[12px]">
+                      {MEDALS[i] ?? <span className="text-mocha">{i + 1}</span>}
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-[13px] font-semibold text-espresso">
+                      {row.name}
+                      {row.you && (
+                        <span className="ml-1.5 rounded-full bg-rimon/10 px-1.5 py-0.5 text-[8.5px] font-bold uppercase tracking-wider text-rimon">
+                          you
+                        </span>
+                      )}
+                      {(row.wins ?? 0) > 0 && (
+                        <span className="ml-1.5 text-[10.5px] font-semibold text-gold">🏆{row.wins}</span>
+                      )}
+                      {row.streak > 0 && row.streak < 999 && (
+                        <span className="ml-1.5 text-[10.5px] text-mocha">🔥{row.streak}</span>
+                      )}
+                    </p>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-[13px] font-bold leading-tight text-espresso">
+                        ⭐ {row.points ?? 0}
+                      </span>
+                      {(row.todayPoints ?? 0) > 0 && (
+                        <span className="block text-[9px] font-semibold leading-tight text-sage">
+                          +{row.todayPoints} today
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {confirm === b.id ? (
               <div className="mt-3 rounded-2xl bg-rimon/[0.06] p-3">

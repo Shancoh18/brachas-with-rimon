@@ -14,13 +14,18 @@ export interface LeagueRow {
   code: string;
   totalBrachos: number;
   weekBrachos: number;
-  /** lifetime points */
+  /** lifetime points — the all-time league ranks on this; on a board row this
+   *  is the ROUND score instead (points since the round started, from 0) */
   points: number;
-  /** points earned in the last 7 days — the league ranks on this */
+  /** points earned in the last 7 days */
   weekPoints: number;
   /** points earned today — powers the catch-up nudge */
   todayPoints: number;
   streak: number;
+  /** leaderboard rounds won, lifetime */
+  wins?: number;
+  /** round brachos (board rows only) */
+  brachos?: number;
   you: boolean;
 }
 
@@ -156,7 +161,19 @@ export const apiSetPassword = (token: string, password: string, current?: string
   );
 
 // ------------------------------------------------------------ leaderboards
-/** A named leaderboard anyone can create and share by code. */
+export type BoardDuration = 'week' | 'month' | 'year';
+
+/** Frozen podium of a finished round. */
+export interface BoardResult {
+  standings: { name: string; points: number; you: boolean }[];
+  winnerName: string | null;
+  ended: number;
+  /** whether THIS member has already watched the podium reveal */
+  seen: boolean;
+}
+
+/** A named leaderboard anyone can create and share by code. Every board is a
+ *  timed ROUND (week/month/year) — members race from 0 until the clock ends. */
 export interface Board {
   id: string;
   code: string;
@@ -166,6 +183,14 @@ export interface Board {
   league: LeagueRow[];
   /** chat messages from others since this member last opened the room */
   unread?: number;
+  duration: BoardDuration;
+  startsAt: number;
+  endsAt: number;
+  round: number;
+  /** true once the clock ran out (result may lag a sweep tick behind) */
+  ended: boolean;
+  /** present once the round is finalized */
+  result: BoardResult | null;
 }
 
 /** One message in a board's group chat. */
@@ -179,10 +204,22 @@ export interface BoardMessage {
 
 export const apiBoards = (token: string) => call<{ boards: Board[] }>('/api/boards', {}, token);
 
-export const apiCreateBoard = (token: string, title: string) =>
-  call<{ id: string; code: string; title: string }>(
+export const apiCreateBoard = (token: string, title: string, duration: BoardDuration = 'week') =>
+  call<{ id: string; code: string; title: string; duration: BoardDuration; endsAt: number }>(
     '/api/boards/create',
-    { method: 'POST', body: JSON.stringify({ title }) },
+    { method: 'POST', body: JSON.stringify({ title, duration }) },
+    token,
+  );
+
+/** Mark the finished round's podium reveal as watched (never replays). */
+export const apiBoardRevealSeen = (token: string, id: string) =>
+  call<{ ok: boolean }>('/api/boards/seen', { method: 'POST', body: JSON.stringify({ id }) }, token);
+
+/** Owner only: start the next round — fresh clock, everyone back at 0. */
+export const apiRestartBoard = (token: string, id: string, duration?: BoardDuration) =>
+  call<{ ok: boolean; round: number; endsAt: number }>(
+    '/api/boards/restart',
+    { method: 'POST', body: JSON.stringify({ id, ...(duration ? { duration } : {}) }) },
     token,
   );
 

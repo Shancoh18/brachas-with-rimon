@@ -28,6 +28,8 @@ export function Account() {
     setUserEmail,
     clearServerAccount,
     setOnboarded,
+    appearance,
+    setAppearance,
   } = useBracha();
 
   const [name, setName] = useState(displayName);
@@ -241,6 +243,41 @@ export function Account() {
               <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
                 Friends add you with this code, and it still works as a backup sign-in key
                 alongside your email. Keep it private — treat it like a password.
+              </p>
+            </Bezel>
+
+            {/* appearance — explicit, light by default (never inferred from the OS) */}
+            <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
+              <p className={label}>Appearance</p>
+              <div data-appearance-picker className="mt-2 grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: 'light', label: 'Light', icon: '☀️' },
+                    { id: 'dark', label: 'Dark', icon: '🌙' },
+                    { id: 'system', label: 'Auto', icon: '📱' },
+                  ] as const
+                ).map((o) => {
+                  const active = appearance === o.id;
+                  return (
+                    <button
+                      key={o.id}
+                      onClick={() => setAppearance(o.id)}
+                      aria-pressed={active}
+                      className={`rounded-2xl border px-2 py-2.5 text-center transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                        active
+                          ? 'border-rimon/40 bg-rimon/[0.07] text-rimon'
+                          : 'border-espresso/10 bg-white/60 text-espresso hover:-translate-y-0.5'
+                      }`}
+                    >
+                      <span className="block text-[16px]">{o.icon}</span>
+                      <span className="mt-0.5 block text-[11.5px] font-bold">{o.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2.5 text-[10.5px] leading-relaxed text-mocha">
+                Auto follows your device's light/dark setting. The app stays light unless you
+                choose otherwise.
               </p>
             </Bezel>
 

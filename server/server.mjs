@@ -118,11 +118,38 @@ const auth = (req) => {
 const MAX_BOARDS_PER_USER = 20;
 const MAX_BOARD_MEMBERS = 200;
 const BOARD_ROWS = 50; // standings shown; "you" is always included
+const DURATION_LABEL = { week: 'one week', month: 'one month', year: 'one year' };
+/** A member's score inside the current round: points earned since their
+ *  baseline snapshot (round start, or the moment they joined). Never negative
+ *  — a merge can't lower totals, but belt-and-braces. */
+const roundScore = (m, field = 'points') => {
+  const total = field === 'points' ? m.progress?.points ?? 0 : m.progress?.totalBrachos ?? 0;
+  const base = field === 'points' ? m.pointsBaseline ?? 0 : m.brachosBaseline ?? 0;
+  return Math.max(0, total - base);
+};
+
 /** Top rows of a board, with the caller's own row kept even if far down.
  *  Friend codes are stripped: a board code is shareable, so shipping every
- *  member's personal code would let any joiner friend them all unilaterally. */
-const standings = (me, members) => {
-  const rows = leagueRows(me, members);
+ *  member's personal code would let any joiner friend them all unilaterally.
+ *  Rows are ROUND-scoped (everyone started this round at 0) and carry wins. */
+const standings = (me, scoredMembers) => {
+  const rows = scoredMembers
+    .map((m) => ({
+      name: m.name,
+      code: m.code,
+      totalBrachos: m.progress?.totalBrachos ?? 0,
+      points: roundScore(m, 'points'),
+      brachos: roundScore(m, 'brachos'),
+      // legacy field names the deployed client renders — keep them aliased to
+      // the round scores so an un-updated app shows the right numbers
+      weekPoints: roundScore(m, 'points'),
+      weekBrachos: roundScore(m, 'brachos'),
+      todayPoints: dayTotal(m, 'points'),
+      streak: m.progress?.streakCurrent ?? 0,
+      wins: m.wins ?? 0,
+      you: m.id === me.id,
+    }))
+    .sort((a, b) => b.points - a.points || b.brachos - a.brachos || b.totalBrachos - a.totalBrachos);
   const capped =
     rows.length <= BOARD_ROWS
       ? rows
@@ -247,27 +274,47 @@ const notifyBoardChat = (board, sender, text) => {
   }
 };
 
-/** My week-points rose oldWeek → newWeek: everyone I just passed (in the
- *  friends league or any shared board) gets a competitive nudge. */
-const notifyOvertaken = (me, oldWeek, newWeek) => {
-  const peers = new Map();
-  for (const f of store.friendsOf(me.id)) peers.set(f.id, f);
-  for (const b of store.boardsOf(me.id))
-    for (const m of store.boardMembers(b.id)) peers.set(m.id, m);
-  peers.delete(me.id);
-  for (const peer of peers.values()) {
-    if (!hasPushChannel(peer)) continue;
-    const pw = weekTotal(peer, 'points');
-    // strictly passed this sync — pw < newWeek means the sender is now ahead on
-    // the primary sort key (so "moved ahead" is always true), and oldWeek <= pw
-    // includes rivals the sender was tied with and genuinely overtook.
-    if (!(oldWeek <= pw && pw < newWeek)) continue;
-    if (!pushAllowed('overtake', peer.id, me.id, 2 * 60 * 60_000)) continue;
-    sendPush(
+/** My lifetime points rose oldPts → newPts: everyone I just passed gets a
+ *  competitive nudge. Two arenas, each scored its own way:
+ *   - the all-time friends league (lifetime points crossing), and
+ *   - every ACTIVE shared board round (round-score crossing — both sides
+ *     measured from their own baselines).
+ *  One push per rival per sync, board context preferred; 2h throttle/pair. */
+const notifyOvertaken = (me, oldPts, newPts) => {
+  const now = Date.now();
+  // rival user id -> text of the overtake that names the best arena
+  const passed = new Map();
+  for (const b of store.boardsOf(me.id)) {
+    if (!b.duration || b.ends_at <= now) continue; // finished rounds are frozen
+    const scored = store.boardMembersScored(b.id);
+    const myRow = scored.find((m) => m.id === me.id);
+    if (!myRow) continue;
+    const myNew = Math.max(0, newPts - (myRow.pointsBaseline ?? 0));
+    const myOld = Math.max(0, oldPts - (myRow.pointsBaseline ?? 0));
+    if (myNew <= myOld) continue;
+    for (const peer of scored) {
+      if (peer.id === me.id) continue;
+      const pw = Math.max(0, (peer.progress?.points ?? 0) - (peer.pointsBaseline ?? 0));
+      if (!(myOld <= pw && pw < myNew)) continue;
+      passed.set(peer.id, {
+        peer,
+        body: `${me.name} just moved ahead of you in “${b.title}” — ${myNew} pts this round. Say a bracha to take it back!`,
+      });
+    }
+  }
+  for (const peer of store.friendsOf(me.id)) {
+    if (passed.has(peer.id)) continue; // board context already covers this rival
+    const pw = peer.progress?.points ?? 0;
+    if (!(oldPts <= pw && pw < newPts)) continue;
+    passed.set(peer.id, {
       peer,
-      '🏆 You’ve been passed!',
-      `${me.name} just moved ahead of you — ${newWeek} pts this week. Say a bracha to take it back!`,
-    );
+      body: `${me.name} just moved ahead of you in the all-time league — ${newPts} pts. Say a bracha to take it back!`,
+    });
+  }
+  for (const { peer, body } of passed.values()) {
+    if (!hasPushChannel(peer)) continue;
+    if (!pushAllowed('overtake', peer.id, me.id, 2 * 60 * 60_000)) continue;
+    sendPush(peer, '🏆 You’ve been passed!', body);
   }
 };
 
@@ -347,6 +394,10 @@ async function verifyIdToken(provider, idToken) {
   }
 }
 
+// The built-in friends league is ALL-TIME (owner directive 2026-08-10):
+// lifetime points rank it, lifetime brachos break ties, and every row carries
+// the member's leaderboard-round win count. week/today fields still ride along
+// for the home-screen catch-up nudge and the "+N today" chips.
 const leagueRows = (me, people) =>
   people
     .map((u) => ({
@@ -358,11 +409,11 @@ const leagueRows = (me, people) =>
       weekPoints: weekTotal(u, 'points'),
       todayPoints: dayTotal(u, 'points'),
       streak: u.progress?.streakCurrent ?? 0,
+      wins: u.wins ?? 0,
       you: u.id === me.id,
     }))
     .sort(
-      (a, b) =>
-        b.weekPoints - a.weekPoints || b.weekBrachos - a.weekBrachos || b.totalBrachos - a.totalBrachos,
+      (a, b) => b.points - a.points || b.totalBrachos - a.totalBrachos || b.weekPoints - a.weekPoints,
     );
 
 // A user's friend code is a SIGN-IN credential (email + code unlocks a
@@ -719,6 +770,128 @@ setInterval(async () => {
   if (batch.length) await Promise.allSettled(batch);
 }, 30_000);
 
+// ---------------------------------------------- leaderboard round lifecycle
+// Boards are timed ROUNDS now. One boot pass converts pre-duration boards to
+// 1-week rounds (members told via push), then a 60s sweep drives the clock:
+//   1. finalize ended rounds — freeze the podium, crown the winner (+1 win),
+//      and tell every member to come watch the reveal (never spoiling WHO won),
+//   2. "last day" push as a round enters its final 24h (member-local morning),
+//   3. daily leader pushes in the member-local evening — per board, plus the
+//      all-time friends league's "X is in the lead today" home-card as a push.
+// Push stamps are in-memory (pushAllowed): a redeploy can repeat at most one
+// daily nudge, same class of tolerance as the mealtime scheduler's firedToday.
+// Env knobs exist for the scenario suite ONLY (fast rounds, quiet sweep):
+//   ROUND_SWEEP_MS=0 disables the sweep, EVENING_HOUR/MORNING_HOUR move the
+//   local-time gates. Production uses the defaults.
+const ROUND_SWEEP_MS = Number(process.env.ROUND_SWEEP_MS ?? 60_000);
+const EVENING_HOUR = Number(process.env.EVENING_HOUR ?? 18);
+const MORNING_HOUR = Number(process.env.MORNING_HOUR ?? 8);
+const localHour = (u) => new Date(Date.now() - (u.push?.tzOffsetMinutes ?? 0) * 60_000).getUTCHours();
+
+const finalizeEndedRounds = () => {
+  for (const b of store.unfinalizedBoards()) {
+    const scored = store.boardMembersScored(b.id);
+    const rows = scored
+      .map((m) => ({
+        userId: m.id,
+        name: m.name,
+        points: Math.max(0, (m.progress?.points ?? 0) - (m.pointsBaseline ?? 0)),
+        brachos: Math.max(0, (m.progress?.totalBrachos ?? 0) - (m.brachosBaseline ?? 0)),
+      }))
+      .sort((a, z) => z.points - a.points || z.brachos - a.brachos);
+    // a winner needs points on the board — an all-zero round crowns nobody
+    const winner = rows[0] && rows[0].points > 0 ? rows[0] : null;
+    store.addBoardResult(b.id, b.round ?? 1, rows, winner?.userId ?? null);
+    if (winner) store.incrementWins(winner.userId);
+    console.log(`board round ended: "${b.title}" round ${b.round} — winner ${winner?.name ?? 'none'}`);
+    for (const m of scored) {
+      if (!hasPushChannel(m)) continue;
+      sendPush(m, '🏁 Time’s up!', `“${b.title}” has ended — open the app to see the podium revealed! 🥇`);
+    }
+  }
+};
+
+const sweepRounds = () => {
+  finalizeEndedRounds();
+  const now = Date.now();
+  for (const b of store.activeBoards(now)) {
+    const scored = store.boardMembersScored(b.id);
+    if (scored.length < 2) continue; // nobody to race
+    const rows = [...scored].sort(
+      (a, z) =>
+        Math.max(0, (z.progress?.points ?? 0) - (z.pointsBaseline ?? 0)) -
+        Math.max(0, (a.progress?.points ?? 0) - (a.pointsBaseline ?? 0)),
+    );
+    const leader = rows[0];
+    const leaderPts = Math.max(0, (leader.progress?.points ?? 0) - (leader.pointsBaseline ?? 0));
+    const lastDay = b.ends_at - now <= 86_400_000;
+    const hoursLeft = Math.max(1, Math.round((b.ends_at - now) / 3_600_000));
+    for (const m of scored) {
+      if (!hasPushChannel(m)) continue;
+      const hour = localHour(m);
+      // (2) final 24h — one heads-up per member per round, from morning on
+      if (lastDay && hour >= MORNING_HOUR && pushAllowed('lastday', m.id, `${b.id}:${b.round}`, 3 * 86_400_000))
+        sendPush(
+          m,
+          '⏳ Last day!',
+          `Final ${hoursLeft}h of “${b.title}” — ${
+            m.id === leader.id
+              ? 'you’re in front. Hold the lead!'
+              : leaderPts > 0
+                ? `${leader.name} leads with ${leaderPts} pts. Still time to take it!`
+                : 'the podium is wide open. Any bracha could win it!'
+          }`,
+        );
+      // (3) evening standings nudge — non-leaders only, once a day per board
+      if (
+        hour === EVENING_HOUR &&
+        leaderPts > 0 &&
+        m.id !== leader.id &&
+        pushAllowed('boardlead', m.id, b.id, 20 * 3_600_000)
+      )
+        sendPush(
+          m,
+          `🏆 ${b.title}`,
+          `${leader.name} is leading with ${leaderPts} pts this round — say a bracha and climb the board!`,
+        );
+    }
+  }
+  // the home-screen "X is in the lead today" card, as an evening push
+  for (const u of store.pushAudience()) {
+    if (localHour(u) !== EVENING_HOUR) continue;
+    if (!store.friendsOf(u.id).length) continue;
+    const byToday = leagueFor(u).sort((a, z) => (z.todayPoints ?? 0) - (a.todayPoints ?? 0));
+    const leader = byToday[0];
+    const meRow = byToday.find((r) => r.you);
+    if (!leader || !meRow || leader.you || (leader.todayPoints ?? 0) <= 0) continue;
+    if (!pushAllowed('leaguelead', u.id, 'friends', 20 * 3_600_000)) continue;
+    const gap = (leader.todayPoints ?? 0) - (meRow.todayPoints ?? 0);
+    const challenges = Math.max(1, Math.ceil(gap / 10));
+    sendPush(
+      u,
+      'Rimon here 🍎',
+      `${leader.name} is in the lead today with ${leader.todayPoints} points — complete ${challenges} challenge${challenges === 1 ? '' : 's'} to catch up! 🏆`,
+    );
+  }
+};
+
+// one-time conversion of legacy (untimed) boards → 1-week rounds, then sweep
+for (const b of store.convertLegacyBoards()) {
+  console.log(`board converted to timed round: "${b.title}" — 1 week from now`);
+  for (const m of store.boardMembers(b.id)) {
+    if (!hasPushChannel(m)) continue;
+    sendPush(
+      m,
+      '🏁 Leaderboard started!',
+      `“${b.title}” now runs in timed rounds — this round is one week and everyone starts at 0. Most points wins! 🥇`,
+    );
+  }
+}
+if (ROUND_SWEEP_MS > 0) {
+  setInterval(sweepRounds, ROUND_SWEEP_MS);
+  setTimeout(sweepRounds, Math.min(5_000, ROUND_SWEEP_MS)).unref(); // catch rounds that ended while we were down
+}
+
 // -------------------------------------------------------------------- server
 const server = createServer(async (req, res) => {
   cors(req, res);
@@ -961,12 +1134,12 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/sync' && req.method === 'POST') {
       const { progress, name } = await readBody(req);
-      const oldWeek = weekTotal(a.user, 'points');
+      const oldPts = a.user.progress?.points ?? 0;
       if (progress) store.setProgress(a.user.id, mergeProgress(a.user.progress, progress));
       if (name) store.setName(a.user.id, String(name).trim().slice(0, 20));
       const me = store.userById(a.user.id);
-      const newWeek = weekTotal(me, 'points');
-      if (newWeek > oldWeek) notifyOvertaken(me, oldWeek, newWeek);
+      const newPts = me.progress?.points ?? 0;
+      if (newPts > oldPts) notifyOvertaken(me, oldPts, newPts);
       // return the authoritative stored progress so a fresh device can adopt
       // it instead of pushing its empty state up (the wipe this merge prevents)
       return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null, progress: me.progress ?? null });
@@ -1044,29 +1217,84 @@ const server = createServer(async (req, res) => {
     // and invite people with a short share code.
     if (url.pathname === '/api/boards' && req.method === 'GET') {
       const me = store.userById(a.user.id);
+      const now = Date.now();
       const boards = store.boardsOf(me.id).map((b) => {
-        const members = store.boardMembers(b.id);
+        const scored = store.boardMembersScored(b.id);
+        const meRow = scored.find((m) => m.id === me.id);
+        // frozen podium of the current round, once the sweep has sealed it
+        const result = b.duration && b.ends_at <= now ? store.boardResult(b.id, b.round) : null;
         return {
           id: b.id,
           code: b.code,
           title: b.title,
           owner: b.owner_id === me.id,
-          members: members.length,
-          league: standings(me, members),
+          members: scored.length,
+          league: standings(me, scored),
           unread: store.boardUnread(b.id, me.id),
+          duration: b.duration ?? 'week',
+          startsAt: b.starts_at,
+          endsAt: b.ends_at,
+          round: b.round ?? 1,
+          ended: !!(b.duration && b.ends_at <= now),
+          result: result
+            ? {
+                // names + round points only — no codes, no ids beyond "you"
+                standings: result.standings.map((r) => ({
+                  name: r.name,
+                  points: r.points,
+                  you: r.userId === me.id,
+                })),
+                winnerName: result.standings.find((r) => r.userId === result.winnerId)?.name ?? null,
+                ended: result.ended,
+                seen: (meRow?.revealRound ?? 0) >= (b.round ?? 1),
+              }
+            : null,
         };
       });
       return json(res, 200, { boards });
     }
 
     if (url.pathname === '/api/boards/create' && req.method === 'POST') {
-      const { title } = await readBody(req);
+      const { title, duration } = await readBody(req);
       const clean = String(title || '').trim().slice(0, 40);
       if (!clean) return json(res, 400, { error: 'title_required' });
+      const dur = ['week', 'month', 'year'].includes(duration) ? duration : 'week';
       if (store.boardsOf(a.user.id).filter((b) => b.owner_id === a.user.id).length >= MAX_BOARDS_PER_USER)
         return json(res, 400, { error: 'too_many_boards' });
-      const b = store.createBoard(a.user.id, clean);
-      return json(res, 200, { id: b.id, code: b.code, title: clean });
+      const b = store.createBoard(a.user, clean, dur);
+      // no push here — the creator is the only member and sees the countdown
+      // in-UI; "started" pushes fire where OTHERS exist to tell (conversion,
+      // run-it-back)
+      return json(res, 200, { id: b.id, code: b.code, title: clean, duration: dur, endsAt: b.endsAt });
+    }
+
+    // The podium reveal was watched — never replay it for this member/round.
+    if (url.pathname === '/api/boards/seen' && req.method === 'POST') {
+      const { id } = await readBody(req);
+      const board = store.boardById(String(id || ''));
+      if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
+      store.markRevealSeen(board.id, a.user.id, board.round ?? 1);
+      return json(res, 200, { ok: true });
+    }
+
+    // "Run it back" — owner starts the next round: fresh clock, everyone at 0.
+    if (url.pathname === '/api/boards/restart' && req.method === 'POST') {
+      const { id, duration } = await readBody(req);
+      const board = store.boardById(String(id || ''));
+      if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
+      if (board.owner_id !== a.user.id) return json(res, 403, { error: 'owner_only' });
+      if (!(board.duration && board.ends_at <= Date.now())) return json(res, 400, { error: 'round_still_running' });
+      const dur = ['week', 'month', 'year'].includes(duration) ? duration : board.duration;
+      const fresh = store.restartBoard(board.id, dur);
+      for (const m of store.boardMembers(board.id)) {
+        if (!hasPushChannel(m)) continue;
+        sendPush(
+          m,
+          '🏁 Leaderboard started!',
+          `Round ${fresh.round} of “${board.title}” is on — everyone's back at 0. ${DURATION_LABEL[dur]} on the clock!`,
+        );
+      }
+      return json(res, 200, { ok: true, round: fresh.round, endsAt: fresh.ends_at });
     }
 
     if (url.pathname === '/api/boards/join' && req.method === 'POST') {
@@ -1081,13 +1309,13 @@ const server = createServer(async (req, res) => {
         if (store.boardMemberCount(board.id) >= MAX_BOARD_MEMBERS)
           return json(res, 400, { error: 'board_full' });
       }
-      store.joinBoard(board.id, a.user.id);
+      store.joinBoard(board.id, a.user); // baseline snapshot — newcomer starts at 0
       const me = store.userById(a.user.id);
       return json(res, 200, {
         id: board.id,
         code: board.code,
         title: board.title,
-        league: standings(me, store.boardMembers(board.id)),
+        league: standings(me, store.boardMembersScored(board.id)),
       });
     }
 

@@ -42,6 +42,7 @@ const hydrate = (r) =>
     progress: parse(r.progress),
     push: parse(r.push),
     apns: r.apns ?? null,
+    wins: r.wins ?? 0,
     created: r.created,
   };
 
@@ -134,6 +135,28 @@ export const friendsOf = (id) =>
     .map(hydrate);
 
 // -------------------------------------------------------------- leaderboards
+// Every board is a timed ROUND: week / month / year. Scores are cumulative
+// points minus the member's baseline (snapshotted at round start or join), so
+// everyone starts a round at 0 — including year-long boards, which daily
+// history (≈60 days retained) could never sum.
+// ROUND_DURATIONS_OVERRIDE (JSON, e.g. {"week":2500}) exists for the scenario
+// suite only — it shrinks a round to milliseconds so finalize/reveal/restart
+// can be asserted end-to-end. Production never sets it.
+const durationOverride = (() => {
+  try { return JSON.parse(process.env.ROUND_DURATIONS_OVERRIDE || '{}'); } catch { return {}; }
+})();
+export const DURATION_MS = {
+  week: 7 * 86_400_000,
+  month: 30 * 86_400_000,
+  year: 365 * 86_400_000,
+  ...durationOverride,
+};
+
+const baselineOf = (user) => ({
+  points: user?.progress?.points ?? 0,
+  brachos: user?.progress?.totalBrachos ?? 0,
+});
+
 export const freshBoardCode = () => {
   for (let i = 0; i < 50; i++) {
     const c = randomFrom(6);
@@ -141,20 +164,31 @@ export const freshBoardCode = () => {
   }
   return randomFrom(8);
 };
-export function createBoard(ownerId, title) {
+export function createBoard(owner, title, duration = 'week') {
   const id = newId();
   const code = freshBoardCode();
-  db.prepare('INSERT INTO boards (id,code,title,owner_id,created) VALUES (?,?,?,?,?)').run(
-    id, code, String(title).trim().slice(0, 40) || 'Our leaderboard', ownerId, Date.now(),
-  );
-  db.prepare('INSERT INTO board_members (board_id,user_id,joined) VALUES (?,?,?)').run(id, ownerId, Date.now());
-  return { id, code };
+  const now = Date.now();
+  const dur = DURATION_MS[duration] ? duration : 'week';
+  db.prepare(
+    'INSERT INTO boards (id,code,title,owner_id,created,duration,starts_at,ends_at,round) VALUES (?,?,?,?,?,?,?,?,1)',
+  ).run(id, code, String(title).trim().slice(0, 40) || 'Our leaderboard', owner.id, now, dur, now, now + DURATION_MS[dur]);
+  const base = baselineOf(owner);
+  db.prepare(
+    'INSERT INTO board_members (board_id,user_id,joined,points_baseline,brachos_baseline) VALUES (?,?,?,?,?)',
+  ).run(id, owner.id, now, base.points, base.brachos);
+  return { id, code, duration: dur, endsAt: now + DURATION_MS[dur] };
 }
 export const boardByCode = (code) =>
   db.prepare('SELECT * FROM boards WHERE code = ?').get(String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''));
 export const boardById = (id) => db.prepare('SELECT * FROM boards WHERE id = ?').get(id);
-export const joinBoard = (boardId, userId) =>
-  db.prepare('INSERT OR IGNORE INTO board_members (board_id,user_id,joined) VALUES (?,?,?)').run(boardId, userId, Date.now());
+/** Joining mid-round starts the newcomer at 0 — their baseline is their
+ *  cumulative points right now, not the round's start. */
+export const joinBoard = (boardId, user) => {
+  const base = baselineOf(user);
+  db.prepare(
+    'INSERT OR IGNORE INTO board_members (board_id,user_id,joined,points_baseline,brachos_baseline) VALUES (?,?,?,?,?)',
+  ).run(boardId, user.id, Date.now(), base.points, base.brachos);
+};
 export const leaveBoard = (boardId, userId) =>
   db.prepare('DELETE FROM board_members WHERE board_id = ? AND user_id = ?').run(boardId, userId);
 export const deleteBoard = (boardId) => db.prepare('DELETE FROM boards WHERE id = ?').run(boardId);
@@ -167,6 +201,82 @@ export const boardMembers = (boardId) =>
     .prepare('SELECT u.* FROM board_members m JOIN users u ON u.id = m.user_id WHERE m.board_id = ?')
     .all(boardId)
     .map(hydrate);
+/** Members WITH their round baselines + reveal cursor — what board scoring reads. */
+export const boardMembersScored = (boardId) =>
+  db
+    .prepare(
+      `SELECT u.*, m.points_baseline, m.brachos_baseline, m.reveal_round
+         FROM board_members m JOIN users u ON u.id = m.user_id WHERE m.board_id = ?`,
+    )
+    .all(boardId)
+    .map((r) => ({
+      ...hydrate(r),
+      pointsBaseline: r.points_baseline ?? 0,
+      brachosBaseline: r.brachos_baseline ?? 0,
+      revealRound: r.reveal_round ?? 0,
+    }));
+
+// ------------------------------------------------------ timed-round lifecycle
+/** Start the next round: fresh clock, every member re-snapshotted to 0. */
+export function restartBoard(boardId, duration) {
+  const b = boardById(boardId);
+  if (!b) return null;
+  const now = Date.now();
+  const dur = DURATION_MS[duration] ? duration : DURATION_MS[b.duration] ? b.duration : 'week';
+  db.prepare('UPDATE boards SET duration = ?, starts_at = ?, ends_at = ?, round = round + 1 WHERE id = ?').run(
+    dur, now, now + DURATION_MS[dur], boardId,
+  );
+  rebaselineMembers(boardId);
+  return boardById(boardId);
+}
+/** Snapshot every member's CURRENT totals as the new zero point. */
+export function rebaselineMembers(boardId) {
+  const upd = db.prepare(
+    'UPDATE board_members SET points_baseline = ?, brachos_baseline = ? WHERE board_id = ? AND user_id = ?',
+  );
+  for (const m of boardMembers(boardId)) {
+    const p = m.progress ?? {};
+    upd.run(p.points ?? 0, p.totalBrachos ?? 0, boardId, m.id);
+  }
+}
+/** One-time conversion of pre-duration boards → 1-week rounds starting now.
+ *  Returns the converted boards so the caller can send the "started" push. */
+export function convertLegacyBoards() {
+  const legacy = db.prepare('SELECT * FROM boards WHERE duration IS NULL').all();
+  const now = Date.now();
+  for (const b of legacy) {
+    db.prepare('UPDATE boards SET duration = ?, starts_at = ?, ends_at = ?, round = 1 WHERE id = ?').run(
+      'week', now, now + DURATION_MS.week, b.id,
+    );
+    rebaselineMembers(b.id);
+  }
+  return legacy.map((b) => boardById(b.id));
+}
+/** Boards whose clock ran out but whose round has no frozen result yet. */
+export const unfinalizedBoards = (now = Date.now()) =>
+  db
+    .prepare(
+      `SELECT b.* FROM boards b
+        WHERE b.duration IS NOT NULL AND b.ends_at <= ?
+          AND NOT EXISTS (SELECT 1 FROM board_results r WHERE r.board_id = b.id AND r.round = b.round)`,
+    )
+    .all(now);
+export const activeBoards = (now = Date.now()) =>
+  db.prepare('SELECT * FROM boards WHERE duration IS NOT NULL AND ends_at > ?').all(now);
+export const addBoardResult = (boardId, round, standings, winnerId) =>
+  db.prepare(
+    'INSERT OR IGNORE INTO board_results (board_id,round,standings,winner_id,ended) VALUES (?,?,?,?,?)',
+  ).run(boardId, round, JSON.stringify(standings), winnerId, Date.now());
+export const boardResult = (boardId, round) => {
+  const r = db.prepare('SELECT * FROM board_results WHERE board_id = ? AND round = ?').get(boardId, round);
+  return r ? { standings: parse(r.standings, []), winnerId: r.winner_id, ended: r.ended } : null;
+};
+export const incrementWins = (userId) =>
+  db.prepare('UPDATE users SET wins = wins + 1 WHERE id = ?').run(userId);
+export const markRevealSeen = (boardId, userId, round) =>
+  db.prepare('UPDATE board_members SET reveal_round = MAX(reveal_round, ?) WHERE board_id = ? AND user_id = ?').run(
+    round, boardId, userId,
+  );
 export const boardMemberCount = (boardId) =>
   db.prepare('SELECT COUNT(*) n FROM board_members WHERE board_id = ?').get(boardId).n;
 export const isBoardMember = (boardId, userId) =>

@@ -481,30 +481,63 @@ await page.type('input[placeholder="RIMON-XXXX"]', friendReg.code);
 await clickText('Add', 2200);
 t = await text();
 check('add friend BY CODE works', t.includes('test friend'), 'league shows Test Friend');
-check('league ranks by weekly points', t.includes('pts this week') && /⭐\s*\d+/.test(t));
-check('league shows weekly bracha counts', t.includes('brachos'));
+check('league is ALL-TIME (label + ⭐ points)', t.includes('all-time leaderboard') && t.includes('pts all-time') && /⭐\s*\d+/.test(t));
+check('league shows lifetime bracha counts', t.includes('brachos'));
 // the numbers must be REAL, not zeros: this account finished a 7-bracha meal
 const youRow = await page.evaluate(() => {
   const chip = [...document.querySelectorAll('span')].find((s) => s.textContent.trim() === 'you');
   let row = chip;
   for (let i = 0; i < 6 && row; i++) {
     row = row.parentElement;
-    if (row && /pts this week/i.test(row.innerText) && /brachos/i.test(row.innerText)) break;
+    if (row && /pts all-time/i.test(row.innerText) && /brachos/i.test(row.innerText)) break;
   }
   return row ? row.innerText.replace(/\n/g, ' | ') : '';
 });
 check(
-  'my league row carries real week numbers (points + brachos > 0)',
+  'my league row carries real all-time numbers (points + brachos > 0)',
   /⭐\s*([1-9]\d*)/.test(youRow) && /\b[1-9]\d*[\s|]*brachos/i.test(youRow),
   youRow,
 );
 
 // ------------------------------------------ NAMED BOARDS + GROUP CHAT (live)
 await clickText('+ New', 700);
+// timed rounds: the create card carries a 3-option duration picker + an ✕ cancel
+check(
+  'create card has the 1 week / 1 month / 1 year duration picker',
+  await page.evaluate(() => {
+    const p = document.querySelector('[data-duration-picker]');
+    const labels = p ? [...p.querySelectorAll('button')].map((b) => b.innerText) : [];
+    return labels.length === 3 && /1 week/i.test(labels[0]) && /1 month/i.test(labels[1]) && /1 year/i.test(labels[2]);
+  }),
+);
+check(
+  'create card has an ✕ cancel button',
+  await page.evaluate(() => !!document.querySelector('button[aria-label="cancel creating a leaderboard"]')),
+);
+// cancel closes the card, reopening restores it
+await page.evaluate(() => document.querySelector('button[aria-label="cancel creating a leaderboard"]')?.click());
+await sleep(500);
+check('✕ cancels board creation', await page.evaluate(() => !document.querySelector('[data-duration-picker]')));
+await clickText('+ New', 700);
 await page.type('input[placeholder="e.g. Cohen Family"]', 'E2E Chevra');
+// pick 1 month so the countdown proves the chosen duration (not the default)
+await page.evaluate(() => {
+  const p = document.querySelector('[data-duration-picker]');
+  [...(p?.querySelectorAll('button') ?? [])].find((b) => /1 month/i.test(b.innerText))?.click();
+});
+await sleep(400);
 await clickText('Create leaderboard', 2200);
 t = await text();
 check('board created with share code', t.includes('e2e chevra') && /code [a-z0-9]{4,}/.test(t));
+const countdown = await page.evaluate(() => document.querySelector('[data-board-countdown]')?.textContent ?? '');
+check('board card carries the round countdown (1 month on the clock)', /⏳/.test(countdown) && /(29d|30d)/.test(countdown), countdown);
+check(
+  'fresh round starts everyone at ⭐ 0',
+  await page.evaluate(() => {
+    const card = [...document.querySelectorAll('p')].find((x) => x.textContent.trim() === 'E2E Chevra')?.closest('div[class]')?.parentElement?.parentElement;
+    return card ? /⭐\s*0/.test(card.innerText) : false;
+  }),
+);
 check(
   'chat button sits left of the Share button',
   await page.evaluate(() => {
@@ -522,23 +555,97 @@ t = await text();
 check('chat message sends and renders', t.includes('shalom from e2e'));
 await clickText('close', 900);
 
+// ----------------------------------------------- TAB BAR PINNING (Journey)
+// Owner screenshot 2026-08-10: the floating bar sat MID-PAGE over the Journey
+// reminder card. Assert it stays fixed to the viewport bottom even scrolled
+// to the very end of the longest tab, and survives an input focus/blur cycle
+// (the keyboard path that strands it in WKWebView).
+await page.evaluate(() => [...document.querySelectorAll('nav button')][2]?.click());
+await sleep(1400);
+await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+await sleep(700);
+let navPin = await page.evaluate(() => {
+  const n = document.querySelector('nav');
+  if (!n) return null;
+  const r = n.getBoundingClientRect();
+  return { pos: getComputedStyle(n).position, gap: Math.round(window.innerHeight - r.bottom) };
+});
+check(
+  'tab bar stays pinned to the viewport bottom when scrolled',
+  !!navPin && navPin.pos === 'fixed' && navPin.gap >= 0 && navPin.gap < 80,
+  JSON.stringify(navPin),
+);
+await page.evaluate(() => {
+  const input = document.querySelector('input');
+  input?.focus();
+  input?.blur();
+});
+await sleep(500);
+navPin = await page.evaluate(() => {
+  const n = document.querySelector('nav');
+  if (!n) return null;
+  const r = n.getBoundingClientRect();
+  return { gap: Math.round(window.innerHeight - r.bottom) };
+});
+check('tab bar re-pins after a focus/blur (keyboard) cycle', !!navPin && navPin.gap >= 0 && navPin.gap < 80, JSON.stringify(navPin));
+
 // ---------------------------------------------------------------- DONATE TAB
 await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click());
 await sleep(1000);
 t = await text();
 check('donate tab opens next to the profile button', t.includes('help keep the app free') && t.includes('donate to the developers'));
 
-// ---------------------------------------------------------------- DARK MODE
+// ---------------------------------------------------------------- APPEARANCE
+// Dark is EXPLICIT now (owner ruling 2026-08-10): a device that merely
+// REPORTS dark must not flip the app — light is the default until the user
+// picks Dark (or Auto) on the Account screen.
 await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'dark' }]);
 await page.reload({ waitUntil: 'networkidle2' });
 await sleep(2200);
+const defaultBody = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+check('device-reported dark does NOT flip the app (defaults light)', defaultBody === 'rgb(250, 247, 233)', defaultBody);
+// opt into dark from Account → the whole app flips
+await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
+await sleep(1200);
+check(
+  'Account has the Light / Dark / Auto appearance picker',
+  await page.evaluate(() => {
+    const p = document.querySelector('[data-appearance-picker]');
+    const labels = p ? [...p.querySelectorAll('button')].map((b) => b.innerText) : [];
+    return labels.length === 3 && /light/i.test(labels[0]) && /dark/i.test(labels[1]) && /auto/i.test(labels[2]);
+  }),
+);
+await page.evaluate(() => {
+  const p = document.querySelector('[data-appearance-picker]');
+  [...(p?.querySelectorAll('button') ?? [])].find((b) => /dark/i.test(b.innerText))?.click();
+});
+await sleep(900);
 const dark = await page.evaluate(() => {
   const body = getComputedStyle(document.body).backgroundColor;
   const card = document.querySelector('[class*="bg-white/6"], [class*="bg-white/7"], [class*="bg-white/8"], [class*="bg-white/9"]');
-  return { body, card: card ? getComputedStyle(card).backgroundColor : null };
+  return { body, card: card ? getComputedStyle(card).backgroundColor : null, attr: document.documentElement.dataset.theme };
 });
-check('dark mode: canvas goes dark', dark.body === 'rgb(28, 22, 17)', dark.body);
+check('choosing Dark flips the canvas', dark.body === 'rgb(28, 22, 17)', `${dark.body} (data-theme=${dark.attr})`);
 check('dark mode: cards stay cream paper', dark.card === 'rgb(248, 243, 230)', String(dark.card));
+// dark choice survives a reload (persisted preference, not the media query)
+await page.reload({ waitUntil: 'networkidle2' });
+await sleep(1800);
+check(
+  'dark choice persists across reload',
+  (await page.evaluate(() => getComputedStyle(document.body).backgroundColor)) === 'rgb(28, 22, 17)',
+);
+// back to light for the rest of the run
+await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
+await sleep(1000);
+await page.evaluate(() => {
+  const p = document.querySelector('[data-appearance-picker]');
+  [...(p?.querySelectorAll('button') ?? [])].find((b) => /light/i.test(b.innerText))?.click();
+});
+await sleep(700);
+check(
+  'switching back to Light restores the cream canvas',
+  (await page.evaluate(() => getComputedStyle(document.body).backgroundColor)) === 'rgb(250, 247, 233)',
+);
 await page.emulateMediaFeatures([]);
 await page.reload({ waitUntil: 'networkidle2' });
 await sleep(1800);

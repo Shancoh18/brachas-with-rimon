@@ -70,6 +70,10 @@ interface BrachaState {
   setNusach: (n: NusachId) => void;
   textMode: TextMode;
   setTextMode: (m: TextMode) => void;
+  /** Appearance is explicit — LIGHT by default; dark/system are opt-in from
+   *  Account (owner ruling 2026-08-10 after a device auto-forced dark). */
+  appearance: import('./lib/theme').Appearance;
+  setAppearance: (a: import('./lib/theme').Appearance) => void;
 
   tab: Tab;
   setTab: (t: Tab) => void;
@@ -167,6 +171,8 @@ export const useBracha = create<BrachaState>()(
     (set) => ({
       nusach: 'ari',
       setNusach: (nusach) => set({ nusach }),
+      appearance: 'light',
+      setAppearance: (appearance) => set({ appearance }),
       textMode: 'hebrew',
       setTextMode: (textMode) => set({ textMode }),
 
@@ -417,6 +423,7 @@ export const useBracha = create<BrachaState>()(
       partialize: (s) => ({
         nusach: s.nusach,
         textMode: s.textMode,
+        appearance: s.appearance,
         progress: s.progress,
         dayStats: s.dayStats,
         pendingAfter: s.pendingAfter,

@@ -99,6 +99,39 @@ export function openDb(dataDir) {
   const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   // APNs device token for the native iOS app (WKWebView has no Web Push)
   if (!userCols.includes('apns')) db.exec('ALTER TABLE users ADD COLUMN apns TEXT');
+  // lifetime leaderboard-round wins (2026-08-10)
+  if (!userCols.includes('wins')) db.exec('ALTER TABLE users ADD COLUMN wins INTEGER NOT NULL DEFAULT 0');
+
+  // Timed leaderboard rounds (2026-08-10): every board runs for a fixed
+  // duration (week/month/year). Members race from 0 — each member's score is
+  // their cumulative points MINUS the baseline snapshotted when the round
+  // started (or when they joined mid-round). Snapshots, not history sums,
+  // because daily history only keeps ~60 days and a year-long board must
+  // still add up. duration NULL marks a legacy board awaiting conversion.
+  const boardCols = db.prepare('PRAGMA table_info(boards)').all().map((c) => c.name);
+  if (!boardCols.includes('duration')) db.exec('ALTER TABLE boards ADD COLUMN duration TEXT');
+  if (!boardCols.includes('starts_at')) db.exec('ALTER TABLE boards ADD COLUMN starts_at INTEGER');
+  if (!boardCols.includes('ends_at')) db.exec('ALTER TABLE boards ADD COLUMN ends_at INTEGER');
+  if (!boardCols.includes('round')) db.exec('ALTER TABLE boards ADD COLUMN round INTEGER NOT NULL DEFAULT 1');
+  const memberCols = db.prepare('PRAGMA table_info(board_members)').all().map((c) => c.name);
+  if (!memberCols.includes('points_baseline'))
+    db.exec('ALTER TABLE board_members ADD COLUMN points_baseline INTEGER NOT NULL DEFAULT 0');
+  if (!memberCols.includes('brachos_baseline'))
+    db.exec('ALTER TABLE board_members ADD COLUMN brachos_baseline INTEGER NOT NULL DEFAULT 0');
+  // highest round whose podium reveal this member has watched
+  if (!memberCols.includes('reveal_round'))
+    db.exec('ALTER TABLE board_members ADD COLUMN reveal_round INTEGER NOT NULL DEFAULT 0');
+  // one row per finished round — the frozen podium the reveal plays from
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS board_results (
+      board_id  TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      round     INTEGER NOT NULL,
+      standings TEXT NOT NULL,
+      winner_id TEXT,
+      ended     INTEGER NOT NULL,
+      PRIMARY KEY (board_id, round)
+    );
+  `);
   return db;
 }
 

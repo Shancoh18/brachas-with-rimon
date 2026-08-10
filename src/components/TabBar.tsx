@@ -4,7 +4,7 @@
  * high-frequency tab switch animates fast (150ms) per the Emil rule —
  * this control is hit dozens of times a day.
  */
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { donateAvailable } from '../lib/donate';
 import { useBracha, type Tab } from '../store';
 
@@ -70,8 +70,26 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function TabBar() {
   const { tab, setTab, reset } = useBracha();
+  // WKWebView strands position:fixed elements MID-PAGE after the on-screen
+  // keyboard / picker closes (owner screenshot 2026-08-10: the bar floated
+  // over the Journey reminder card right after editing mealtimes). Track the
+  // visual viewport: while the keyboard is up the bar unmounts (it shouldn't
+  // ride above a keyboard anyway); when it closes, the REMOUNT forces WebKit
+  // to re-resolve the fixed position against the restored viewport.
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onChange = () => setKeyboardUp(window.innerHeight - vv.height > 100);
+    vv.addEventListener('resize', onChange);
+    return () => vv.removeEventListener('resize', onChange);
+  }, []);
+  if (keyboardUp) return null;
   return (
-    <nav className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-6">
+    <nav
+      className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-6"
+      style={{ bottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+    >
       {/* SOLID bg — no backdrop-blur (WKWebView scroll-flicker) and no alpha:
           at 95% the disclaimer used to ghost through the pill when a page was
           scrolled to the bottom (owner-reported 2026-08-06). */}

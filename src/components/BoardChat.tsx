@@ -24,12 +24,17 @@ export function BoardChat({
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const lastRef = useRef(0);
+  const firstScroll = useRef(true);
 
-  const scrollDown = () => {
-    requestAnimationFrame(() => {
-      listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
-    });
-  };
+  // Scroll AFTER React commits the new rows (a lone rAF raced the render, so
+  // opening a full room could land at the TOP — owner-reported 2026-08-10).
+  // First paint jumps straight to the newest message; later ones glide.
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || messages.length === 0) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: firstScroll.current ? 'auto' : 'smooth' });
+    firstScroll.current = false;
+  }, [messages.length]);
 
   const load = async (since: number) => {
     try {
@@ -41,7 +46,6 @@ export function BoardChat({
           return fresh.length ? [...m, ...fresh] : m;
         });
         lastRef.current = Math.max(lastRef.current, ...r.messages.map((m) => m.created));
-        scrollDown();
       }
       setError(null);
     } catch {
