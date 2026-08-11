@@ -75,12 +75,16 @@ export function Welcome() {
 
   return (
     <ScreenShell>
-      <div className="flex flex-1 flex-col items-center justify-center gap-5 pb-44 pt-8 text-center">
+      {/* rhythm tightened 2026-08-11: the streak widget moved ABOVE the nusach
+          selector (owner order), which pushed the manual-add pill under the
+          floating tab bar on first paint — smaller Rimon + gap-4 reclaim it
+          (the e2e's tap-target check guards this) */}
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 pb-44 pt-6 text-center">
         <div className="rise-in">
-          <Rimon pose="idle" say="Shalom! I’m Rimon. Show me your meal — we’ll learn its brachos together, and keep your streak alive." size={128} />
+          <Rimon pose="idle" say="Shalom! I’m Rimon — show me your meal." size={96} />
         </div>
 
-        <header className="rise-in rise-in-1 space-y-4">
+        <header className="rise-in rise-in-1 space-y-3">
           <Eyebrow>Blessings, beautifully guided</Eyebrow>
           <h1 className="font-display text-[44px] font-black leading-[1.05] tracking-tight text-espresso">
             Brachas <span className="text-rimon">with Rimon</span>
