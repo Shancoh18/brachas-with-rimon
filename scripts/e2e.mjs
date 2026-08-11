@@ -538,14 +538,31 @@ check('starring pins a lesson', t.includes('starred'));
           return !!thought && (!torah || thought.getBoundingClientRect().top < torah.getBoundingClientRect().top);
         }),
       );
-      await page.evaluate(() => document.querySelector('[data-daily-thought] button')?.click());
-      await sleep(700);
+      // the card is COMPACT (a WKWebView line-clamp bug once left it a full
+      // screen of empty paper — owner screenshot 2026-08-11) …
+      check(
+        'daily thought card is compact (no clamp-void regression)',
+        await page.evaluate(() => {
+          const h = document.querySelector('[data-daily-thought]')?.getBoundingClientRect().height ?? 9999;
+          return h > 60 && h < 320;
+        }),
+        `${await page.evaluate(() => Math.round(document.querySelector('[data-daily-thought]')?.getBoundingClientRect().height ?? -1))}px`,
+      );
+      // … and clicks through to a full reader, like the parsha card
+      await page.evaluate(() => document.querySelector('[data-daily-thought]')?.click());
+      await sleep(900);
       t = await text();
       check(
-        'expanded daily thought carries the chabad.org lesson link + AI-mistakes line',
-        t.includes('ai makes mistakes') && (await page.evaluate(() => !!document.querySelector('[data-daily-thought] a[href*="chabad.org"]'))),
+        'daily thought opens its reader (back link + full lesson)',
+        (await page.evaluate(() => !!document.querySelector('[data-daily-thought-reader]'))) && t.includes('back to learn'),
+      );
+      check(
+        'reader carries the chabad.org lesson link + AI-mistakes line',
+        t.includes('ai makes mistakes') && (await page.evaluate(() => !!document.querySelector('[data-daily-thought-reader] a[href*="chabad.org"]'))),
       );
       check('daily thought digest is the longer form (300+ chars)', dt.thought.digest.length >= 300, `${dt.thought.digest.length} chars`);
+      await clickText('back to Learn', 900);
+      check('reader returns to Learn', await page.evaluate(() => !document.querySelector('[data-daily-thought-reader]')));
     }
   } else {
     check('daily-thought API healthy (cache still warming — card hidden by design)', dt !== null && 'thought' in (dt ?? {}), JSON.stringify(dt));

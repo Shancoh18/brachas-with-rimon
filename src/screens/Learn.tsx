@@ -55,12 +55,12 @@ export function Learn() {
   const setDailyThought = useBracha((s) => s.setDailyThought);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showParsha, setShowParsha] = useState(false);
-  const [thoughtOpen, setThoughtOpen] = useState(false);
+  const [showThought, setShowThought] = useState(false);
 
   // the reader views swap in-place — start each at the top, not mid-scroll
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [openId, showParsha]);
+  }, [openId, showParsha, showThought]);
 
   // auto-update: merge remote lessons (cached offline via the store)
   useEffect(() => {
@@ -146,6 +146,57 @@ export function Learn() {
       </div>
     );
   };
+
+  // ------------------------------------------------- Daily Thought reader
+  // A full reader view, same pattern as the parsha reader below — the card on
+  // the main screen is a compact click-through (owner direction 2026-08-11).
+  if (showThought && dailyThought) {
+    return (
+      <ScreenShell>
+        <div className="pb-24" data-daily-thought-reader>
+          <button
+            onClick={() => setShowThought(false)}
+            className="rise-in pb-5 text-[12.5px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+          >
+            ← back to Learn
+          </button>
+          <header className="rise-in flex items-start justify-between gap-3 pb-6">
+            <div className="space-y-3">
+              <Eyebrow>💭 Daily thought · {dailyThought.dayLabel}</Eyebrow>
+              <h2 className="font-display text-[30px] font-bold leading-tight text-espresso">
+                {dailyThought.title}
+              </h2>
+            </div>
+            <Rimon pose="teaching" size={76} className="shrink-0" />
+          </header>
+          <div className="rise-in rise-in-1 space-y-5">
+            {dailyThought.digest.split(/\n{2,}/).map((p, i) => (
+              <p key={i} className="text-[14.5px] leading-[1.75] text-espresso-soft">
+                {p}
+              </p>
+            ))}
+            <p className="border-t border-espresso/[0.08] pt-4 text-[11.5px] italic leading-relaxed text-mocha">
+              Adapted from the teachings of the Rebbe (Daily Wisdom, chabad.org). AI makes
+              mistakes, to learn more information please read the article.{' '}
+              <a
+                href={dailyThought.url}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium not-italic underline decoration-gold/40 underline-offset-2 hover:text-espresso"
+              >
+                Read the full lesson on chabad.org →
+              </a>
+            </p>
+          </div>
+          <div className="flex justify-center py-8">
+            <PillButton variant="rimon" icon="✓" onClick={() => setShowThought(false)}>
+              Done for today
+            </PillButton>
+          </div>
+        </div>
+      </ScreenShell>
+    );
+  }
 
   // ------------------------------------------------------- Parsha reader
   if (showParsha && parsha) {
@@ -308,55 +359,39 @@ export function Learn() {
         </header>
 
         {/* daily thought — today's chabad.org Daily Wisdom digest (owner
-            feature 2026-08-11); sits ABOVE the daily parsha card */}
+            feature 2026-08-11); a compact CLICK-THROUGH into its reader, same
+            pattern as the Daily Torah card below. The preview is a SLICED
+            string, not a CSS line-clamp: WKWebView draws -webkit-line-clamp's
+            ellipsis but keeps the box at full text height (owner screenshot
+            2026-08-11 — a screen-tall empty card), so no clamping here. */}
         {dailyThought && (
-          <div data-daily-thought className="mb-4">
+          <button
+            data-daily-thought
+            onClick={() => setShowThought(true)}
+            className="mb-4 w-full text-left"
+          >
             <Bezel className="rise-in" innerClassName="px-5 py-4">
-              <button onClick={() => setThoughtOpen(!thoughtOpen)} className="w-full text-left">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-gold">
-                      💭 Daily thought · {dailyThought.dayLabel}
-                    </p>
-                    <p className="mt-1 font-display text-[19px] font-bold text-espresso">
-                      {dailyThought.title}
-                    </p>
-                  </div>
-                  <span
-                    className={`shrink-0 text-[13px] text-mocha transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${thoughtOpen ? 'rotate-180' : ''}`}
-                  >
-                    ▾
-                  </span>
-                </div>
-                {!thoughtOpen && (
-                  <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-espresso-soft">
-                    {dailyThought.digest}
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-gold">
+                    💭 Daily thought · {dailyThought.dayLabel}
                   </p>
-                )}
-              </button>
-              {thoughtOpen && (
-                <div className="rise-in">
-                  {dailyThought.digest.split(/\n{2,}/).map((p, i) => (
-                    <p key={i} className="mt-2 text-[13.5px] leading-[1.75] text-espresso-soft">
-                      {p}
-                    </p>
-                  ))}
-                  <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] italic leading-relaxed text-mocha">
-                    Adapted from the teachings of the Rebbe (Daily Wisdom). AI makes mistakes, to
-                    learn more information please read the article.{' '}
-                    <a
-                      href={dailyThought.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium not-italic underline decoration-gold/40 underline-offset-2 hover:text-espresso"
-                    >
-                      Read the full lesson on chabad.org →
-                    </a>
+                  <p className="mt-1 font-display text-[19px] font-bold text-espresso">
+                    {dailyThought.title}
+                  </p>
+                  <p className="mt-1 text-[12px] leading-relaxed text-espresso-soft">
+                    {dailyThought.digest.replace(/\s+/g, ' ').slice(0, 120).trimEnd()}…
+                  </p>
+                  <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-gold">
+                    read today's thought →
                   </p>
                 </div>
-              )}
+                <span className="shrink-0 text-[18px] text-mocha/50" aria-hidden>
+                  ›
+                </span>
+              </div>
             </Bezel>
-          </div>
+          </button>
         )}
 
         {/* daily Parsha — refreshed every day, one aliyah at a time */}

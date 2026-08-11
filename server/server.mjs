@@ -900,8 +900,32 @@ if (ROUND_SWEEP_MS > 0) {
 // sanctioned pipeline as researchFood: Anthropic web_search hard-locked to
 // chabad.org. One lesson per US-East day, cached on the volume.
 const THOUGHT_FILE = join(DATA_DIR, 'daily-thought.json');
+// bump to invalidate every cached thought when the fetch logic changes
+// (v2: parsha cross-check — v1 once cached the ADJACENT week's lesson)
+const THOUGHT_VERSION = 2;
 const thoughtDateKey = () => new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
 let thoughtRefreshing = false;
+
+/** The current study week's parsha from Hebcal's leyning API (the same
+ *  calendar source the client's daily-parsha card uses — a calendar fact,
+ *  not psak). Null on failure; the fetch then proceeds without the pin. */
+async function currentParsha() {
+  try {
+    const est = new Date(Date.now() - 5 * 3_600_000);
+    const sat = new Date(est);
+    sat.setUTCDate(est.getUTCDate() + ((6 - est.getUTCDay() + 7) % 7));
+    const day = sat.toISOString().slice(0, 10);
+    const r = await fetch(`https://www.hebcal.com/leyning?cfg=json&start=${day}&end=${day}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const items = (await r.json()).items ?? [];
+    const name = items.find((i) => i.fullkriyah)?.name?.en ?? null;
+    return name ? name.replace(/^Parashat\s+/i, '') : null;
+  } catch {
+    return null;
+  }
+}
 
 const THOUGHT_TOOL = {
   name: 'report_daily_thought',
@@ -911,6 +935,7 @@ const THOUGHT_TOOL = {
     properties: {
       found: { type: 'boolean' },
       title: { type: 'string', description: 'the lesson title, e.g. "Trusting in G-d"' },
+      parsha: { type: 'string', description: "the parsha of the weekly edition this lesson belongs to, e.g. 'Shoftim'" },
       dayLabel: { type: 'string', description: 'weekday + parsha, e.g. "Wednesday · Parshat Shoftim"' },
       digest: {
         type: 'string',
@@ -926,6 +951,10 @@ const THOUGHT_TOOL = {
 async function fetchDailyThought(apiKey) {
   const estNow = new Date(Date.now() - 5 * 3_600_000);
   const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Shabbat'][estNow.getUTCDay()];
+  // Pin the week: v1 let the model drift to the ADJACENT week's edition (it
+  // cached Ki Seitzei's Monday during Shoftim week). Naming the parsha in the
+  // prompt and rejecting mismatched reports closes that.
+  const parsha = await currentParsha();
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -935,10 +964,12 @@ async function fetchDailyThought(apiKey) {
       system: `You find and digest ONE page for a Jewish learning app: today's lesson in
 chabad.org's "Daily Wisdom" series (URLs contain /dailystudy/dailywisdom_cdo/), the
 daily Torah thought adapted from the Rebbe's teachings, arranged by weekly parsha
-with one lesson per weekday. Search (results are restricted to chabad.org) for the
-CURRENT week's parsha edition and today's weekday lesson. Digest ONLY what that
-page says — never pad it with your own Torah. Report via report_daily_thought with
-the exact lesson URL. If you cannot find today's lesson, report found:false.`,
+with one lesson per weekday (Sunday through Shabbat). Find the weekly Daily Wisdom
+page for the CURRENT parsha (it lists all seven day-lessons), then open TODAY'S
+weekday lesson from that list — never a lesson from an adjacent week's edition.
+Digest ONLY what that page says — never pad it with your own Torah. Report via
+report_daily_thought with the exact lesson URL and the edition's parsha. If you
+cannot find today's lesson, report found:false.`,
       tools: [
         { type: 'web_search_20250305', name: 'web_search', allowed_domains: ['chabad.org'], max_uses: 6 },
         THOUGHT_TOOL,
@@ -946,7 +977,9 @@ the exact lesson URL. If you cannot find today's lesson, report found:false.`,
       messages: [
         {
           role: 'user',
-          content: `Today is ${weekday}, ${thoughtDateKey()} (US-East). Find today's Daily Wisdom lesson (this week's parsha, ${weekday}'s entry) and digest it.`,
+          content: `Today is ${weekday}, ${thoughtDateKey()} (US-East).${
+            parsha ? ` This week's parsha is ${parsha}.` : ''
+          } Find today's Daily Wisdom lesson (${weekday}'s entry of ${parsha ? `the ${parsha} edition` : "this week's edition"}) and digest it.`,
         },
       ],
     }),
@@ -956,13 +989,22 @@ the exact lesson URL. If you cannot find today's lesson, report found:false.`,
   const t = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_daily_thought')?.input;
   if (!t || t.found !== true) return null;
   // Validate hard before it can reach a user: chabad.org Daily Wisdom URL only,
-  // and a digest long enough to be the real lesson (not a stub).
+  // the pinned parsha when we know it, and a digest long enough to be real.
   let u;
   try { u = new URL(t.url); } catch { return null; }
   if (u.hostname.replace(/^www\./, '') !== 'chabad.org' || !/dailywisdom/i.test(u.pathname)) return null;
+  if (parsha) {
+    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
+    const reported = norm(t.parsha);
+    if (!reported || (!reported.includes(norm(parsha)) && !norm(parsha).includes(reported))) {
+      console.error(`daily-thought: rejected wrong-week lesson (${t.parsha} vs ${parsha})`);
+      return null;
+    }
+  }
   const digest = String(t.digest || '').trim();
   if (digest.length < 400) return null;
   return {
+    v: THOUGHT_VERSION,
     dateKey: thoughtDateKey(),
     title: String(t.title || 'Daily Wisdom').slice(0, 120),
     dayLabel: String(t.dayLabel || weekday).slice(0, 80),
@@ -979,7 +1021,8 @@ const readThought = () => {
 async function refreshThoughtIfStale() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key || thoughtRefreshing) return;
-  if (readThought()?.dateKey === thoughtDateKey()) return;
+  const cur = readThought();
+  if (cur?.dateKey === thoughtDateKey() && cur?.v === THOUGHT_VERSION) return;
   thoughtRefreshing = true;
   try {
     const t = await fetchDailyThought(key);
