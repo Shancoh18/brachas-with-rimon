@@ -520,7 +520,73 @@ const RESEARCH_TOOL = {
   },
 };
 
-async function researchFood(description, apiKey) {
+// Stage 1 of research (owner feature 2026-08-11): IDENTIFY the product first.
+// A branded item ("Suja Immunity shot") often isn't on the three halachic
+// sites by name — but its FORM and ingredients are what the ruling hangs on.
+// This pass may search the open web because it determines FACTS (what is this
+// product? what's in it? is it a drink/bar/snack?), never halacha. Its output
+// feeds researchFood, whose ruling search stays hard-locked to the 3 sites.
+const IDENTIFY_TOOL = {
+  name: 'report_product',
+  description: 'Report what this food product actually is.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      found: { type: 'boolean' },
+      canonical_name: { type: 'string', description: 'generic name, e.g. "cold-pressed ginger juice shot"' },
+      form: {
+        type: 'string',
+        enum: ['drink', 'juice', 'bar', 'snack', 'baked', 'candy', 'dairy', 'dish', 'produce', 'other'],
+      },
+      primary_ingredients: { type: 'array', items: { type: 'string' } },
+      summary: { type: 'string', description: 'one sentence: what the product is and how it is made/eaten' },
+    },
+    required: ['found'],
+  },
+};
+
+/** Looks like a branded/packaged product (worth an identification pass)? */
+const looksPackaged = (desc) =>
+  /[A-Z][a-z]+ [A-Z]/.test(desc) || /\b(brand|label|bottle|bottled|packaged|bar|shot|®|™|—)\b/i.test(desc) || desc.split(/\s+/).length >= 4;
+
+async function identifyProduct(description, apiKey) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+      max_tokens: 1200,
+      system: `You identify food products for a Jewish blessings app. Given a description
+(often from a product label), determine what the product actually IS: its generic
+name, its form (drink/juice/bar/snack/...), and its primary ingredients — search
+the web for the brand/product if the label alone doesn't say. FACTS ONLY: report
+what the product is; say nothing about blessings or Jewish law. If you cannot
+identify it, report found:false.`,
+      tools: [
+        { type: 'web_search_20250305', name: 'web_search', max_uses: 2 },
+        IDENTIFY_TOOL,
+      ],
+      messages: [{ role: 'user', content: `Product to identify: ${description}` }],
+    }),
+  });
+  if (!r.ok) return null;
+  const data = await r.json();
+  const p = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_product')?.input;
+  if (!p || p.found !== true || !p.canonical_name) return null;
+  return {
+    name: String(p.canonical_name).slice(0, 120),
+    form: String(p.form || 'other'),
+    ingredients: (Array.isArray(p.primary_ingredients) ? p.primary_ingredients : []).map(String).slice(0, 12),
+    summary: String(p.summary || '').slice(0, 300),
+  };
+}
+
+async function researchFood(description, apiKey, product = null) {
+  // context from the identification pass sharpens the ruling search — the
+  // general rules on the 3 sites key off FORM (juice/bar/bread), not brands
+  const context = product
+    ? `\nProduct identification (factual, from the label and the open web): it is "${product.name}" — form: ${product.form}; primary ingredients: ${product.ingredients.join(', ') || 'unknown'}. ${product.summary}`
+    : '';
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
@@ -548,7 +614,7 @@ which category a food belongs to, report found:false rather than guess.`,
         RESEARCH_TOOL,
       ],
       messages: [
-        { role: 'user', content: `Food to research: ${description}` },
+        { role: 'user', content: `Food to research: ${description}${context}` },
       ],
     }),
   });
@@ -613,10 +679,17 @@ which category a food belongs to, report found:false rather than guess.`,
  *  Resolves with the entries that finished inside `budgetMs`, each tagged with
  *  the description it answers; the rest keep going in the background so the DB
  *  still grows for next time. */
-function researchUnmatched(unmatched, apiKey, budgetMs = 12_000) {
+function researchUnmatched(unmatched, apiKey, budgetMs = 18_000) {
   const finished = []; // {desc, entry} collected as tasks land — no name re-matching
   const tasks = unmatched.slice(0, 3).map((desc) =>
-    researchFood(desc, apiKey)
+    // packaged-looking items get a product-identification pass first (open-web
+    // facts), then the ruling pass (3 approved sites only) runs with that
+    // context; either stage failing degrades to the plain description
+    (looksPackaged(desc) ? identifyProduct(desc, apiKey).catch(() => null) : Promise.resolve(null))
+      .then((product) => {
+        if (product) console.log(`identified: "${desc}" -> ${product.form}: ${product.name}`);
+        return researchFood(desc, apiKey, product);
+      })
       .then((entry) => {
         if (entry && store.learnedCount() < LEARNED_MAX && !allFoodKeys().includes(entry.key)) {
           store.addLearned(entry);
@@ -642,6 +715,18 @@ item is not in the list, return it under "unmatched" with your best plain
 description. Do not guess the blessing yourself — only identify and map.
 Return ONLY the structured tool output. Distinguish preparation state where
 visible (raw vs cooked, whole vs cut) since it can change the mapping.
+
+PACKAGED PRODUCTS: when the photo shows a labeled product (bottle, wrapper,
+box), READ the label — brand, product name, and any visible ingredient or
+descriptor text — and classify by the product's FORM, never by its headline
+ingredient: a "ginger cayenne juice shot" is a JUICE/DRINK (map to a juice or
+shot key), not the ginger plant; a fruit bar is a bar, not the fruit; a corn
+snack is a snack, not corn on the cob. If no key fits the product's form, put
+it in "unmatched" and make that description RICH: brand + full product name +
+form + every ingredient you can read on the label (e.g. "Suja Immunity ginger
+cayenne cold-pressed juice shot — bottled drink; label lists ginger, cayenne,
+lemon"). That description drives a follow-up research step, so more label
+detail means a more accurate ruling.
 
 FOOD_DATABASE_KEYS: ${allFoodKeys().join(', ')}`;
 

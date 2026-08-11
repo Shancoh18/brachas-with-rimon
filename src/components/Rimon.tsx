@@ -19,7 +19,8 @@ export type RimonPose =
   | 'idle'
   | 'celebrate'
   | 'walk'
-  | 'dance';
+  | 'dance'
+  | 'tzedakah';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -32,6 +33,9 @@ const STILL: Record<RimonPose, string> = {
   celebrate: `${BASE}mascot/rimon-hello.webp`,
   walk: `${BASE}mascot/rimon-hello.webp`,
   dance: `${BASE}mascot/rimon-hello.webp`,
+  // tzedakah art pending its Higgsfield generation (identity-locked, like the
+  // rest of mascot-concepts) — the fallback chain shows hello until it lands
+  tzedakah: `${BASE}mascot/rimon-tzedakah.webp`,
 };
 
 const VIDEO: Partial<Record<RimonPose, string>> = {
@@ -42,6 +46,7 @@ const VIDEO: Partial<Record<RimonPose, string>> = {
   teaching: `${BASE}mascot/rimon-teaching.mp4`,
   walk: `${BASE}mascot/rimon-walk.mp4`,
   dance: `${BASE}mascot/rimon-dance.mp4`,
+  tzedakah: `${BASE}mascot/rimon-tzedakah.mp4`,
 };
 
 const BOOP_LINES = [
@@ -119,10 +124,13 @@ export function Rimon({
 
   const bubble = line ?? say;
 
+  // round keeps the classic cover-crop circle; wide CONTAINS the media so the
+  // whole character shows (crown to feet) — the cream bake hides the letterbox
+  const fit = variant === 'round' ? 'object-cover rimon-blend' : 'object-contain rimon-wide-blend';
   const media = src && videoOk ? (
     <video
       ref={videoRef}
-      className={`h-full w-full object-cover ${variant === 'round' ? 'rimon-blend' : 'rimon-wide-blend'}`}
+      className={`h-full w-full ${fit}`}
       autoPlay
       loop
       muted
@@ -137,7 +145,7 @@ export function Rimon({
       src={STILL[pose]}
       alt=""
       draggable={false}
-      className={`h-full w-full object-cover ${variant === 'round' ? 'rimon-blend' : 'rimon-wide-blend'}`}
+      className={`h-full w-full ${fit}`}
       onError={(e) => {
         (e.target as HTMLImageElement).src = STILL.hello;
       }}
@@ -152,7 +160,7 @@ export function Rimon({
           onClick={boop}
           aria-label={`Rimon the pomegranate, ${pose} — tap to say hi`}
           className={`${booping ? 'rimon-boop' : ''} ${wiggling && !booping ? 'rimon-wiggle' : ''} block w-full cursor-pointer border-0 bg-transparent p-0 outline-none`}
-          style={{ aspectRatio: '2.2 / 1' }}
+          style={{ aspectRatio: '1.4 / 1' /* square source contained → character height ≈ 70% of width: big AND complete */ }}
         >
           {media}
         </button>

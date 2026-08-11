@@ -294,6 +294,50 @@ await sleep(700);
 t = await text();
 check('cooked-cucumber state override → Shehakol', overrideOk && t.includes('shehakol'));
 
+// -------------------------------------------- JUICE RULE (owner report 2026-08-11)
+// A ginger-cayenne juice shot was ruled Ha'adama (mapped to the ginger produce
+// entry). Two fixes under test: the wellness_shot DB entry is Shehakol, and
+// the liquid state chip now overrides plain produce to Shehakol (juice rule).
+await addFood({ q: 'ginger shot', pick: 'ginger shot' });
+t = await text();
+check('ginger shot maps to Shehakol (drink, not the ginger plant)', t.includes('ginger shot') && /shehakol/.test(t));
+await page.evaluate(() => {
+  // remove it again — climb from its label to the card's remove button
+  let el = [...document.querySelectorAll('span')].find((s) => s.textContent.trim().toLowerCase() === 'ginger shot');
+  while (el && !el.querySelector?.('button[title="remove"]')) el = el.parentElement;
+  el?.querySelector('button[title="remove"]')?.click();
+});
+await sleep(500);
+await addFood({ q: 'ginger', pick: 'ginger' });
+await sleep(400);
+const liquidFlip = await page.evaluate(() => {
+  const label = [...document.querySelectorAll('span')].find((s) => s.textContent.trim().toLowerCase() === 'ginger');
+  let card = label;
+  while (card && !card.querySelector?.('button[title="remove"]')) card = card.parentElement;
+  if (!card) return { err: 'no ginger card' };
+  const before = /ha’adama|haadama/i.test(card.innerText);
+  [...card.querySelectorAll('button')].find((b) => b.textContent.trim() === 'liquid')?.click();
+  return { before };
+});
+await sleep(600);
+check(
+  'liquid state flips raw ginger Ha’adama → Shehakol (juice rule)',
+  liquidFlip.before === true &&
+    (await page.evaluate(() => {
+      const label = [...document.querySelectorAll('span')].find((s) => s.textContent.trim().toLowerCase() === 'ginger');
+      let card = label;
+      while (card && !card.querySelector?.('button[title="remove"]')) card = card.parentElement;
+      return card ? /shehakol/i.test(card.innerText) : false;
+    })),
+  JSON.stringify(liquidFlip),
+);
+await page.evaluate(() => {
+  let el = [...document.querySelectorAll('span')].find((s) => s.textContent.trim().toLowerCase() === 'ginger');
+  while (el && !el.querySelector?.('button[title="remove"]')) el = el.parentElement;
+  el?.querySelector('button[title="remove"]')?.click();
+});
+await sleep(500);
+
 // ---------------------------------------- GLUTEN-FREE FLOUR PICKER (2026-08-11)
 // The flour sets the bracha (OU Guide to Blessings, GF Baked Goods table):
 // bread → rice flour → Mezonos; revert → Hamotzi. Removed again afterwards so

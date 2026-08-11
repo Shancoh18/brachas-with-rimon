@@ -10,6 +10,19 @@ export type FoodState = 'raw' | 'cooked' | 'baked' | 'whole' | 'cut' | 'liquid' 
 export function effectiveBracha(entry: FoodEntry, state: FoodState): Bracha {
   if (state === 'cooked' && entry.stateOverrides?.cooked) return entry.stateOverrides.cooked;
   if (state === 'raw' && entry.stateOverrides?.raw) return entry.stateOverrides.raw;
+  // JUICED produce (owner report 2026-08-11: a ginger juice shot kept the
+  // ginger entry's Ha'adama): every extracted fruit/vegetable juice except
+  // grape is Shehakol — the same OU rule the juice entries in foods.ts cite.
+  // Scoped to plain produce only: Shivas Haminim fruits are excluded (their
+  // Me'ein Shalosh after-blessing snapshot would go wrong — pick a juice
+  // entry instead), and soups/broths are a different case ('cooked', not
+  // 'liquid', keeps the vegetable's bracha).
+  if (
+    state === 'liquid' &&
+    (entry.category === 'Tree Fruit' || entry.category === 'Ground Produce') &&
+    !entry.shivasHaminim
+  )
+    return 'Shehakol';
   return entry.brachaRishona;
 }
 

@@ -21,9 +21,16 @@ export function Donate() {
         </button>
 
         <div className="flex flex-col items-center text-center">
-          <div className="rise-in">
-            <Rimon pose="hello" size={120} />
-          </div>
+          {/* big cinematic Rimon (owner 2026-08-11) — pose 'tzedakah' plays the
+              giving-tzedakah loop once mascot/rimon-tzedakah.{mp4,webp} land
+              (Higgsfield, identity-locked); until then the chain falls back
+              to the hello still, full-size and uncropped */}
+          <Rimon
+            variant="wide"
+            pose="tzedakah"
+            className="rise-in w-full"
+            say="Tzedakah and a bracha — both start with a thank-you."
+          />
 
           <header className="rise-in rise-in-1 space-y-3 pb-6 pt-3">
             <Eyebrow>Keep Rimon running</Eyebrow>

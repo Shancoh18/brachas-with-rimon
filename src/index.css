@@ -277,12 +277,15 @@ body {
 }
 .rimon-wiggle { animation: rimon-wiggle 0.7s cubic-bezier(0.32, 0.72, 0, 1) both; }
 
-/* wide cinematic banner crop — soft fade on all edges into the canvas */
+/* wide cinematic banner — the media is CONTAINED (never cropped: the owner's
+   2026-08-11 screenshot showed the crown and feet cut off under object-cover),
+   letterboxed invisibly on the bake cream, with a tall soft fade so the full
+   character reads while the edges still melt into the canvas */
 .rimon-wide-blend {
   transform: translateZ(0);
   border-radius: 2rem;
-  -webkit-mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);
-  mask-image: radial-gradient(ellipse 62% 78% at 50% 52%, black 42%, transparent 74%);
+  -webkit-mask-image: radial-gradient(ellipse 58% 94% at 50% 50%, black 56%, transparent 90%);
+  mask-image: radial-gradient(ellipse 58% 94% at 50% 50%, black 56%, transparent 90%);
 }
 
 /* stories-style progress fill (duration set inline per slide) */

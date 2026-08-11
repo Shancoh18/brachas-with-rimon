@@ -21,18 +21,27 @@ export function Journey() {
   return (
     <ScreenShell>
       <div className="pb-24">
-        <header className="rise-in flex items-start justify-between gap-4 pb-6">
+        {/* one Rimon only (owner 2026-08-11: the small header double was
+            removed; the big cinematic banner carries the page, uncropped) */}
+        <header className="rise-in pb-4">
           <div className="space-y-2">
             <Eyebrow>Your practice</Eyebrow>
             <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Journey</h2>
           </div>
-          <Rimon pose={alive && progress.streakCurrent >= 3 ? 'celebrate' : 'idle'} size={88} />
         </header>
 
-        {/* cinematic banner — a different aspect of Rimon, literally */}
-        {alive && progress.streakCurrent >= 3 && (
-          <Rimon variant="wide" pose="dance" className="rise-in rise-in-1 pb-4" say={"" + progress.streakCurrent + " days strong — keep the flame."} />
-        )}
+        <Rimon
+          variant="wide"
+          pose={alive && progress.streakCurrent >= 3 ? 'dance' : 'idle'}
+          className="rise-in rise-in-1 pb-4"
+          say={
+            alive && progress.streakCurrent >= 3
+              ? `${progress.streakCurrent} days strong — keep the flame.`
+              : alive && progress.streakCurrent > 0
+                ? 'Every day adds a link to the chain.'
+                : 'Say a bracha today and the streak begins.'
+          }
+        />
 
         {/* streak hero */}
         <Bezel className="rise-in rise-in-1" innerClassName="px-6 py-7 text-center">
