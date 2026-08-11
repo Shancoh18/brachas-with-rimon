@@ -91,6 +91,37 @@ export function Welcome() {
           </p>
         </header>
 
+        {/* home widget bar — streak tracker + today's bracha check, one glance.
+            Sits ABOVE the nusach selector (owner order 2026-08-11). Compact ON
+            PURPOSE: a taller block would push the primary CTA under the tab
+            bar on first paint (blind-QA blocker). */}
+        <div
+          className="rise-in rise-in-2 flex w-full max-w-[330px] items-center gap-3.5 rounded-[1.25rem] border border-hairline bg-white/60 px-4 py-3 text-left shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
+          data-home-widgets
+        >
+          <div className="flex shrink-0 items-baseline gap-1">
+            <span className="font-display text-[24px] font-black leading-none text-rimon">
+              {alive ? progress.streakCurrent : 0}
+            </span>
+            <span className="text-[13px]">🔥</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex gap-1" aria-label="last seven days">
+              {week.map((d) => (
+                <span
+                  key={d.day}
+                  className={`h-1.5 flex-1 rounded-full ${d.active ? 'bg-gold' : 'bg-espresso/10'}`}
+                />
+              ))}
+            </div>
+            <p className={`mt-1.5 text-[10.5px] font-semibold leading-tight ${blessedToday ? 'text-sage-deep' : 'text-espresso'}`}>
+              {blessedToday
+                ? `Bracha said today ✓ ${brachosToday > 0 ? `· ${brachosToday} so far` : ''}`
+                : 'Have you said your bracha today?'}
+            </p>
+          </div>
+        </div>
+
         {/* nusach selector */}
         <div className="rise-in rise-in-2 flex rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
           {(Object.keys(NUSACHIM) as NusachId[]).map((id) => (
@@ -176,36 +207,6 @@ export function Welcome() {
             </span>
           </button>
         )}
-
-        {/* home widget bar — streak tracker + today's bracha check, one glance.
-            Compact ON PURPOSE: a taller widget block pushed the primary CTA
-            under the tab bar on first paint (blind-QA blocker). */}
-        <div
-          className="rise-in rise-in-4 flex w-full max-w-[330px] items-center gap-3.5 rounded-[1.25rem] border border-hairline bg-white/60 px-4 py-3 text-left shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
-          data-home-widgets
-        >
-          <div className="flex shrink-0 items-baseline gap-1">
-            <span className="font-display text-[24px] font-black leading-none text-rimon">
-              {alive ? progress.streakCurrent : 0}
-            </span>
-            <span className="text-[13px]">🔥</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex gap-1" aria-label="last seven days">
-              {week.map((d) => (
-                <span
-                  key={d.day}
-                  className={`h-1.5 flex-1 rounded-full ${d.active ? 'bg-gold' : 'bg-espresso/10'}`}
-                />
-              ))}
-            </div>
-            <p className={`mt-1.5 text-[10.5px] font-semibold leading-tight ${blessedToday ? 'text-sage-deep' : 'text-espresso'}`}>
-              {blessedToday
-                ? `Bracha said today ✓ ${brachosToday > 0 ? `· ${brachosToday} so far` : ''}`
-                : 'Have you said your bracha today?'}
-            </p>
-          </div>
-        </div>
 
         <button
           onClick={() => setTab('learn')}

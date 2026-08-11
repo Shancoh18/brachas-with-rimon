@@ -60,6 +60,16 @@ export function Confirm() {
 
   return (
     <ScreenShell>
+      {/* manual entry arrives from home with nothing staged — a top-left back
+          beats a bottom "start over" (owner 2026-08-11) */}
+      {manualEntry && (
+        <button
+          onClick={reset}
+          className="rise-in pb-4 text-[12.5px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+        >
+          ← back
+        </button>
+      )}
       <header className="rise-in flex items-start justify-between gap-4 pb-6">
         <div className="space-y-2">
           <Eyebrow>{manualEntry ? 'Step 1 · Add your foods' : 'Step 1 · Confirm'}</Eyebrow>
@@ -300,10 +310,14 @@ export function Confirm() {
         )}
       </div>
 
-      <div className="flex items-center justify-between gap-3 py-8">
-        <button onClick={reset} className="text-[12.5px] font-medium text-mocha hover:text-espresso">
-          start over
-        </button>
+      <div className={`flex items-center gap-3 py-8 ${manualEntry ? 'justify-end' : 'justify-between'}`}>
+        {/* photo flow keeps "start over" (discard the photo); manual entry has
+            the ← back up top instead */}
+        {!manualEntry && (
+          <button onClick={reset} className="text-[12.5px] font-medium text-mocha hover:text-espresso">
+            start over
+          </button>
+        )}
         <PillButton variant="rimon" onClick={() => setScreen('guide')} disabled={items.length === 0}>
           Guide me through the brachos
         </PillButton>

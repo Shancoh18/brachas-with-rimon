@@ -209,6 +209,14 @@ await clickText('← home', 1000);
 // --------------------------------------------------- MANUAL ADD (no photo)
 t = await text();
 check('home offers manual add + Birkat Hamazon', t.includes('add it manually!') && t.includes('birkat hamazon'));
+check(
+  'streak widget sits ABOVE the nusach selector (owner order 2026-08-11)',
+  await page.evaluate(() => {
+    const w = document.querySelector('[data-home-widgets]');
+    const nusach = [...document.querySelectorAll('button')].find((b) => /ashkenaz/i.test(b.textContent));
+    return !!w && !!nusach && w.getBoundingClientRect().top < nusach.getBoundingClientRect().top;
+  }),
+);
 await clickText('Add it manually', 1200);
 t = await text();
 check('manual entry opens with search ready', t.includes('what did you eat') && (await page.evaluate(() => !!document.querySelector('input[placeholder="Search foods — English or עברית"]'))));
@@ -221,7 +229,13 @@ await page.evaluate(() => {
 await sleep(700);
 t = await text();
 check('manual add puts the food on the plate', t.includes('banana') && (t.includes('haadama') || t.includes('ha’adama')));
-await clickText('start over', 1100);
+// manual entry exits via the top-left back button — no bottom "start over"
+// in this mode (owner 2026-08-11)
+check(
+  'manual entry has ← back top-left, no start-over',
+  t.includes('← back') && !t.includes('start over'),
+);
+await clickText('← back', 1100);
 
 // ------------------------------------------- CONFIRM (via manual add — the
 // demo entry point is gone, so the meal is built the way a real user builds it)
