@@ -787,6 +787,16 @@ await page.evaluate(() => [...document.querySelectorAll('nav button')][4]?.click
 await sleep(1000);
 t = await text();
 check('donate tab opens next to the profile button', t.includes('help keep the app free') && t.includes('donate to the developers'));
+check(
+  'donate page carries the big tzedakah Rimon (video wired, seamless blend)',
+  await page.evaluate(() => {
+    const w = document.querySelector('.rimon-wide-blend');
+    if (!w) return false;
+    const cs = getComputedStyle(w);
+    const src = w.tagName === 'VIDEO' ? (w.querySelector('source')?.src ?? '') : w.src ?? '';
+    return /rimon-tzedakah|rimon-hello/.test(src) && cs.mixBlendMode === 'multiply';
+  }),
+);
 
 // ---------------------------------------------------------------- APPEARANCE
 // Dark is EXPLICIT now (owner ruling 2026-08-10): a device that merely

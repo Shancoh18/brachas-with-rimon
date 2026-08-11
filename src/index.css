@@ -58,6 +58,10 @@ html[data-theme='dark'] .rimon-blend {
   mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
 }
 html[data-theme='dark'] .rimon-wide-blend {
+  /* multiply would sink the character into the dark canvas — dark keeps the
+     candlelight spotlight mask instead */
+  mix-blend-mode: normal;
+  filter: none;
   -webkit-mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
   mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
 }
@@ -278,14 +282,18 @@ body {
 .rimon-wiggle { animation: rimon-wiggle 0.7s cubic-bezier(0.32, 0.72, 0, 1) both; }
 
 /* wide cinematic banner — the media is CONTAINED (never cropped: the owner's
-   2026-08-11 screenshot showed the crown and feet cut off under object-cover),
-   letterboxed invisibly on the bake cream, with a tall soft fade so the full
-   character reads while the edges still melt into the canvas */
+   2026-08-11 screenshot showed the crown and feet cut off under object-cover).
+   SEAMLESS by blending, not masking (owner 2026-08-11): brightness pushes the
+   cream bake to pure white, multiply then maps white → the canvas color
+   exactly, so the video rectangle vanishes while the saturated character
+   survives untouched. No mask in light mode — the full character shows. */
 .rimon-wide-blend {
   transform: translateZ(0);
-  border-radius: 2rem;
-  -webkit-mask-image: radial-gradient(ellipse 58% 94% at 50% 50%, black 56%, transparent 90%);
-  mask-image: radial-gradient(ellipse 58% 94% at 50% 50%, black 56%, transparent 90%);
+  /* 1.1 clips every bake-cream channel (incl. blue ≈234) to pure white, so
+     multiply maps the background to EXACTLY the canvas; the dark character's
+     +10% is ~cancelled by the multiply itself */
+  filter: brightness(1.1);
+  mix-blend-mode: multiply;
 }
 
 /* stories-style progress fill (duration set inline per slide) */
