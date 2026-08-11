@@ -5,13 +5,30 @@
  */
 import { useMemo, useState } from 'react';
 import { BRACHA_LABEL, FOODS } from '../data/foods';
-import { mealItemFromKey, setItemState, type FoodState } from '../lib/classify';
+import { mealItemFromKey, setItemEntry, setItemState, type MealItem, type FoodState } from '../lib/classify';
 import { searchFoods } from '../lib/foodSearch';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 const STATES: FoodState[] = ['unknown', 'raw', 'cooked', 'baked', 'whole', 'cut', 'liquid'];
+
+/** Gluten-free flour picker (owner feature 2026-08-11). The flour sets the
+ *  bracha — every option maps to a vetted DB entry (OU Guide to Blessings,
+ *  Gluten-Free Baked Goods table). "Not sure" deliberately changes NOTHING:
+ *  the app never guesses halacha — it says how to find out instead. */
+const GF_FLOURS: { key: string; label: string; icon: string; hint: string }[] = [
+  { key: 'bread-gf-oat', label: 'Oat flour', icon: '🌾', hint: 'still real bread — Hamotzi' },
+  { key: 'bread-gf-rice', label: 'Rice flour', icon: '🍚', hint: 'Mezonos, like rice' },
+  { key: 'bread-gf-almond', label: 'Almond flour', icon: '🌰', hint: 'Shehakol' },
+  { key: 'bread-gf-coconut', label: 'Coconut flour', icon: '🥥', hint: 'Shehakol' },
+  { key: 'bread-gf-tapioca', label: 'Tapioca / potato starch', icon: '🥔', hint: 'Shehakol' },
+];
+const GF_KEYS = new Set(GF_FLOURS.map((x) => x.key));
+
+/** Bread-category items get the gluten-free question; a GF entry keeps it so
+ *  the flour can be corrected. */
+const showsGlutenFree = (item: MealItem) => item.entry.category === 'Bread';
 
 const BRACHA_TINT: Record<string, string> = {
   Hamotzi: 'bg-gold/15 text-gold',
@@ -25,6 +42,10 @@ const BRACHA_TINT: Record<string, string> = {
 export function Confirm() {
   const { items, updateItem, removeItem, addItem, unmatched, setScreen, reset, photo, demoFallback } = useBracha();
   const [query, setQuery] = useState('');
+  // which item's gluten-free flour dropdown is open; 'unsure:<id>' shows the
+  // check-the-package guidance instead of a ruling
+  const [gfOpen, setGfOpen] = useState<string | null>(null);
+  const [gfUnsure, setGfUnsure] = useState<string | null>(null);
   // manual entry (no photo, arrived with an empty plate): open the search
   // immediately — looking up foods IS the flow
   // open search immediately when there's nothing on the plate — whether the
@@ -115,7 +136,91 @@ export function Confirm() {
                       {s}
                     </button>
                   ))}
+                  {showsGlutenFree(item) && (
+                    <button
+                      data-gluten-free-toggle
+                      onClick={() => {
+                        setGfUnsure(null);
+                        setGfOpen(gfOpen === item.id ? null : item.id);
+                      }}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-medium transition-[background-color,color,transform] duration-150 ease-out ${
+                        GF_KEYS.has(item.entry.key)
+                          ? 'bg-sage text-cream'
+                          : 'bg-sage/[0.12] text-sage hover:bg-sage/20'
+                      }`}
+                    >
+                      {GF_KEYS.has(item.entry.key)
+                        ? `gluten-free ✓ ${GF_FLOURS.find((x) => x.key === item.entry.key)?.label.toLowerCase() ?? ''}`
+                        : 'gluten-free?'}
+                    </button>
+                  )}
                 </div>
+                {gfOpen === item.id && showsGlutenFree(item) && (
+                  <div
+                    data-gluten-free-menu
+                    className="rise-in mt-2.5 rounded-2xl border border-espresso/10 bg-white/70 p-2"
+                  >
+                    <p className="px-2 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-mocha">
+                      Which flour is it made from?
+                    </p>
+                    <div className="flex flex-col">
+                      {GF_FLOURS.map((fl) => (
+                        <button
+                          key={fl.key}
+                          onClick={() => {
+                            updateItem(item.id, setItemEntry(item, fl.key));
+                            setGfOpen(null);
+                            setGfUnsure(null);
+                          }}
+                          className={`flex items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors duration-150 hover:bg-espresso/[0.05] ${
+                            item.entry.key === fl.key ? 'bg-sage/[0.1]' : ''
+                          }`}
+                        >
+                          <span className="text-[15px]">{fl.icon}</span>
+                          <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-espresso">{fl.label}</span>
+                          <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-wider text-mocha">
+                            {fl.hint}
+                          </span>
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setGfUnsure(gfUnsure === item.id ? null : item.id)}
+                        className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors duration-150 hover:bg-espresso/[0.05]"
+                      >
+                        <span className="text-[15px]">🤷</span>
+                        <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-espresso">Not sure</span>
+                      </button>
+                      {(item.origKey || GF_KEYS.has(item.entry.key)) && (
+                        <button
+                          onClick={() => {
+                            // revert to the pre-swap entry; a board-identified GF
+                            // item with no history falls back to plain bread
+                            updateItem(item.id, setItemEntry(item, item.origKey ?? 'bread'));
+                            setGfOpen(null);
+                            setGfUnsure(null);
+                          }}
+                          className="flex items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors duration-150 hover:bg-espresso/[0.05]"
+                        >
+                          <span className="text-[15px]">🍞</span>
+                          <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-espresso">
+                            Regular bread (wheat · rye · spelt)
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                    {gfUnsure === item.id && (
+                      <p
+                        data-gluten-free-unsure
+                        className="mx-1 mb-1 mt-1.5 rounded-xl bg-gold/[0.08] px-3 py-2.5 text-[11px] leading-relaxed text-espresso-soft ring-1 ring-gold/20"
+                      >
+                        Check the ingredient panel — the <em>first flour listed</em> sets the blessing.
+                        Oat flour keeps it real bread; rice flour makes it Mezonos; nut and starch
+                        flours make it Shehakol. If you can’t find out, ask a rabbi — the blessing
+                        below stays as-is for now.
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <button

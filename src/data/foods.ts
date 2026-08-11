@@ -73,6 +73,18 @@ export const FOODS: FoodEntry[] = [
   f({ key: 'matzah', names: ['matzah', 'matzo', 'matza'], category: 'Bread', brachaRishona: 'Hamotzi', brachaAchrona: 'BirkatHamazon', shivasHaminim: true, shivaKey: 'wheat', isFiveGrain: true, isTreeFruit: false, isWineGrape: false, source: 'chabad.org' }),
   f({ key: 'pizza', names: ['pizza', 'pizza slice', 'cheese pizza'], category: 'Bread', brachaRishona: 'Hamotzi', brachaAchrona: 'BirkatHamazon', shivasHaminim: true, shivaKey: 'wheat', isFiveGrain: true, isTreeFruit: false, isWineGrape: false, notes: 'Pas haba’ah b’kisnin; per OU two slices constitutes kevias seudah → Hamotzi / Birkat Hamazon.', source: 'brachos.org' }),
 
+  // ---- gluten-free breads (owner feature 2026-08-11): the FLOUR sets the
+  // bracha. Rulings from the OU Guide to Blessings "Gluten-Free Baked Goods"
+  // table: Katz oat bread/challah/rolls → Hamotzi + Birkat Hamazon (oats are
+  // one of the five grains); rice-flour rolls → Mezonos + Borei Nefashos;
+  // starch-blend breads (Rudi's, Canyon sub rolls) → Shehakol + Borei
+  // Nefashos. Surfaced by the Confirm screen's gluten-free flour picker.
+  f({ key: 'bread-gf-oat', names: ['gluten-free oat bread', 'oat bread', 'oat challah', 'oat rolls'], category: 'Bread', brachaRishona: 'Hamotzi', brachaAchrona: 'BirkatHamazon', shivasHaminim: true, shivaKey: 'barley', isFiveGrain: true, isTreeFruit: false, isWineGrape: false, notes: 'Oats are one of the five grains, so oat-flour bread is real bread — wash hands first (netilat yadayim). Gluten-free is not grain-free.', source: 'OU' }),
+  f({ key: 'bread-gf-rice', names: ['gluten-free rice bread', 'rice flour bread', 'rice bread'], category: 'Bread', brachaRishona: 'Mezonos', brachaAchrona: 'BoreiNefashos', shivasHaminim: false, isFiveGrain: false, isTreeFruit: false, isWineGrape: false, notes: 'Rice-flour bread is Mezonos like rice — and Borei Nefashos after, never Al Hamichya.', source: 'OU' }),
+  f({ key: 'bread-gf-almond', names: ['gluten-free almond bread', 'almond flour bread'], category: 'Bread', brachaRishona: 'Shehakol', brachaAchrona: 'BoreiNefashos', shivasHaminim: false, isFiveGrain: false, isTreeFruit: false, isWineGrape: false, notes: 'Almond flour is ground past recognition, so the bread is Shehakol.', source: 'OU' }),
+  f({ key: 'bread-gf-coconut', names: ['gluten-free coconut bread', 'coconut flour bread'], category: 'Bread', brachaRishona: 'Shehakol', brachaAchrona: 'BoreiNefashos', shivasHaminim: false, isFiveGrain: false, isTreeFruit: false, isWineGrape: false, notes: 'Coconut flour is ground past recognition, so the bread is Shehakol.', source: 'OU' }),
+  f({ key: 'bread-gf-tapioca', names: ['gluten-free tapioca bread', 'tapioca bread', 'cassava flour bread', 'potato starch bread'], category: 'Bread', brachaRishona: 'Shehakol', brachaAchrona: 'BoreiNefashos', shivasHaminim: false, isFiveGrain: false, isTreeFruit: false, isWineGrape: false, notes: 'Starch-blend breads (tapioca / potato starch / cassava) are Shehakol.', source: 'OU' }),
+
   // ------------------------------------------------------------ MEZONOS
   f({ key: 'cake', names: ['cake', 'chocolate cake', 'sponge cake', 'cupcake', 'muffin', 'brownie'], category: 'Grain', brachaRishona: 'Mezonos', brachaAchrona: 'AlHamichya', shivasHaminim: true, shivaKey: 'wheat', isFiveGrain: true, isTreeFruit: false, isWineGrape: false, notes: 'Pas haba’ah b’kisnin.', source: 'brachos.org' }),
   f({ key: 'cookies', names: ['cookie', 'cookies', 'biscuit', 'chocolate chip cookie'], category: 'Grain', brachaRishona: 'Mezonos', brachaAchrona: 'AlHamichya', shivasHaminim: true, shivaKey: 'wheat', isFiveGrain: true, isTreeFruit: false, isWineGrape: false, source: 'brachos.org' }),

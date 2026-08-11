@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LESSONS, type Lesson } from '../data/learn';
 import { takeawayFor } from '../data/parshaTakeaways';
-import { apiLessons } from '../lib/api';
+import { apiDailyThought, apiLessons } from '../lib/api';
 import { fetchDailyParsha, parshaIsFresh } from '../lib/parsha';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
@@ -51,8 +51,11 @@ function Star({ on, onClick }: { on: boolean; onClick: () => void }) {
 export function Learn() {
   const { progress, markLessonRead, starredLessons, toggleStar, remoteLessons, setRemoteLessons, parsha, setParsha } =
     useBracha();
+  const dailyThought = useBracha((s) => s.dailyThought);
+  const setDailyThought = useBracha((s) => s.setDailyThought);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showParsha, setShowParsha] = useState(false);
+  const [thoughtOpen, setThoughtOpen] = useState(false);
 
   // the reader views swap in-place — start each at the top, not mid-scroll
   useEffect(() => {
@@ -67,6 +70,13 @@ export function Learn() {
     apiLessons()
       .then((r) => Array.isArray(r.lessons) && setRemoteLessons(r.lessons))
       .catch(() => undefined); // offline → cached copy stands
+    // today's Daily Wisdom digest — the cached one stands until a fresher
+    // one arrives (offline or server-warming both leave it untouched)
+    apiDailyThought()
+      .then((r) => {
+        if (r.thought && r.thought.dateKey !== dailyThought?.dateKey) setDailyThought(r.thought);
+      })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -296,6 +306,58 @@ export function Learn() {
           </div>
           <Rimon pose="teaching" size={88} />
         </header>
+
+        {/* daily thought — today's chabad.org Daily Wisdom digest (owner
+            feature 2026-08-11); sits ABOVE the daily parsha card */}
+        {dailyThought && (
+          <div data-daily-thought className="mb-4">
+            <Bezel className="rise-in" innerClassName="px-5 py-4">
+              <button onClick={() => setThoughtOpen(!thoughtOpen)} className="w-full text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-gold">
+                      💭 Daily thought · {dailyThought.dayLabel}
+                    </p>
+                    <p className="mt-1 font-display text-[19px] font-bold text-espresso">
+                      {dailyThought.title}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-[13px] text-mocha transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${thoughtOpen ? 'rotate-180' : ''}`}
+                  >
+                    ▾
+                  </span>
+                </div>
+                {!thoughtOpen && (
+                  <p className="mt-1.5 line-clamp-2 text-[12.5px] leading-relaxed text-espresso-soft">
+                    {dailyThought.digest}
+                  </p>
+                )}
+              </button>
+              {thoughtOpen && (
+                <div className="rise-in">
+                  {dailyThought.digest.split(/\n{2,}/).map((p, i) => (
+                    <p key={i} className="mt-2 text-[13.5px] leading-[1.75] text-espresso-soft">
+                      {p}
+                    </p>
+                  ))}
+                  <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] italic leading-relaxed text-mocha">
+                    Adapted from the teachings of the Rebbe (Daily Wisdom). AI makes mistakes, to
+                    learn more information please read the article.{' '}
+                    <a
+                      href={dailyThought.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium not-italic underline decoration-gold/40 underline-offset-2 hover:text-espresso"
+                    >
+                      Read the full lesson on chabad.org →
+                    </a>
+                  </p>
+                </div>
+              )}
+            </Bezel>
+          </div>
+        )}
 
         {/* daily Parsha — refreshed every day, one aliyah at a time */}
         {parsha && (

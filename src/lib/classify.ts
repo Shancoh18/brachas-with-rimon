@@ -32,6 +32,8 @@ export interface MealItem {
   shiurMet: boolean;
   confidence: number;
   lowConfidence: boolean;
+  /** the pre-swap db key when the entry was changed (gluten-free flour picker) — lets "regular" revert */
+  origKey?: string;
 }
 
 let nextId = 0;
@@ -79,4 +81,18 @@ export function mealItemFromKey(key: string): MealItem | null {
 
 export function setItemState(item: MealItem, state: FoodState): MealItem {
   return { ...item, state, whole: state === 'whole', bracha: effectiveBracha(item.entry, state) };
+}
+
+/** Swap the item's database entry in place (the gluten-free flour picker)
+ *  while keeping identity, label, state and chaviv. `origKey` remembers the
+ *  first pre-swap entry so "regular bread" can revert exactly. */
+export function setItemEntry(item: MealItem, key: string): MealItem {
+  const entry = FOOD_BY_KEY[key];
+  if (!entry || entry.key === item.entry.key) return item;
+  return {
+    ...item,
+    entry,
+    origKey: item.origKey ?? item.entry.key,
+    bracha: effectiveBracha(entry, item.state),
+  };
 }

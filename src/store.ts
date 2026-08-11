@@ -140,6 +140,9 @@ interface BrachaState {
   setRemoteLessons: (l: Lesson[]) => void;
   parsha: ParshaReading | null;
   setParsha: (p: ParshaReading) => void;
+  /** today's chabad.org Daily Wisdom digest (Learn tab card) */
+  dailyThought: import('./lib/api').DailyThought | null;
+  setDailyThought: (t: import('./lib/api').DailyThought | null) => void;
   /** guards double-counting when the After screen re-renders */
   mealRecorded: boolean;
   setMealRecorded: (v: boolean) => void;
@@ -394,6 +397,8 @@ export const useBracha = create<BrachaState>()(
       setRemoteLessons: (remoteLessons) => set({ remoteLessons }),
       parsha: null,
       setParsha: (parsha) => set({ parsha }),
+      dailyThought: null,
+      setDailyThought: (dailyThought) => set({ dailyThought }),
 
       reminders: { enabled: false, times: ['08:00', '13:00', '19:00'] },
       setReminders: (reminders) => set({ reminders }),
@@ -435,6 +440,7 @@ export const useBracha = create<BrachaState>()(
         starredLessons: s.starredLessons,
         remoteLessons: s.remoteLessons,
         parsha: s.parsha,
+        dailyThought: s.dailyThought,
         onboarded: s.onboarded,
       }),
     },

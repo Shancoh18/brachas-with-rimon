@@ -892,6 +892,109 @@ if (ROUND_SWEEP_MS > 0) {
   setTimeout(sweepRounds, Math.min(5_000, ROUND_SWEEP_MS)).unref(); // catch rounds that ended while we were down
 }
 
+// ------------------------------------------------------------ daily thought
+// "Daily Wisdom" (chabad.org/dailystudy/dailywisdom_cdo) — one lesson per day
+// adapted from the Rebbe's teachings; the Learn tab shows a faithful digest +
+// deep link (owner feature 2026-08-11). chabad.org sits behind Cloudflare, so
+// a plain server fetch gets a challenge page — the content rides the SAME
+// sanctioned pipeline as researchFood: Anthropic web_search hard-locked to
+// chabad.org. One lesson per US-East day, cached on the volume.
+const THOUGHT_FILE = join(DATA_DIR, 'daily-thought.json');
+const thoughtDateKey = () => new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
+let thoughtRefreshing = false;
+
+const THOUGHT_TOOL = {
+  name: 'report_daily_thought',
+  description: "Report today's Daily Wisdom lesson as a faithful digest.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      found: { type: 'boolean' },
+      title: { type: 'string', description: 'the lesson title, e.g. "Trusting in G-d"' },
+      dayLabel: { type: 'string', description: 'weekday + parsha, e.g. "Wednesday · Parshat Shoftim"' },
+      digest: {
+        type: 'string',
+        description:
+          'a faithful 150-220 word digest of the lesson IN YOUR OWN WORDS — cover its full arc (verse, question, teaching, takeaway); never invent content the page does not carry',
+      },
+      url: { type: 'string', description: 'the exact chabad.org Daily Wisdom lesson page URL for today' },
+    },
+    required: ['found'],
+  },
+};
+
+async function fetchDailyThought(apiKey) {
+  const estNow = new Date(Date.now() - 5 * 3_600_000);
+  const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Shabbat'][estNow.getUTCDay()];
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+      max_tokens: 3000,
+      system: `You find and digest ONE page for a Jewish learning app: today's lesson in
+chabad.org's "Daily Wisdom" series (URLs contain /dailystudy/dailywisdom_cdo/), the
+daily Torah thought adapted from the Rebbe's teachings, arranged by weekly parsha
+with one lesson per weekday. Search (results are restricted to chabad.org) for the
+CURRENT week's parsha edition and today's weekday lesson. Digest ONLY what that
+page says — never pad it with your own Torah. Report via report_daily_thought with
+the exact lesson URL. If you cannot find today's lesson, report found:false.`,
+      tools: [
+        { type: 'web_search_20250305', name: 'web_search', allowed_domains: ['chabad.org'], max_uses: 6 },
+        THOUGHT_TOOL,
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: `Today is ${weekday}, ${thoughtDateKey()} (US-East). Find today's Daily Wisdom lesson (this week's parsha, ${weekday}'s entry) and digest it.`,
+        },
+      ],
+    }),
+  });
+  if (!r.ok) throw new Error(`daily-thought http ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const data = await r.json();
+  const t = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_daily_thought')?.input;
+  if (!t || t.found !== true) return null;
+  // Validate hard before it can reach a user: chabad.org Daily Wisdom URL only,
+  // and a digest long enough to be the real lesson (not a stub).
+  let u;
+  try { u = new URL(t.url); } catch { return null; }
+  if (u.hostname.replace(/^www\./, '') !== 'chabad.org' || !/dailywisdom/i.test(u.pathname)) return null;
+  const digest = String(t.digest || '').trim();
+  if (digest.length < 400) return null;
+  return {
+    dateKey: thoughtDateKey(),
+    title: String(t.title || 'Daily Wisdom').slice(0, 120),
+    dayLabel: String(t.dayLabel || weekday).slice(0, 80),
+    digest: digest.slice(0, 2400),
+    url: t.url,
+    fetched: Date.now(),
+  };
+}
+
+const readThought = () => {
+  try { return JSON.parse(readFileSync(THOUGHT_FILE, 'utf8')); } catch { return null; }
+};
+
+async function refreshThoughtIfStale() {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key || thoughtRefreshing) return;
+  if (readThought()?.dateKey === thoughtDateKey()) return;
+  thoughtRefreshing = true;
+  try {
+    const t = await fetchDailyThought(key);
+    if (t) {
+      writeFileSync(THOUGHT_FILE, JSON.stringify(t));
+      console.log(`daily-thought: cached "${t.title}" (${t.dateKey})`);
+    }
+  } catch (e) {
+    console.error(`daily-thought refresh failed: ${e.message}`);
+  }
+  thoughtRefreshing = false;
+}
+setTimeout(() => void refreshThoughtIfStale(), 20_000).unref(); // after boot settles
+setInterval(() => void refreshThoughtIfStale(), 3 * 3_600_000).unref(); // catches the EST day rollover
+
 // -------------------------------------------------------------------- server
 const server = createServer(async (req, res) => {
   cors(req, res);
@@ -909,6 +1012,16 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/health') return json(res, 200, { ok: true, users: store.userCount(), vision: !!process.env.ANTHROPIC_API_KEY });
+
+    // Today's Daily Wisdom digest (public Torah content, like /api/lessons).
+    // Serves the cache immediately — possibly yesterday's while a refresh runs;
+    // {thought:null} until the first successful fetch (or with no API key).
+    if (url.pathname === '/api/daily-thought') {
+      const cur = readThought();
+      const fresh = cur?.dateKey === thoughtDateKey();
+      if (!fresh) void refreshThoughtIfStale();
+      return json(res, 200, { thought: cur ?? null, fresh });
+    }
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
       if (throttled(req)) return json(res, 429, { error: 'slow_down' });

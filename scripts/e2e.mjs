@@ -134,13 +134,20 @@ const nudgeSaved = await page.evaluate(() => {
 });
 check('mealtimes save + reminders enable', JSON.stringify(nudgeSaved.st.times) === JSON.stringify(['07:15', '12:45', '18:30']) && nudgeSaved.st.enabled === true, (nudgeSaved.st.times || []).join(', '));
 check('nudge flips to ON with the chosen times', nudgeSaved.closed === true && /7:15 AM · 12:45 PM · 6:30 PM/.test(nudgeSaved.text), nudgeSaved.text.replaceAll('\n', ' | '));
-// leave reminders off so the rest of the run is unaffected by notification popups
-await page.evaluate(async () => {
-  document.querySelector('[data-reminder-nudge]').click();
-  await new Promise((r) => setTimeout(r, 600));
-  const b = [...document.querySelectorAll('button')].find((x) => /turn reminders off/i.test(x.textContent));
-  b?.click();
-});
+// leave reminders off so the rest of the run is unaffected by notification popups.
+// Guarded: the click re-renders and can destroy the execution context while the
+// in-page await is pending ("Promise was collected" — crashed the whole suite at
+// 19/117 on 2026-08-10). Pure cleanup must never take the gate down.
+try {
+  await page.evaluate(() => document.querySelector('[data-reminder-nudge]')?.click());
+  await sleep(600);
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => /turn reminders off/i.test(x.textContent));
+    b?.click();
+  });
+} catch {
+  /* cleanup only — reminders staying on can't fail a later assertion */
+}
 await sleep(800);
 
 // mascot asset actually renders (video or img with natural size)
@@ -286,6 +293,82 @@ const overrideOk = await page.evaluate(() => {
 await sleep(700);
 t = await text();
 check('cooked-cucumber state override → Shehakol', overrideOk && t.includes('shehakol'));
+
+// ---------------------------------------- GLUTEN-FREE FLOUR PICKER (2026-08-11)
+// The flour sets the bracha (OU Guide to Blessings, GF Baked Goods table):
+// bread → rice flour → Mezonos; revert → Hamotzi. Removed again afterwards so
+// the guide flow below keeps its 6-blessing meal.
+await addFood({ q: 'bread', pick: 'bread' });
+t = await text();
+check('bread lands with Hamotzi + gluten-free? chip', t.includes('hamotzi') && t.includes('gluten-free?'));
+const gfCard = () => {
+  // climb from the GF toggle to its item card (the container owning remove)
+  const chip = [...document.querySelectorAll('[data-gluten-free-toggle]')].pop();
+  let el = chip;
+  while (el && !el.querySelector?.('button[title="remove"]')) el = el.parentElement;
+  return el;
+};
+await page.evaluate(() => [...document.querySelectorAll('[data-gluten-free-toggle]')].pop()?.click());
+await sleep(600);
+const gfMenu = await page.evaluate(() => {
+  const m = document.querySelector('[data-gluten-free-menu]');
+  return m ? [...m.querySelectorAll('button')].map((b) => b.innerText.replace(/\n/g, ' ')) : null;
+});
+check(
+  'gluten-free dropdown lists the 5 flours + not sure',
+  !!gfMenu &&
+    /oat/i.test(gfMenu[0] ?? '') &&
+    /rice/i.test(gfMenu[1] ?? '') &&
+    /almond/i.test(gfMenu[2] ?? '') &&
+    /coconut/i.test(gfMenu[3] ?? '') &&
+    /tapioca|potato/i.test(gfMenu[4] ?? '') &&
+    /not sure/i.test((gfMenu ?? []).join(' ')),
+  JSON.stringify(gfMenu),
+);
+// "not sure" shows guidance and does NOT change the ruling
+await page.evaluate(() => {
+  const m = document.querySelector('[data-gluten-free-menu]');
+  [...(m?.querySelectorAll('button') ?? [])].find((b) => /not sure/i.test(b.innerText))?.click();
+});
+await sleep(500);
+t = await text();
+check(
+  'not-sure shows check-the-package guidance, blessing unchanged',
+  (await page.evaluate(() => !!document.querySelector('[data-gluten-free-unsure]'))) &&
+    (await page.evaluate(new Function(`return (${gfCard.toString()})()?.innerText.toLowerCase().includes('hamotzi')`))),
+);
+await page.evaluate(() => {
+  const m = document.querySelector('[data-gluten-free-menu]');
+  [...(m?.querySelectorAll('button') ?? [])].find((b) => /rice flour/i.test(b.innerText))?.click();
+});
+await sleep(700);
+check(
+  'rice-flour choice flips the blessing to Mezonos',
+  await page.evaluate(new Function(`const c=(${gfCard.toString()})(); return !!c && /mezonos/i.test(c.innerText) && /gluten-free ✓/i.test(c.innerText)`)),
+);
+await page.evaluate(() => [...document.querySelectorAll('[data-gluten-free-toggle]')].pop()?.click());
+await sleep(500);
+await page.evaluate(() => {
+  const m = document.querySelector('[data-gluten-free-menu]');
+  [...(m?.querySelectorAll('button') ?? [])].find((b) => /regular bread/i.test(b.innerText))?.click();
+});
+await sleep(600);
+check(
+  'regular-bread revert restores Hamotzi',
+  await page.evaluate(new Function(`const c=(${gfCard.toString()})(); return !!c && /hamotzi/i.test(c.innerText)`)),
+);
+// off the plate — the guide below asserts a 6-blessing meal (and Hamotzi
+// bread would exempt most of it)
+await page.evaluate(() => {
+  let el = [...document.querySelectorAll('span')].find((s) => s.textContent.trim().toLowerCase() === 'bread');
+  while (el && !el.querySelector?.('button[title="remove"]')) el = el.parentElement;
+  el?.querySelector('button[title="remove"]')?.click();
+});
+await sleep(600);
+check(
+  'gf test bread removed from the plate again',
+  await page.evaluate(() => ![...document.querySelectorAll('span')].some((s) => s.textContent.trim().toLowerCase() === 'bread')),
+);
 
 // ---------------------------------------------------------------- GUIDE
 await clickText('Guide me through', 1500);
@@ -433,6 +516,41 @@ await page.evaluate(() => {
 await sleep(600);
 t = await text();
 check('starring pins a lesson', t.includes('starred'));
+
+// ---------------------------------------------- DAILY THOUGHT (Daily Wisdom)
+// Server-cached chabad.org digest; the card renders only once the server has
+// one (first fetch after deploy may still be warming — assert accordingly).
+{
+  const dt = await fetch('https://brachas-rimon-api-production-46ae.up.railway.app/api/daily-thought').then((r) => r.json()).catch(() => null);
+  if (dt?.thought) {
+    let up = false;
+    for (let i = 0; i < 16 && !up; i++) {
+      up = await page.evaluate(() => !!document.querySelector('[data-daily-thought]'));
+      if (!up) await sleep(500);
+    }
+    check('daily thought card renders above the parsha card', up);
+    if (up) {
+      check(
+        'daily thought sits ABOVE the daily parsha card',
+        await page.evaluate(() => {
+          const thought = document.querySelector('[data-daily-thought]');
+          const torah = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Daily Torah'));
+          return !!thought && (!torah || thought.getBoundingClientRect().top < torah.getBoundingClientRect().top);
+        }),
+      );
+      await page.evaluate(() => document.querySelector('[data-daily-thought] button')?.click());
+      await sleep(700);
+      t = await text();
+      check(
+        'expanded daily thought carries the chabad.org lesson link + AI-mistakes line',
+        t.includes('ai makes mistakes') && (await page.evaluate(() => !!document.querySelector('[data-daily-thought] a[href*="chabad.org"]'))),
+      );
+      check('daily thought digest is the longer form (300+ chars)', dt.thought.digest.length >= 300, `${dt.thought.digest.length} chars`);
+    }
+  } else {
+    check('daily-thought API healthy (cache still warming — card hidden by design)', dt !== null && 'thought' in (dt ?? {}), JSON.stringify(dt));
+  }
+}
 
 // -------------------------------------------- DAILY PARSHA + weekly takeaway
 // external feeds (hebcal leyning + Sefaria text) fetch on Learn mount — poll

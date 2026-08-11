@@ -121,6 +121,18 @@ export function vapidKeyToBytes(base64: string): Uint8Array {
 
 export const apiLessons = () => call<{ lessons: Lesson[] }>('/api/lessons');
 
+/** Today's chabad.org "Daily Wisdom" digest — null until the server has one. */
+export interface DailyThought {
+  dateKey: string;
+  title: string;
+  dayLabel: string;
+  digest: string;
+  url: string;
+  fetched: number;
+}
+export const apiDailyThought = () =>
+  call<{ thought: DailyThought | null; fresh: boolean }>('/api/daily-thought');
+
 export const apiMe = (token: string) =>
   call<{ name: string; email: string | null; code: string; hasPassword: boolean; providers: string[] }>(
     '/api/me',

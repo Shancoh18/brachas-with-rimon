@@ -139,6 +139,12 @@ const cleanup = async (code) => {
 };
 
 try {
+  // ------------------------------------------------------- daily thought
+  // No ANTHROPIC key in tests → the endpoint must still 200 with a null
+  // thought (the client hides the card), never 500 or hang.
+  let r0 = await api('/api/daily-thought');
+  check('daily-thought degrades gracefully without a key', r0.status === 200 && r0.json.thought === null && r0.json.fresh === false, JSON.stringify(r0.json));
+
   // -------------------------------------------------- users + registration
   const tokA = await register('Sender A');
   const tokB = await register('Member B');
