@@ -58,10 +58,6 @@ html[data-theme='dark'] .rimon-blend {
   mask-image: radial-gradient(circle, black 18%, rgba(0, 0, 0, 0.55) 42%, transparent 60%);
 }
 html[data-theme='dark'] .rimon-wide-blend {
-  /* multiply would sink the character into the dark canvas — dark keeps the
-     candlelight spotlight mask instead */
-  mix-blend-mode: normal;
-  filter: none;
   -webkit-mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
   mask-image: radial-gradient(ellipse 58% 72% at 50% 52%, black 24%, transparent 58%);
 }
@@ -283,17 +279,18 @@ body {
 
 /* wide cinematic banner — the media is CONTAINED (never cropped: the owner's
    2026-08-11 screenshot showed the crown and feet cut off under object-cover).
-   SEAMLESS by blending, not masking (owner 2026-08-11): brightness pushes the
-   cream bake to pure white, multiply then maps white → the canvas color
-   exactly, so the video rectangle vanishes while the saturated character
-   survives untouched. No mask in light mode — the full character shows. */
+   Edges blend by MASK, not mix-blend-mode: WKWebView ignores blend modes on
+   <video> layers (the multiply experiment shipped a bright white box on iOS —
+   owner screenshot, same day, reverted). The feather is sized to reach full
+   transparency at the contained square's edges, so the video rectangle never
+   shows; the character core stays opaque, crown to feet. */
 .rimon-wide-blend {
   transform: translateZ(0);
-  /* 1.1 clips every bake-cream channel (incl. blue ≈234) to pure white, so
-     multiply maps the background to EXACTLY the canvas; the dark character's
-     +10% is ~cancelled by the multiply itself */
-  filter: brightness(1.1);
-  mix-blend-mode: multiply;
+  /* steep-feather ellipse: opaque across the whole character (crown, arms,
+     feet), zero exactly at the contained square's edges — the old soft-halo
+     background inside, no visible rectangle outside */
+  -webkit-mask-image: radial-gradient(ellipse 36% 50% at 50% 50%, black 75%, transparent 100%);
+  mask-image: radial-gradient(ellipse 36% 50% at 50% 50%, black 75%, transparent 100%);
 }
 
 /* stories-style progress fill (duration set inline per slide) */

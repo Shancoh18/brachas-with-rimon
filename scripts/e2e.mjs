@@ -788,13 +788,15 @@ await sleep(1000);
 t = await text();
 check('donate tab opens next to the profile button', t.includes('help keep the app free') && t.includes('donate to the developers'));
 check(
-  'donate page carries the big tzedakah Rimon (video wired, seamless blend)',
+  'donate page carries the big tzedakah Rimon (video wired, edge mask on)',
   await page.evaluate(() => {
     const w = document.querySelector('.rimon-wide-blend');
     if (!w) return false;
     const cs = getComputedStyle(w);
     const src = w.tagName === 'VIDEO' ? (w.querySelector('source')?.src ?? '') : w.src ?? '';
-    return /rimon-tzedakah|rimon-hello/.test(src) && cs.mixBlendMode === 'multiply';
+    // mask, NOT mix-blend-mode: WKWebView ignores blend modes on <video>
+    // (the multiply experiment shipped a bright white box on iOS)
+    return /rimon-tzedakah|rimon-hello/.test(src) && cs.webkitMaskImage !== 'none' && cs.mixBlendMode === 'normal';
   }),
 );
 
