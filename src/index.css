@@ -379,6 +379,7 @@ body {
   8% { opacity: 1; }
   90%, 100% { opacity: 0; transform: translateY(110px) rotate(var(--rr, 200deg)); }
 }
+i.tk-confetti,
 .tk-confetti i {
   position: absolute;
   width: 9px;
@@ -692,6 +693,6 @@ body {
   .tk-card-shadow, .pr-champ, .pr-crown { animation: none !important; }
   .tk-rise, .tk-pop, .tk-chip, .tk-land, .pr-champ, .pr-crown { opacity: 1 !important; }
   .tk-fly, .tk-halo, .tk-ring, .tk-shine, .pr-halo { display: none; }
-  .tk-embers i, .tk-sparks i, .tk-confetti i { display: none; }
+  .tk-embers i, .tk-sparks i, .tk-confetti i, i.tk-confetti { display: none; }
   * { transition-duration: 0.01ms !important; }
 }

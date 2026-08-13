@@ -488,6 +488,14 @@ await sleep(500);
 await clickText('Show my after-blessings', 1500);
 t = await text();
 check('combined Me’ein Shalosh (3 inserts)', t.includes('al hamichya + al hagefen + al ha’etz'));
+// voice guidance (2026-08-13): the combined Me'ein Shalosh card carries its own
+// hear-it, wired to the file matching the resolver's canonical insert order
+check(
+  'Me’ein Shalosh hear-it wired to the combined audio file',
+  await page.evaluate(
+    () => !!document.querySelector('[data-hear-it*="meein-alhamichya-alhagefen-alhaetz.mp3"]'),
+  ),
+);
 check('Borei Nefashos required (carrots)', t.includes('borei nefashos'));
 check('after-blessing why dropdowns present', (await page.evaluate(() => document.querySelectorAll('[data-why]').length)) >= 2);
 check('coverage note lists the carrot', /borei nefashos.*carrot/s.test(t));
@@ -670,10 +678,20 @@ const friendReg = await fetch('https://brachas-rimon-api-production-46ae.up.rail
   body: JSON.stringify({ name: 'Test Friend', password: `e2e-friend-${Date.now()}` }),
 }).then((r) => r.json());
 check('minted a friend account via API for the code-add test', /^RIMON-[A-Z2-9]{4}$/.test(friendReg.code || ''), friendReg.code);
+// first-run nudge (2026-08-13): while the league is just you, an invite line shows…
+check(
+  'league first-run nudge shows while it’s just you',
+  await page.evaluate(() => !!document.querySelector('[data-league-empty]')),
+);
 await page.type('input[placeholder="RIMON-XXXX"]', friendReg.code);
 await clickText('Add', 2200);
 t = await text();
 check('add friend BY CODE works', t.includes('test friend'), 'league shows Test Friend');
+// …and disappears the moment someone else is in the league
+check(
+  'league first-run nudge gone once a friend joins',
+  await page.evaluate(() => !document.querySelector('[data-league-empty]')),
+);
 check('league is ALL-TIME (label + ⭐ points)', t.includes('all-time leaderboard') && t.includes('pts all-time') && /⭐\s*\d+/.test(t));
 check('league shows lifetime bracha counts', t.includes('brachos'));
 // the numbers must be REAL, not zeros: this account finished a 7-bracha meal
@@ -693,6 +711,16 @@ check(
 );
 
 // ------------------------------------------ NAMED BOARDS + GROUP CHAT (live)
+// no boards yet → the big empty-state invitation shows (owner request 2026-08-13)
+check(
+  'boards empty state: big New/Join cards + challah tagline',
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-boards-empty]');
+    if (!el) return false;
+    const txt = el.textContent.toLowerCase();
+    return txt.includes('challah your friends') && txt.includes('+ new') && txt.includes('join');
+  }),
+);
 await clickText('+ New', 700);
 // timed rounds: the create card carries a 3-option duration picker + an ✕ cancel
 check(
@@ -722,6 +750,10 @@ await sleep(400);
 await clickText('Create leaderboard', 2200);
 t = await text();
 check('board created with share code', t.includes('e2e chevra') && /code [a-z0-9]{4,}/.test(t));
+check(
+  'boards empty state gone once a board exists',
+  await page.evaluate(() => !document.querySelector('[data-boards-empty]')),
+);
 const countdown = await page.evaluate(() => document.querySelector('[data-board-countdown]')?.textContent ?? '');
 check('board card carries the round countdown (1 month on the clock)', /⏳/.test(countdown) && /(29d|30d)/.test(countdown), countdown);
 check(
@@ -936,6 +968,39 @@ const audioStatus = await page.evaluate(async () => {
   return r.status;
 });
 check('bracha audio serves', audioStatus === 200);
+// after-blessing voice guidance (2026-08-13): all 7 Me'ein Shalosh combinations
+const meeinStatuses = await page.evaluate(async () => {
+  const combos = [
+    'alhamichya', 'alhagefen', 'alhaetz',
+    'alhamichya-alhagefen', 'alhamichya-alhaetz', 'alhagefen-alhaetz',
+    'alhamichya-alhagefen-alhaetz',
+  ];
+  const out = {};
+  for (const c of combos) out[c] = (await fetch(`./audio/meein-${c}.mp3`, { method: 'HEAD' })).status;
+  return out;
+});
+check(
+  'all 7 Me’ein Shalosh audio files serve',
+  Object.values(meeinStatuses).every((s) => s === 200),
+  JSON.stringify(meeinStatuses),
+);
+// confetti guard (2026-08-13): the takeover confetti class must actually style the
+// bare <i class="tk-confetti"> the components render — the selector-mismatch bug
+// (.tk-confetti i vs i.tk-confetti) shipped invisible confetti once already
+const confetti = await page.evaluate(() => {
+  const probe = document.createElement('i');
+  probe.className = 'tk-confetti';
+  document.body.appendChild(probe);
+  const cs = getComputedStyle(probe);
+  const r = { width: cs.width, anim: cs.animationName };
+  probe.remove();
+  return r;
+});
+check(
+  'takeover confetti pieces are styled + animated (selector guard)',
+  confetti.width === '9px' && confetti.anim === 'tk-confetti',
+  JSON.stringify(confetti),
+);
 
 // ---------------------------------------------------------------- console errors
 const realErrors = errors.filter((e) => !e.includes('favicon') && !e.includes('Manifest'));

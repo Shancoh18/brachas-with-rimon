@@ -294,6 +294,12 @@ export function After() {
                 {pack.meeinShalosh.seals[result.meeinInserts[0]].english}
               </p>
             )}
+            <div className="mt-5 border-t border-espresso/[0.07] pt-4">
+              {/* file name mirrors the resolver's canonical insert order (michya → gefen → etz) */}
+              <HearIt
+                src={`${import.meta.env.BASE_URL}audio/meein-${result.meeinInserts.map((k) => k.toLowerCase()).join('-')}.mp3`}
+              />
+            </div>
             <WhyDropdown className="mt-5" entry={WHY_AFTER.meeinShalosh} />
           </Bezel>
         )}

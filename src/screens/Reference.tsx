@@ -269,6 +269,9 @@ export function Reference() {
                         {pack.meeinShalosh.inserts[k].english} … {pack.meeinShalosh.seals[k].english}
                       </p>
                     )}
+                    <div className="mt-2">
+                      <HearIt src={`${BASE}audio/meein-${k.toLowerCase()}.mp3`} />
+                    </div>
                   </div>
                 ))}
                 <p className="pt-2 text-[10.5px] leading-snug text-mocha">

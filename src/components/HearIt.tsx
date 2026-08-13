@@ -41,6 +41,7 @@ export function HearIt({ src, label = 'Hear it' }: { src: string; label?: string
   return (
     <button
       onClick={toggle}
+      data-hear-it={src}
       className={`group inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold ring-1 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] ${
         playing
           ? 'bg-gold/15 text-gold ring-gold/30'

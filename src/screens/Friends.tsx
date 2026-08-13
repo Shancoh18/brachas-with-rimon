@@ -213,6 +213,14 @@ export function Friends() {
             </button>
           )}
         </div>
+        {/* first-run nudge — only while the synced league is just you; it
+            disappears the moment anyone joins you (or you join them) */}
+        {league !== null && league.length <= 1 && (
+          <p data-league-empty className="rise-in pb-3 text-[11.5px] leading-relaxed text-mocha">
+            It’s just you up here so far — invite your friends, trade codes, and watch their
+            brachas climb next to yours 🌱
+          </p>
+        )}
         <Bezel className="rise-in rise-in-2" innerClassName="divide-y divide-espresso/[0.06] px-2 py-1">
           {rows.map((row, i) => (
             <div key={row.code || row.name} className={`flex items-center gap-3 px-3 py-3.5 ${row.you ? '' : 'opacity-90'}`}>

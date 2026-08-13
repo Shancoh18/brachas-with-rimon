@@ -183,26 +183,31 @@ export function Boards() {
 
   if (!serverToken) return null;
 
+  // No boards yet → the header pills give way to the big invitation below.
+  const empty = boards?.length === 0;
+
   return (
     <div className="pt-8">
       <div className="flex items-end justify-between gap-3 pb-3">
         <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-mocha">
           Your leaderboards
         </h3>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setMode(mode === 'create' ? 'none' : 'create')}
-            className="rounded-full bg-rimon/[0.08] px-3 py-1.5 text-[11px] font-bold text-rimon"
-          >
-            + New
-          </button>
-          <button
-            onClick={() => setMode(mode === 'join' ? 'none' : 'join')}
-            className="rounded-full bg-espresso/[0.06] px-3 py-1.5 text-[11px] font-bold text-espresso-soft"
-          >
-            Join
-          </button>
-        </div>
+        {!empty && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMode(mode === 'create' ? 'none' : 'create')}
+              className="rounded-full bg-rimon/[0.08] px-3 py-1.5 text-[11px] font-bold text-rimon"
+            >
+              + New
+            </button>
+            <button
+              onClick={() => setMode(mode === 'join' ? 'none' : 'join')}
+              className="rounded-full bg-espresso/[0.06] px-3 py-1.5 text-[11px] font-bold text-espresso-soft"
+            >
+              Join
+            </button>
+          </div>
+        )}
       </div>
 
       {mode === 'create' && (
@@ -301,11 +306,35 @@ export function Boards() {
 
       {notice && <p className="pb-3 text-[11.5px] leading-snug text-rimon">{notice}</p>}
 
-      {boards?.length === 0 && mode === 'none' && (
-        <p className="text-[11.5px] leading-relaxed text-mocha">
-          Make a leaderboard for your family, your shul, or your chevrusa — pick a week, a month,
-          or a year, share its code, and race from 0 to the crown.
-        </p>
+      {empty && mode === 'none' && (
+        <div data-boards-empty className="rise-in">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => setMode('create')}
+              className="rounded-3xl border border-rimon/25 bg-rimon/[0.07] px-4 py-6 text-center shadow-[0_10px_26px_rgba(161,51,39,0.08)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5"
+            >
+              <span className="block text-[30px]">🏆</span>
+              <span className="mt-2 block text-[16px] font-bold text-rimon">+ New</span>
+              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wider text-mocha">
+                start a leaderboard
+              </span>
+            </button>
+            <button
+              onClick={() => setMode('join')}
+              className="rounded-3xl border border-espresso/10 bg-white/70 px-4 py-6 text-center shadow-[0_10px_26px_rgba(43,33,26,0.06)] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-0.5"
+            >
+              <span className="block text-[30px]">🎟️</span>
+              <span className="mt-2 block text-[16px] font-bold text-espresso">Join</span>
+              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-wider text-mocha">
+                enter a friend’s code
+              </span>
+            </button>
+          </div>
+          <p className="px-2 pt-3 text-center text-[12px] leading-relaxed text-mocha">
+            Challah your friends to a bracha competition 🥖 — pick a week, a month or a year, share
+            the code, and race from 0 to the crown 👑
+          </p>
+        </div>
       )}
 
       <div className="flex flex-col gap-3">
