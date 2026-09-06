@@ -120,12 +120,22 @@ export default function App() {
   // Native iOS: register the APNs device token so server-initiated pushes
   // (board chat, competitive nudges, broadcasts) reach this phone. Web Push
   // doesn't exist in the WKWebView — this is the only channel. No-op on web.
+  //
+  // TIMING (App Review 5.1.1 / HIG): the permission alert must follow a
+  // moment where notifications make sense to the user, never the sign-in
+  // itself. So: once per session, the first time reminders are switched ON
+  // or the Friends tab (chat, leagues — where pushes originate) is opened
+  // while signed in. Sign-out clears the token server-side from Account.
+  const remindersOn = useBracha((s) => s.reminders.enabled);
+  const pushRegistered = useRef(false);
   useEffect(() => {
-    if (!serverToken || !isNative()) return;
+    if (!serverToken || !isNative() || pushRegistered.current) return;
+    if (!remindersOn && tab !== 'friends') return;
+    pushRegistered.current = true; // one attempt per session — iOS never re-prompts a decline anyway
     void registerNativePush().then((t) => {
-      if (t) apiPushNative(serverToken, t).catch(() => undefined); // retried next boot
+      if (t) apiPushNative(serverToken, t).catch(() => undefined); // retried next session
     });
-  }, [serverToken]);
+  }, [serverToken, remindersOn, tab]);
   // Any progress change syncs up (debounced 3s) — not just meals. Without
   // this, points from lessons/challenges sat local-only until the next boot,
   // so friends' leaderboards showed stale bracha counts (owner-reported

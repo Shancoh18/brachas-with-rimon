@@ -32,9 +32,12 @@ export function Welcome() {
   const today = todayStamp();
   const blessedToday = progress.lastActiveDay === today || (dayStats.day === today && dayStats.brachos > 0);
   const brachosToday = dayStats.day === today ? dayStats.brachos : 0;
-  // last 7 local days, oldest first, for the streak widget's mini strip
+  // last 7 local days, oldest first, for the streak widget's mini strip.
+  // setDate() walks CALENDAR days (like Journey's strip) — ms arithmetic
+  // across a DST change lands 23/25h away and drops or doubles a day.
   const week = [...Array(7)].map((_, i) => {
-    const d = new Date(Date.now() - (6 - i) * 86_400_000);
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
     const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return { day, active: progress.history.some((h) => h.day === day && h.brachos > 0) };
   });

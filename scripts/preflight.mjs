@@ -44,5 +44,9 @@ run('server push/chat scenarios', process.execPath, [join(ROOT, 'server', 'test'
 // food search: alias keys must resolve and Hebrew/typo lookups must land on the
 // RIGHT entry — a mis-aimed alias would show a user the wrong bracha
 run('food search + aliases', process.execPath, ['--experimental-strip-types', join(ROOT, 'server', 'test', 'search.mjs')]);
+// model-written text guard: cite-tag stripping + refusal detection for every reading surface
+run('content guard (daily thought / learned notes)', process.execPath, [join(ROOT, 'server', 'test', 'content-guard.mjs')]);
+// streak rules incl. the Shabbat grace (Fri -> Sun keeps the streak)
+run('streak + progress rules', process.execPath, ['--experimental-strip-types', join(ROOT, 'server', 'test', 'progress.mjs')]);
 
 console.log('\nPREFLIGHT: ALL GREEN — clear to upload.');

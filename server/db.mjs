@@ -132,6 +132,40 @@ export function openDb(dataDir) {
       PRIMARY KEY (board_id, round)
     );
   `);
+  // Push fan-out reads (`WHERE push IS NOT NULL` / `apns IS NOT NULL`) ran a
+  // full users scan every 30s and on every chat message; partial indexes keep
+  // them proportional to the subscriber count, not the account count. They
+  // sit AFTER the column migrations above because `apns` is an added column.
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS users_push ON users(id) WHERE push IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS users_apns ON users(id) WHERE apns IS NOT NULL;
+  `);
+  // Chat moderation (App Review guideline 1.2, 2026-09): a block is GLOBAL per
+  // blocker (not per board) and cascades with either account. A report keeps
+  // its own copy of the text — the 500-message trim or a deletion would
+  // otherwise erase the evidence before the operator saw it — and no FK, so
+  // it survives the reported (or reporting) account being deleted.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS board_blocks (
+      blocker_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      blocked_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created    INTEGER NOT NULL,
+      PRIMARY KEY (blocker_id, blocked_id)
+    );
+    CREATE TABLE IF NOT EXISTS reports (
+      id               TEXT PRIMARY KEY,
+      board_id         TEXT,
+      message_id       TEXT,
+      reporter_id      TEXT,
+      reported_user_id TEXT,
+      text             TEXT,
+      reason           TEXT,
+      created          INTEGER NOT NULL,
+      status           TEXT NOT NULL DEFAULT 'open'
+    );
+    CREATE INDEX IF NOT EXISTS reports_status   ON reports(status, created);
+    CREATE INDEX IF NOT EXISTS reports_reporter ON reports(reporter_id, created);
+  `);
   return db;
 }
 

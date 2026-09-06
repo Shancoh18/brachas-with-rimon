@@ -7,8 +7,9 @@
  * password set/change, friend code with copy, replay-the-intro, sign out.
  */
 import { useEffect, useState } from 'react';
-import { apiDeleteAccount, apiMe, apiPushNative, apiSetPassword, apiUpdateAccount } from '../lib/api';
+import { apiBlockedUsers, apiDeleteAccount, apiMe, apiPushNative, apiSetPassword, apiUnblockUser, apiUpdateAccount } from '../lib/api';
 import { isNative } from '../lib/native';
+import { appleAvailable, googleAvailable } from '../lib/socialAuth';
 import { useBracha } from '../store';
 import { AuthPanel } from '../components/AuthPanel';
 import { Rimon } from '../components/Rimon';
@@ -44,6 +45,8 @@ export function Account() {
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
   const [pwSaved, setPwSaved] = useState(false);
+  // people blocked from chat (App Review 1.2) — the undo lives here
+  const [blocked, setBlocked] = useState<{ user_id: string; name: string }[]>([]);
 
   // restore the profile card from the server (also self-heals a stale token)
   useEffect(() => {
@@ -60,8 +63,31 @@ export function Account() {
       .catch((e) => {
         if ((e as { status?: number }).status === 401) clearServerAccount();
       });
+    apiBlockedUsers(serverToken)
+      .then((r) => setBlocked(Array.isArray(r.blocked) ? r.blocked : []))
+      .catch(() => undefined); // offline → the section simply stays hidden
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverToken]);
+
+  const unblock = async (userId: string) => {
+    if (!serverToken) return;
+    try {
+      await apiUnblockUser(serverToken, userId);
+      setBlocked((b) => b.filter((x) => x.user_id !== userId));
+    } catch {
+      setNotice('Couldn’t unblock right now — try again in a moment.');
+    }
+  };
+
+  // never advertise a sign-in this build can't offer (Apple is native-only,
+  // Google needs a client id) — the same rule AuthPanel's buttons follow
+  const signInWays = [
+    'your email and password',
+    ...(appleAvailable() ? ['Apple'] : []),
+    ...(googleAvailable() ? ['Google'] : []),
+    'your friend code',
+  ];
+  const signInWaysCopy = `${signInWays.slice(0, -1).join(', ')}, or ${signInWays[signInWays.length - 1]}`;
 
   const savePassword = async () => {
     if (!serverToken) return;
@@ -281,6 +307,31 @@ export function Account() {
               </p>
             </Bezel>
 
+            {/* blocked people — only once there is someone to unblock */}
+            {blocked.length > 0 && (
+              <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
+                <div data-blocked-people>
+                  <p className={label}>Blocked people</p>
+                  <p className="mt-1 text-[10.5px] leading-snug text-mocha">
+                    You don’t see their chat messages on any leaderboard.
+                  </p>
+                  <ul className="mt-2.5 divide-y divide-espresso/[0.07]">
+                    {blocked.map((b) => (
+                      <li key={b.user_id} className="flex items-center justify-between gap-3 py-2">
+                        <span className="truncate text-[13.5px] font-semibold text-espresso">{b.name}</span>
+                        <button
+                          onClick={() => void unblock(b.user_id)}
+                          className="min-h-[44px] shrink-0 rounded-full bg-espresso/[0.05] px-4 text-[11px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
+                        >
+                          unblock
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Bezel>
+            )}
+
             {notice && <p className="rise-in pt-3 text-center text-[12px] font-medium text-rimon">{notice}</p>}
 
             {/* extras */}
@@ -307,8 +358,7 @@ export function Account() {
               </button>
               <p className="max-w-[290px] text-center text-[10px] leading-snug text-mocha">
                 Signing out keeps your local streaks on this device; your league account stays safe
-                on the server — sign back in any time with your email and password, Apple, Google,
-                or your friend code.
+                on the server — sign back in any time with {signInWaysCopy}.
               </p>
 
               {/* permanent deletion — inline two-step confirm */}

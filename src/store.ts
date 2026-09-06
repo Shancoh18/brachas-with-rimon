@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
 import type { AfterBracha } from './data/foods';
-import type { NusachId } from './data/texts';
+import { NUSACHIM, type NusachId } from './data/texts';
 import { addPoints, badges, EMPTY_PROGRESS, recordAfterBrachos, recordMeal, todayStamp, type ProgressState } from './lib/progress';
 import { AFTER_BRACHA_KEYS, EMPTY_DAY, POINTS_PER_AFTER_BRACHA, POINTS_PER_BRACHA, settleChallenges, type DayStats } from './lib/dailyChallenges';
 import type { LeagueRow } from './lib/api';
@@ -168,6 +168,143 @@ interface BrachaState {
 
   reset: () => void;
 }
+
+// ------------------------------------------------ persisted-state sanitizer
+// localStorage is user-writable and survives every app version: a field that
+// was an array in build 20 may be null, a string, or missing in what build 30
+// reads back. Every persisted slice is rebuilt field-by-field here — a bad
+// field falls back to its default, the rest of the state survives, and the
+// app NEVER throws on garbage (a throw during hydrate is a white screen).
+const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
+const num = (x: unknown, d = 0): number => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : d);
+const str = (x: unknown, d = ''): string => (typeof x === 'string' ? x : d);
+const strOrNull = (x: unknown): string | null => (typeof x === 'string' && x.length > 0 ? x : null);
+const strArr = (x: unknown): string[] => (Array.isArray(x) ? x.filter((v): v is string => typeof v === 'string') : []);
+const numRecord = (x: unknown): Record<string, number> => {
+  const out: Record<string, number> = {};
+  if (isObj(x)) for (const [k, v] of Object.entries(x)) if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+  return out;
+};
+
+const sanitizeProgress = (x: unknown): ProgressState => {
+  if (!isObj(x)) return EMPTY_PROGRESS;
+  const history = Array.isArray(x.history)
+    ? x.history
+        .filter((h): h is Record<string, unknown> => isObj(h) && typeof h.day === 'string')
+        .map((h) => ({ day: h.day as string, brachos: num(h.brachos), ...(typeof h.points === 'number' ? { points: num(h.points) } : {}) }))
+    : [];
+  return {
+    totalBrachos: num(x.totalBrachos),
+    byBracha: numRecord(x.byBracha),
+    mealsCompleted: num(x.mealsCompleted),
+    sevenSpeciesBlessed: num(x.sevenSpeciesBlessed),
+    streakCurrent: num(x.streakCurrent),
+    streakBest: num(x.streakBest),
+    lastActiveDay: strOrNull(x.lastActiveDay),
+    history,
+    lessonsRead: strArr(x.lessonsRead),
+    points: num(x.points),
+  };
+};
+
+const sanitizeDayStats = (x: unknown): DayStats => {
+  const blank = EMPTY_DAY(todayStamp());
+  if (!isObj(x) || typeof x.day !== 'string') return blank;
+  return {
+    day: x.day,
+    brachos: num(x.brachos),
+    byBracha: numRecord(x.byBracha),
+    foodKeys: strArr(x.foodKeys),
+    mealsWithAfter: num(x.mealsWithAfter),
+    photoFlows: num(x.photoFlows),
+    lessonsRead: num(x.lessonsRead),
+    challengesDone: strArr(x.challengesDone),
+  };
+};
+
+const sanitizePendingAfter = (x: unknown): PendingAfter | null => {
+  if (!isObj(x) || !Array.isArray(x.items) || typeof x.savedAt !== 'number') return null;
+  const items = x.items.filter(
+    (i): i is PendingAfterItem => isObj(i) && typeof i.id === 'string' && typeof i.label === 'string' && typeof i.achrona === 'string',
+  );
+  return items.length ? { items, savedAt: x.savedAt } : null;
+};
+
+const sanitizeReminders = (x: unknown): ReminderSettings => {
+  const d: ReminderSettings = { enabled: false, times: ['08:00', '13:00', '19:00'] };
+  if (!isObj(x)) return d;
+  const times = strArr(x.times).filter((t) => /^\d{2}:\d{2}$/.test(t));
+  return {
+    enabled: x.enabled === true,
+    times: times.length ? times : d.times,
+    ...(typeof x.configured === 'boolean' ? { configured: x.configured } : {}),
+  };
+};
+
+/** a cached reading is only worth keeping with its name + text arrays intact */
+const sanitizeParsha = (x: unknown): ParshaReading | null => {
+  if (!isObj(x) || typeof x.parsha !== 'string' || !Array.isArray(x.hebrew) || !Array.isArray(x.english)) return null;
+  return {
+    parsha: x.parsha,
+    aliyahNumber: num(x.aliyahNumber, 1),
+    aliyahName: str(x.aliyahName),
+    ref: str(x.ref),
+    hebrew: strArr(x.hebrew),
+    english: strArr(x.english),
+    license: str(x.license, 'via Sefaria'),
+    fetchedDay: str(x.fetchedDay),
+    ...(x.holiday === true ? { holiday: true } : {}),
+    ...(typeof x.takeawayParsha === 'string' ? { takeawayParsha: x.takeawayParsha } : {}),
+  };
+};
+
+/** shape check only — Learn re-validates content (URL, length, refusal text)
+ *  every time a thought arrives from the server */
+const sanitizeThought = (x: unknown): import('./lib/api').DailyThought | null => {
+  if (!isObj(x)) return null;
+  for (const k of ['dateKey', 'title', 'dayLabel', 'digest', 'url']) if (typeof x[k] !== 'string') return null;
+  return {
+    dateKey: x.dateKey as string,
+    title: x.title as string,
+    dayLabel: x.dayLabel as string,
+    digest: x.digest as string,
+    url: x.url as string,
+    fetched: num(x.fetched),
+    ...(typeof x.fresh === 'boolean' ? { fresh: x.fresh } : {}),
+  };
+};
+
+const sanitizeLessons = (x: unknown): Lesson[] =>
+  Array.isArray(x)
+    ? x.filter((l): l is Lesson => isObj(l) && typeof l.id === 'string' && typeof l.title === 'string' && Array.isArray(l.body))
+    : [];
+
+const oneOf = <T extends string>(x: unknown, allowed: readonly T[], d: T): T =>
+  typeof x === 'string' && (allowed as readonly string[]).includes(x) ? (x as T) : d;
+
+/** Rebuild the persisted slice from whatever is on disk. Returns the full
+ *  partialize() shape, so a missing or broken field lands on its default. */
+const sanitizePersisted = (raw: unknown) => {
+  const s = isObj(raw) ? raw : {};
+  return {
+    nusach: oneOf(s.nusach, Object.keys(NUSACHIM), 'ari') as NusachId,
+    textMode: oneOf<TextMode>(s.textMode, ['hebrew', 'translit', 'english'], 'hebrew'),
+    appearance: oneOf<import('./lib/theme').Appearance>(s.appearance, ['light', 'dark', 'system'], 'light'),
+    progress: sanitizeProgress(s.progress),
+    dayStats: sanitizeDayStats(s.dayStats),
+    pendingAfter: sanitizePendingAfter(s.pendingAfter),
+    reminders: sanitizeReminders(s.reminders),
+    displayName: str(s.displayName),
+    serverToken: strOrNull(s.serverToken),
+    friendCode: strOrNull(s.friendCode),
+    userEmail: strOrNull(s.userEmail),
+    starredLessons: strArr(s.starredLessons),
+    remoteLessons: sanitizeLessons(s.remoteLessons),
+    parsha: sanitizeParsha(s.parsha),
+    dailyThought: sanitizeThought(s.dailyThought),
+    onboarded: s.onboarded === true,
+  };
+};
 
 export const useBracha = create<BrachaState>()(
   persist(
@@ -425,6 +562,18 @@ export const useBracha = create<BrachaState>()(
     }),
     {
       name: 'brachas-with-rimon',
+      // v2 (2026-09): every persisted field is rebuilt through the sanitizer.
+      // migrate runs once for pre-versioned stores; merge runs on EVERY
+      // hydrate so a field corrupted after the bump still can't crash boot.
+      version: 2,
+      migrate: (raw) => sanitizePersisted(raw),
+      merge: (raw, current) => {
+        try {
+          return { ...current, ...sanitizePersisted(raw) };
+        } catch {
+          return current; // garbage beyond repair → fresh defaults, never a throw
+        }
+      },
       partialize: (s) => ({
         nusach: s.nusach,
         textMode: s.textMode,

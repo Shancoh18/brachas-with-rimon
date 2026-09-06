@@ -15,21 +15,73 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LESSONS, type Lesson } from '../data/learn';
 import { takeawayFor } from '../data/parshaTakeaways';
-import { apiDailyThought, apiLessons } from '../lib/api';
+import { apiDailyThought, apiLessons, type DailyThought } from '../lib/api';
 import { fetchDailyParsha, parshaIsFresh } from '../lib/parsha';
+import { todayStamp } from '../lib/progress';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
-/** date-seeded deterministic rotation */
+/** ordinal of a LOCAL YYYY-MM-DD day — the same calendar day everywhere,
+ *  unlike Date.now()/86400000 which flips at UTC midnight (a 7pm New York
+ *  reader saw tomorrow's shelf) */
+const dayOrdinal = (key: string): number => {
+  const [y, m, d] = key.split('-').map(Number);
+  return Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+};
+
+/** date-seeded deterministic rotation, keyed to the local day */
 const dailyPick = (pool: Lesson[], count: number): Set<string> => {
-  const day = Math.floor(Date.now() / 86_400_000);
+  const day = dayOrdinal(todayStamp());
   const picked = new Set<string>();
   for (let i = 0; i < Math.min(count, pool.length); i++) {
     picked.add(pool[(day * 7 + i * 3) % pool.length].id);
   }
   return picked;
 };
+
+// ------------------------------------------------------- Daily Thought guards
+// Incident 2026-09: the server's digest once shipped literal <cite> markup
+// copied from the search tool, and on blocked days the model's "digest" was a
+// note about not reaching chabad.org. The server now guards its own output
+// (server/content-guard.mjs); this is the client's belt to that suspender —
+// a thought that fails here is never stored, and the last good one stands.
+const REFUSAL_RE = /<cite\b|<\/?[a-z]|could not|unable to (access|reach|find|retrieve)|cannot (access|reach)|as an ai|i don.t know what/i;
+
+const isDailyThought = (x: unknown): x is DailyThought => {
+  if (!x || typeof x !== 'object') return false;
+  const t = x as Record<string, unknown>;
+  for (const k of ['dateKey', 'title', 'dayLabel', 'digest', 'url']) if (typeof t[k] !== 'string') return false;
+  let u: URL;
+  try {
+    u = new URL(t.url as string);
+  } catch {
+    return false;
+  }
+  if (u.hostname.replace(/^www\./, '') !== 'chabad.org' || !/dailywisdom/i.test(u.pathname)) return false;
+  const digest = t.digest as string;
+  if (digest.length < 300) return false;
+  return !REFUSAL_RE.test(digest) && !REFUSAL_RE.test(t.title as string);
+};
+
+/** Render-time cleanup for a digest already in the store (cached before the
+ *  guards existed): keep the words inside <cite …>…</cite>, drop every other
+ *  tag, decode the handful of entities a web page leaves behind. */
+const cleanDigest = (s: string): string =>
+  s
+    .replace(/<\/?cite\b[^>]*>/gi, '')
+    .replace(/<[^>\n]{1,200}>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+
+/** whole days from the thought's (US-East) dateKey to the LOCAL today; a
+ *  clock a few hours ahead of the server reads as 0, never negative */
+const thoughtAgeDays = (dateKey: string): number =>
+  Math.max(0, dayOrdinal(todayStamp()) - dayOrdinal(dateKey));
 
 function Star({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
@@ -71,14 +123,25 @@ export function Learn() {
       .then((r) => Array.isArray(r.lessons) && setRemoteLessons(r.lessons))
       .catch(() => undefined); // offline → cached copy stands
     // today's Daily Wisdom digest — the cached one stands until a fresher
-    // one arrives (offline or server-warming both leave it untouched)
+    // one arrives (offline, server-warming, or a thought that fails the
+    // content guard all leave it untouched)
     apiDailyThought()
       .then((r) => {
-        if (r.thought && r.thought.dateKey !== dailyThought?.dateKey) setDailyThought(r.thought);
+        if (!isDailyThought(r.thought)) return;
+        if (dailyThought && r.thought.dateKey < dailyThought.dateKey) return; // never regress
+        setDailyThought({ ...r.thought, fresh: r.fresh });
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // STALE RULE: the server caches one thought per US-East day; if it has
+  // failed to refresh for a while the card must not keep presenting an old
+  // lesson as "today's". 1–2 days old → shown honestly as "from {day}";
+  // 3+ days → the card leaves entirely (library + parsha still show).
+  const thoughtAge = dailyThought ? thoughtAgeDays(dailyThought.dateKey) : 0;
+  const showThoughtCard = !!dailyThought && Number.isFinite(thoughtAge) && thoughtAge < 3;
+  const thoughtIsOld = showThoughtCard && thoughtAge >= 1;
 
   const library = useMemo(() => {
     const byId = new Map<string, Lesson>();
@@ -150,7 +213,7 @@ export function Learn() {
   // ------------------------------------------------- Daily Thought reader
   // A full reader view, same pattern as the parsha reader below — the card on
   // the main screen is a compact click-through (owner direction 2026-08-11).
-  if (showThought && dailyThought) {
+  if (showThought && dailyThought && showThoughtCard) {
     return (
       <ScreenShell>
         <div className="pb-24" data-daily-thought-reader>
@@ -162,7 +225,7 @@ export function Learn() {
           </button>
           <header className="rise-in flex items-start justify-between gap-3 pb-6">
             <div className="space-y-3">
-              <Eyebrow>💭 Daily thought · {dailyThought.dayLabel}</Eyebrow>
+              <Eyebrow>💭 {thoughtIsOld ? 'Thought from' : 'Daily thought ·'} {dailyThought.dayLabel}</Eyebrow>
               <h2 className="font-display text-[30px] font-bold leading-tight text-espresso">
                 {dailyThought.title}
               </h2>
@@ -170,7 +233,7 @@ export function Learn() {
             <Rimon pose="teaching" size={76} className="shrink-0" />
           </header>
           <div className="rise-in rise-in-1 space-y-5">
-            {dailyThought.digest.split(/\n{2,}/).map((p, i) => (
+            {cleanDigest(dailyThought.digest).split(/\n{2,}/).map((p, i) => (
               <p key={i} className="text-[14.5px] leading-[1.75] text-espresso-soft">
                 {p}
               </p>
@@ -200,7 +263,8 @@ export function Learn() {
 
   // ------------------------------------------------------- Parsha reader
   if (showParsha && parsha) {
-    const takeaway = takeawayFor(parsha.parsha);
+    // Yom Tov week: the takeaway teaches from the NEXT regular parsha
+    const takeaway = takeawayFor(parsha.takeawayParsha ?? parsha.parsha);
     return (
       <ScreenShell wide>
         <div className="pb-24">
@@ -212,13 +276,19 @@ export function Learn() {
           </button>
           <header className="rise-in flex items-start justify-between gap-3 pb-6">
             <div className="space-y-3">
+              {/* a holiday reading isn't "1 of 7" of anything — the aliyah-a-day
+                  framing only fits the weekly parsha */}
               <Eyebrow>
-                📜 Daily Torah · {parsha.aliyahName} ({parsha.aliyahNumber} of 7)
+                {parsha.holiday
+                  ? `📜 Yom Tov reading · ${parsha.aliyahName}`
+                  : `📜 Daily Torah · ${parsha.aliyahName} (${parsha.aliyahNumber} of 7)`}
               </Eyebrow>
               <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
                 {parsha.parsha}
               </h2>
-              <p className="text-[12px] text-mocha">{parsha.ref} — today’s portion of the weekly parsha</p>
+              <p className="text-[12px] text-mocha">
+                {parsha.ref} — {parsha.holiday ? 'the Torah reading for this Shabbat' : 'today’s portion of the weekly parsha'}
+              </p>
             </div>
             <Rimon pose="teaching" size={76} className="shrink-0" />
           </header>
@@ -238,7 +308,7 @@ export function Learn() {
               ))}
             </div>
             <p className="mt-6 border-t border-espresso/[0.07] pt-4 text-[10.5px] italic text-mocha">
-              Torah text: {parsha.license}. One aliyah a day — by Shabbat you’ve met the whole parsha.
+              Torah text: {parsha.license}.{parsha.holiday ? '' : ' One aliyah a day — by Shabbat you’ve met the whole parsha.'}
             </p>
           </Bezel>
 
@@ -364,9 +434,10 @@ export function Learn() {
             string, not a CSS line-clamp: WKWebView draws -webkit-line-clamp's
             ellipsis but keeps the box at full text height (owner screenshot
             2026-08-11 — a screen-tall empty card), so no clamping here. */}
-        {dailyThought && (
+        {dailyThought && showThoughtCard && (
           <button
             data-daily-thought
+            data-thought-age={thoughtAge}
             onClick={() => setShowThought(true)}
             className="mb-4 w-full text-left"
           >
@@ -374,16 +445,16 @@ export function Learn() {
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-gold">
-                    💭 Daily thought · {dailyThought.dayLabel}
+                    💭 {thoughtIsOld ? 'Thought from' : 'Daily thought ·'} {dailyThought.dayLabel}
                   </p>
                   <p className="mt-1 font-display text-[19px] font-bold text-espresso">
                     {dailyThought.title}
                   </p>
                   <p className="mt-1 text-[12px] leading-relaxed text-espresso-soft">
-                    {dailyThought.digest.replace(/\s+/g, ' ').slice(0, 120).trimEnd()}…
+                    {cleanDigest(dailyThought.digest).replace(/\s+/g, ' ').slice(0, 120).trimEnd()}…
                   </p>
                   <p className="mt-1.5 text-[10px] font-bold uppercase tracking-wider text-gold">
-                    read today's thought →
+                    {thoughtIsOld ? 'read the latest thought →' : "read today's thought →"}
                   </p>
                 </div>
                 <span className="shrink-0 text-[18px] text-mocha/50" aria-hidden>
@@ -396,16 +467,16 @@ export function Learn() {
 
         {/* daily Parsha — refreshed every day, one aliyah at a time */}
         {parsha && (
-          <button onClick={() => setShowParsha(true)} className="mb-6 w-full text-left">
+          <button data-daily-torah onClick={() => setShowParsha(true)} className="mb-6 w-full text-left">
             <Bezel className="rise-in" innerClassName="px-5 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-[9.5px] font-bold uppercase tracking-[0.22em] text-rimon">
-                    📜 Daily Torah — {parsha.aliyahName}
+                    {parsha.holiday ? `📜 Yom Tov reading · ${parsha.aliyahName}` : `📜 Daily Torah — ${parsha.aliyahName}`}
                   </p>
                   <p className="mt-1 font-display text-[19px] font-bold text-espresso">{parsha.parsha}</p>
                   <p className="mt-0.5 text-[11.5px] text-mocha">
-                    {parsha.ref} · today’s slice of the weekly parsha
+                    {parsha.ref} · {parsha.holiday ? 'this Shabbat’s Torah reading' : 'today’s slice of the weekly parsha'}
                   </p>
                 </div>
                 <span className="hebrew shrink-0 text-[26px] text-gold" dir="rtl" lang="he">

@@ -17,6 +17,7 @@
  */
 import { createPrivateKey, sign } from 'crypto';
 import { connect } from 'http2';
+import { mark, fail } from './status.mjs';
 
 const KEY_PEM = (process.env.APNS_KEY || '').replace(/\\n/g, '\n').trim();
 const KEY_ID = (process.env.APNS_KEY_ID || '').trim();
@@ -53,6 +54,21 @@ const providerToken = () => {
  * Callers should clear the stored token when `gone` is true (device
  * unregistered / token invalid) — mirrors Web Push 404/410 handling.
  */
+// One long-lived HTTP/2 session, reused across sends (Apple's recommended
+// pattern). A fresh TLS+H2 handshake per push melts down at a shared mealtime
+// minute — thousands of subscribers means thousands of simultaneous connects.
+// Apple idle-closes with GOAWAY; the close/error handlers drop the cached
+// session so the next send transparently reconnects.
+let sharedSession = null;
+const getSession = () => {
+  if (sharedSession && !sharedSession.closed && !sharedSession.destroyed) return sharedSession;
+  const s = connect(HOST);
+  s.on('error', () => { if (sharedSession === s) sharedSession = null; try { s.destroy(); } catch {} });
+  s.on('close', () => { if (sharedSession === s) sharedSession = null; });
+  sharedSession = s;
+  return s;
+};
+
 export const sendApns = (deviceToken, title, body) =>
   new Promise((resolve) => {
     if (!key) return resolve({ ok: false, status: 0, reason: 'not_configured' });
@@ -60,23 +76,46 @@ export const sendApns = (deviceToken, title, body) =>
     const done = (r) => {
       if (!settled) {
         settled = true;
-        try { session.close(); } catch {}
         resolve(r);
       }
     };
-    const session = connect(HOST);
-    session.on('error', (e) => done({ ok: false, status: 0, reason: String(e.message).slice(0, 120) }));
-    const timer = setTimeout(() => done({ ok: false, status: 0, reason: 'timeout' }), 6000);
+    // Session-level errors surface on the request stream too, so no per-send
+    // session listener (that would leak one listener + closure per push).
+    const timer = setTimeout(() => {
+      fail('apns', 0, 'send', 'timeout');
+      done({ ok: false, status: 0, reason: 'timeout' });
+    }, 6000);
     timer.unref?.();
-    const req = session.request({
-      ':method': 'POST',
-      ':path': `/3/device/${deviceToken}`,
-      authorization: `bearer ${providerToken()}`,
-      'apns-topic': TOPIC,
-      'apns-push-type': 'alert',
-      'apns-priority': '10',
-      'apns-expiration': String(Math.floor(Date.now() / 1000) + 6 * 3600),
-    });
+    let req;
+    try {
+      req = getSession().request({
+        ':method': 'POST',
+        ':path': `/3/device/${deviceToken}`,
+        authorization: `bearer ${providerToken()}`,
+        'apns-topic': TOPIC,
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+        'apns-expiration': String(Math.floor(Date.now() / 1000) + 6 * 3600),
+      });
+    } catch (e) {
+      // session died between the liveness check and request() — drop the cache
+      // (close handler does it too) and retry once on a fresh session
+      sharedSession = null;
+      try {
+        req = getSession().request({
+          ':method': 'POST',
+          ':path': `/3/device/${deviceToken}`,
+          authorization: `bearer ${providerToken()}`,
+          'apns-topic': TOPIC,
+          'apns-push-type': 'alert',
+          'apns-priority': '10',
+          'apns-expiration': String(Math.floor(Date.now() / 1000) + 6 * 3600),
+        });
+      } catch (e2) {
+        clearTimeout(timer);
+        return done({ ok: false, status: 0, reason: String(e2.message).slice(0, 120) });
+      }
+    }
     let status = 0;
     let data = '';
     req.on('response', (h) => { status = h[':status'] ?? 0; });
@@ -85,6 +124,10 @@ export const sendApns = (deviceToken, title, body) =>
       clearTimeout(timer);
       let reason = '';
       try { reason = JSON.parse(data).reason ?? ''; } catch {}
+      // /api/status watches the consecutive-failure count. A 410 is the
+      // DEVICE being gone, not Apple refusing us, so it counts as healthy.
+      if (status < 400 || status === 410) mark('apns', { ok: true, status });
+      else fail('apns', status, 'send', reason);
       done({
         ok: status === 200,
         status,
@@ -92,6 +135,10 @@ export const sendApns = (deviceToken, title, body) =>
         gone: status === 410 || reason === 'BadDeviceToken' || reason === 'Unregistered' || reason === 'DeviceTokenNotForTopic',
       });
     });
-    req.on('error', (e) => { clearTimeout(timer); done({ ok: false, status: 0, reason: String(e.message).slice(0, 120) }); });
+    req.on('error', (e) => {
+      clearTimeout(timer);
+      fail('apns', 0, 'send', e.message);
+      done({ ok: false, status: 0, reason: String(e.message).slice(0, 120) });
+    });
     req.end(JSON.stringify({ aps: { alert: { title, body }, sound: 'default' } }));
   });

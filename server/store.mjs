@@ -119,7 +119,43 @@ export const setApns = (id, token) => {
   if (token) db.prepare('UPDATE users SET apns = NULL WHERE apns = ? AND id <> ?').run(token, id);
   db.prepare('UPDATE users SET apns = ? WHERE id = ?').run(token || null, id);
 };
-export const deleteUser = (id) => db.prepare('DELETE FROM users WHERE id = ?').run(id); // cascades
+/** Full account deletion. Boards the leaver OWNS are handed to their
+ *  earliest-joined remaining member first (a shared league must never vanish
+ *  because one person closed their account — the owner_id FK cascade would
+ *  take the board, its chat and its results with it); a board with nobody
+ *  else in it is deleted. Then the user row goes, cascading tokens,
+ *  friendships, memberships, messages, reads and blocks. One transaction. */
+export function deleteUser(id) {
+  db.exec('BEGIN');
+  try {
+    for (const b of db.prepare('SELECT id FROM boards WHERE owner_id = ?').all(id)) {
+      const heir = db
+        .prepare('SELECT user_id FROM board_members WHERE board_id = ? AND user_id <> ? ORDER BY joined ASC, user_id ASC LIMIT 1')
+        .get(b.id, id);
+      if (heir) {
+        db.prepare('UPDATE boards SET owner_id = ? WHERE id = ?').run(heir.user_id, b.id);
+        db.prepare('DELETE FROM board_members WHERE board_id = ? AND user_id = ?').run(b.id, id);
+      } else db.prepare('DELETE FROM boards WHERE id = ?').run(b.id);
+    }
+    const r = db.prepare('DELETE FROM users WHERE id = ?').run(id); // cascades the rest
+    db.exec('COMMIT');
+    return r;
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+}
+/** Accounts the test suites create (e2e, store demo, scenario "Test Friend") —
+ *  the admin prune route deletes exactly these, nothing else. */
+export const testAccountIds = () =>
+  db
+    .prepare(
+      `SELECT id FROM users
+        WHERE email LIKE 'e2e-%@example.com' OR email LIKE 'store-demo-%@example.com'
+           OR (name = 'Test Friend' AND email IS NULL)`,
+    )
+    .all()
+    .map((r) => r.id);
 
 // ----------------------------------------------------------------- friends
 export function addFriend(aId, bId) {
@@ -299,16 +335,23 @@ export function addBoardMessage(boardId, userId, text) {
   return { id, created };
 }
 
-/** Messages after `since`, oldest first, with sender names resolved. */
-export const boardMessages = (boardId, since = 0, limit = 100) =>
+/** Messages after `since`, oldest first, with sender names resolved. Senders
+ *  the VIEWER has blocked are filtered here, server-side, so a blocked person
+ *  never reaches the client at all (App Review 1.2 — the block must be real,
+ *  not a client-side hide). */
+export const boardMessages = (boardId, since = 0, limit = 100, viewerId = null) =>
   db
     .prepare(
       `SELECT m.id, m.user_id, m.text, m.created, u.name
          FROM board_messages m JOIN users u ON u.id = m.user_id
         WHERE m.board_id = ? AND m.created > ?
+          AND NOT EXISTS (SELECT 1 FROM board_blocks k WHERE k.blocker_id = ? AND k.blocked_id = m.user_id)
         ORDER BY m.created ASC, m.id ASC LIMIT ?`,
     )
-    .all(boardId, since, limit);
+    .all(boardId, since, viewerId ?? '', limit);
+/** One message, for the report route (null when it's gone or on another board). */
+export const boardMessage = (boardId, messageId) =>
+  db.prepare('SELECT id, board_id, user_id, text, created FROM board_messages WHERE id = ? AND board_id = ?').get(messageId, boardId) ?? null;
 
 /** When this member last read the board (0 if never) — lets the notifier skip
  *  pushing to someone who's actively looking at the chat right now. */
@@ -323,15 +366,55 @@ export const markBoardRead = (boardId, userId, ts) =>
     )
     .run(boardId, userId, ts);
 
-/** Unread messages from OTHERS since this member's read cursor. */
+/** Unread messages from OTHERS since this member's read cursor — blocked
+ *  senders excluded, or a block would leave a badge that never matches the room. */
 export const boardUnread = (boardId, userId) =>
   db
     .prepare(
-      `SELECT COUNT(*) n FROM board_messages
-        WHERE board_id = ? AND user_id != ?
-          AND created > COALESCE((SELECT last_read FROM board_reads WHERE board_id = ? AND user_id = ?), 0)`,
+      `SELECT COUNT(*) n FROM board_messages m
+        WHERE m.board_id = ? AND m.user_id != ?
+          AND m.created > COALESCE((SELECT last_read FROM board_reads WHERE board_id = ? AND user_id = ?), 0)
+          AND NOT EXISTS (SELECT 1 FROM board_blocks k WHERE k.blocker_id = ? AND k.blocked_id = m.user_id)`,
     )
-    .get(boardId, userId, boardId, userId).n;
+    .get(boardId, userId, boardId, userId, userId).n;
+
+// ------------------------------------------------------- chat moderation
+// Blocks are per BLOCKER, global across boards (one tap silences a person
+// everywhere, which is what a user expects from "block"). Reports are stored
+// for the operator; nothing here auto-punishes — a human reviews.
+export const blockUser = (blockerId, blockedId) =>
+  db.prepare('INSERT OR IGNORE INTO board_blocks (blocker_id,blocked_id,created) VALUES (?,?,?)').run(blockerId, blockedId, Date.now());
+export const unblockUser = (blockerId, blockedId) =>
+  db.prepare('DELETE FROM board_blocks WHERE blocker_id = ? AND blocked_id = ?').run(blockerId, blockedId);
+export const blockedIds = (blockerId) =>
+  db.prepare('SELECT blocked_id FROM board_blocks WHERE blocker_id = ?').all(blockerId).map((r) => r.blocked_id);
+/** Everyone who has blocked `userId` — lets the chat notifier skip them in one query. */
+export const blockersOf = (userId) =>
+  db.prepare('SELECT blocker_id FROM board_blocks WHERE blocked_id = ?').all(userId).map((r) => r.blocker_id);
+export const blockedUsers = (blockerId) =>
+  db
+    .prepare(
+      `SELECT k.blocked_id AS user_id, u.name FROM board_blocks k JOIN users u ON u.id = k.blocked_id
+        WHERE k.blocker_id = ? ORDER BY k.created DESC`,
+    )
+    .all(blockerId);
+
+export function addReport({ boardId, messageId, reporterId, reportedUserId, text, reason }) {
+  const id = newId();
+  db.prepare(
+    `INSERT INTO reports (id,board_id,message_id,reporter_id,reported_user_id,text,reason,created,status)
+     VALUES (?,?,?,?,?,?,?,?,'open')`,
+  ).run(id, boardId, messageId, reporterId, reportedUserId, String(text).slice(0, 400), String(reason).slice(0, 200), Date.now());
+  return id;
+}
+export const openReports = (limit = 200) =>
+  db.prepare("SELECT * FROM reports WHERE status = 'open' ORDER BY created DESC LIMIT ?").all(limit);
+export const openReportCount = () => db.prepare("SELECT COUNT(*) n FROM reports WHERE status = 'open'").get().n;
+export const resolveReport = (id) =>
+  db.prepare("UPDATE reports SET status = 'resolved' WHERE id = ? AND status = 'open'").run(String(id)).changes;
+/** Reports filed by one user since `since` — the 10-per-10-min flood cap. */
+export const reportCountSince = (userId, since) =>
+  db.prepare('SELECT COUNT(*) n FROM reports WHERE reporter_id = ? AND created > ?').get(userId, since).n;
 
 // ----------------------------------------------------------- learned foods
 export const allLearned = () =>

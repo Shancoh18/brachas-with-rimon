@@ -11,8 +11,11 @@ const check = (name, ok, detail = '') => {
   if (!ok) failures++;
 };
 
+const API = 'https://brachas-rimon-api-production-46ae.up.railway.app';
+
 const browser = await puppeteer.launch({
-  executablePath: 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  // CHROME_PATH lets the suite run from a box whose Chrome lives elsewhere (CI, a laptop)
+  executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   headless: true,
   args: ['--no-sandbox', '--disable-gpu', '--autoplay-policy=no-user-gesture-required'],
 });
@@ -65,13 +68,19 @@ await clickText('continue to sign-in', 1200);
 t = await text();
 check('auth gate blocks the app until sign-in', t.includes('sign in to begin'));
 const e2eEmail = 'e2e-' + Math.floor(Math.random() * 1e9) + '@example.com';
-const E2E_PASS = 'e2e-pass-12345';
+// a fresh password per run — the repo is public, a fixed one would be a
+// known credential for every e2e account the teardown ever failed to delete
+const E2E_PASS = 'e2e-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
 await page.type('input[placeholder="you@example.com"]', e2eEmail);
 await page.type('input[placeholder="8+ characters"]', E2E_PASS);
 await clickText('Create my account', 2600);
 t = await text();
 check('account created at the gate - app unlocked', t.includes('brachas with rimon') && !t.includes('sign in to begin'));
+// the gate account's session token, for the teardown at the very end (the
+// suite signs out before it finishes, so it can't be read from the page then)
+const readToken = () => page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon') || '{}')?.state?.serverToken ?? null).catch(() => null);
+let gateToken = await readToken();
 
 // ---------------------------------------------------------------- WELCOME
 t = await text();
@@ -587,23 +596,42 @@ check('starring pins a lesson', t.includes('starred'));
 // Server-cached chabad.org digest; the card renders only once the server has
 // one (first fetch after deploy may still be warming — assert accordingly).
 {
-  const dt = await fetch('https://brachas-rimon-api-production-46ae.up.railway.app/api/daily-thought').then((r) => r.json()).catch(() => null);
+  const dt = await fetch(`${API}/api/daily-thought`).then((r) => r.json()).catch(() => null);
   if (dt?.thought) {
+    // content guard (incident 2026-09): the digest once carried literal <cite>
+    // markup and, on blocked days, the model's note about not reaching the site
+    const digest = String(dt.thought.digest ?? '');
+    check('daily-thought digest carries no markup (<)', !digest.includes('<'), digest.match(/<[^>]{0,40}/)?.[0] ?? '');
+    check('daily-thought digest is not a model refusal', !/could not|unable to/i.test(digest), digest.match(/.{0,30}(could not|unable to).{0,30}/i)?.[0] ?? '');
+    check('daily-thought url is a chabad.org Daily Wisdom page', /chabad\.org/.test(dt.thought.url ?? '') && /dailywisdom/i.test(dt.thought.url ?? ''), dt.thought.url);
+    // whole LOCAL calendar days between the thought's dateKey and today — the
+    // same arithmetic the Learn card uses for its stale rule (browser and
+    // this script share the machine clock)
+    const ordinal = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+    const now = new Date();
+    const [ty, tm, td] = String(dt.thought.dateKey ?? '').split('-').map(Number);
+    const thoughtAge = ordinal(now.getFullYear(), now.getMonth() + 1, now.getDate()) - ordinal(ty, tm, td);
+    check('daily-thought dateKey is within 2 days of today', Number.isFinite(thoughtAge) && thoughtAge >= -1 && thoughtAge <= 2, `${dt.thought.dateKey} (${thoughtAge}d old)`);
+    // the card hides itself once a thought is 3+ days old (stale rule) — only
+    // expect it on screen while the server's copy is current enough to show
+    const expectCard = Number.isFinite(thoughtAge) && thoughtAge < 3;
     let up = false;
     for (let i = 0; i < 16 && !up; i++) {
       up = await page.evaluate(() => !!document.querySelector('[data-daily-thought]'));
       if (!up) await sleep(500);
     }
-    check('daily thought card renders above the parsha card', up);
+    check(expectCard ? 'daily thought card renders above the parsha card' : 'daily thought card hidden (server copy 3+ days old — stale rule)', up === expectCard);
     if (up) {
       check(
         'daily thought sits ABOVE the daily parsha card',
         await page.evaluate(() => {
           const thought = document.querySelector('[data-daily-thought]');
-          const torah = [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Daily Torah'));
+          const torah = document.querySelector('[data-daily-torah]');
           return !!thought && (!torah || thought.getBoundingClientRect().top < torah.getBoundingClientRect().top);
         }),
       );
+      const eyebrow = await page.evaluate(() => document.querySelector('[data-daily-thought] p')?.innerText ?? '');
+      check('daily thought eyebrow never carries a raw "(on Shabbat)" calendar suffix', !!eyebrow && !eyebrow.includes('(on Shabbat)'), eyebrow);
       // the card is COMPACT (a WKWebView line-clamp bug once left it a full
       // screen of empty paper — owner screenshot 2026-08-11) …
       check(
@@ -640,16 +668,29 @@ check('starring pins a lesson', t.includes('starred'));
 {
   let cardUp = false;
   for (let i = 0; i < 24 && !cardUp; i++) {
-    cardUp = await page.evaluate(() => [...document.querySelectorAll('button')].some((b) => b.textContent.includes('Daily Torah')));
+    cardUp = await page.evaluate(() => !!document.querySelector('[data-daily-torah]'));
     if (!cardUp) await sleep(500);
   }
   check('daily parsha card renders (hebcal + sefaria feeds)', cardUp);
   if (cardUp) {
-    await page.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.textContent.includes('Daily Torah'))?.click());
+    // Yom Tov on Shabbat: Hebcal lists the holiday reading instead of the
+    // weekly parsha — the card must then drop the "weekly parsha" framing
+    const cardTxt = (await page.evaluate(() => document.querySelector('[data-daily-torah]')?.innerText ?? '')).toLowerCase();
+    const holidayWeek = cardTxt.includes('yom tov reading');
+    check(
+      holidayWeek ? 'Daily Torah card: holiday reading drops the "weekly parsha" copy' : 'Daily Torah card: weekly parsha copy + aliyah name',
+      holidayWeek ? !cardTxt.includes('weekly parsha') && !cardTxt.includes('(on shabbat)') : cardTxt.includes('daily torah') && cardTxt.includes('weekly parsha'),
+      cardTxt.replace(/\n/g, ' | '),
+    );
+    await page.evaluate(() => document.querySelector('[data-daily-torah]')?.click());
     await sleep(1000);
     t = await text();
     const parshaHe = await page.evaluate(() => document.querySelector('[lang="he"].hebrew')?.textContent?.length ?? 0);
-    check('parsha reader opens with hebrew text', parshaHe > 40 && t.includes('of 7'), `heLen=${parshaHe}`);
+    check(
+      'parsha reader opens with hebrew text',
+      parshaHe > 40 && (holidayWeek ? t.includes('yom tov reading') && !t.includes('of 7') : t.includes('of 7')),
+      `heLen=${parshaHe}${holidayWeek ? ' (holiday week)' : ''}`,
+    );
     const tk = await page.evaluate(() => {
       const el = document.querySelector('[data-parsha-takeaway]');
       if (!el) return { err: 'takeaway card missing' };
@@ -672,7 +713,7 @@ const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RI
 check('league membership from gate signup - friend code shows', !!codeMatch, codeMatch?.[0]);
 // Friend-add is CODE-ONLY (email adds were removed 2026-08-06 — a security fix).
 // Mint a real friend via the API to get a genuine RIMON code, then add by it.
-const friendReg = await fetch('https://brachas-rimon-api-production-46ae.up.railway.app/api/register', {
+const friendReg = await fetch(`${API}/api/register`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', Origin: 'https://shancoh18.github.io' },
   body: JSON.stringify({ name: 'Test Friend', password: `e2e-friend-${Date.now()}` }),
@@ -771,6 +812,30 @@ check(
     return !!chat && !!share && chat.getBoundingClientRect().left < share.getBoundingClientRect().left;
   }),
 );
+// Moderation (App Review 1.2): a message from SOMEONE ELSE must carry the ⋯
+// control. The Test Friend joins the board and posts via the API (best-effort:
+// if that can't land, the assertion is recorded as n/a rather than failed).
+let friendPosted = false;
+try {
+  const boardCode = (await page.evaluate(() => document.body.innerText)).match(/code ([A-Z0-9]{4,})/i)?.[1];
+  const joined = boardCode && friendReg.token
+    ? await fetch(`${API}/api/boards/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${friendReg.token}`, Origin: 'https://shancoh18.github.io' },
+        body: JSON.stringify({ code: boardCode }),
+      }).then((r) => (r.ok ? r.json() : null))
+    : null;
+  if (joined?.id) {
+    const sent = await fetch(`${API}/api/boards/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${friendReg.token}`, Origin: 'https://shancoh18.github.io' },
+      body: JSON.stringify({ board: joined.id, text: 'Shalom from Test Friend 👋' }),
+    });
+    friendPosted = sent.ok;
+  }
+} catch {
+  /* n/a below */
+}
 await clickText('💬 Chat', 1800);
 t = await text();
 check('group chat opens scoped to the board', (await page.evaluate(() => !!document.querySelector('[data-board-chat]'))) && t.includes('e2e chevra'));
@@ -778,6 +843,28 @@ await page.type('input[placeholder*="Message"]', 'Shalom from e2e! 🍎');
 await clickText('Send', 2000);
 t = await text();
 check('chat message sends and renders', t.includes('shalom from e2e'));
+check('chat carries the "Be kind" report/block line', t.includes('report or block anyone who is not'));
+if (friendPosted) {
+  const menuBtn = await page.evaluate(() => {
+    const b = document.querySelector('[data-board-chat] [data-message-menu]');
+    if (!b) return null;
+    const r = b.getBoundingClientRect();
+    return { w: Math.round(r.width), h: Math.round(r.height) };
+  });
+  check('⋯ control on another member’s message (44px tap target)', !!menuBtn && menuBtn.w >= 44 && menuBtn.h >= 44, JSON.stringify(menuBtn));
+  check('own messages carry NO ⋯ control', await page.evaluate(() => {
+    const own = [...document.querySelectorAll('[data-board-chat] .bg-rimon.text-cream')].filter((el) => el.textContent.includes('Shalom from e2e'));
+    return own.length > 0 && own.every((el) => !el.parentElement.querySelector('[data-message-menu]'));
+  }));
+  await page.evaluate(() => document.querySelector('[data-board-chat] [data-message-menu]')?.click());
+  await sleep(600);
+  t = await text();
+  check('⋯ opens Report / Block menu naming the sender', t.includes('report message') && t.includes('block test friend'));
+  await clickText('Cancel', 500);
+  check('menu cancels cleanly', await page.evaluate(() => !document.querySelector('[data-message-menu-sheet]')));
+} else {
+  check('⋯ control on another member’s message — n/a (no other-member message in this run)', true);
+}
 await clickText('close', 900);
 
 // ----------------------------------------------- TAB BAR PINNING (Journey)
@@ -911,6 +998,7 @@ await sleep(1200);
 t = await text();
 const restoredName = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => v.includes('E2E')) ?? '');
 check('email + password sign-in restores the account', t.includes('your account') && restoredName.includes('E2E Debug'), `name=${restoredName}`);
+gateToken = (await readToken()) || gateToken;
 
 // ------------------------------------------ SAVE-FOR-LATER after-blessings
 // second meal (one apple): guide → meal logs at guide-finish (crash safety) →
@@ -1005,6 +1093,25 @@ check(
 // ---------------------------------------------------------------- console errors
 const realErrors = errors.filter((e) => !e.includes('favicon') && !e.includes('Manifest'));
 check('no console/page errors', realErrors.length === 0, realErrors.slice(0, 3).join(' | '));
+
+// ---------------------------------------------------------------- TEARDOWN
+// Every run mints two live accounts (the gate account + "Test Friend"); delete
+// both so the production DB doesn't fill with e2e users and stale boards.
+// Cleanup is best-effort — it must never turn a green suite red.
+try {
+  const del = (token) =>
+    token
+      ? fetch(`${API}/api/account/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Origin: 'https://shancoh18.github.io' },
+        }).then((r) => r.status)
+      : Promise.resolve('no token');
+  gateToken = (await readToken()) || gateToken; // freshest session if still signed in
+  const [gateDel, friendDel] = await Promise.all([del(gateToken), del(friendReg?.token)]);
+  console.log(`teardown: gate account delete → ${gateDel}; Test Friend delete → ${friendDel}`);
+} catch (e) {
+  console.log(`teardown skipped: ${String(e?.message ?? e)}`);
+}
 
 await browser.close();
 console.log(failures === 0 ? '\nE2E: ALL PASS' : `\nE2E: ${failures} FAILURE(S)`);

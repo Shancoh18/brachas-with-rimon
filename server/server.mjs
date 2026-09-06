@@ -21,6 +21,8 @@ import { join } from 'path';
 import webpush from 'web-push';
 import { apnsReady, sendApns } from './apns.mjs';
 import { backupReady, runBackup } from './backup.mjs';
+import { buildStatus, statusKey, mark, fail } from './status.mjs';
+import { guardProse, guardLine, cleanProse } from './content-guard.mjs';
 import * as store from './store.mjs';
 
 const PORT = Number(process.env.PORT || 3300);
@@ -163,7 +165,13 @@ const standings = (me, scoredMembers) => {
 // ------------------------------------------------- abuse limits (in-memory)
 // Vision spend: per-account daily cap + global concurrency ceiling.
 const ANALYZE_MAX_PER_DAY = 30;
-const ANALYZE_MAX_INFLIGHT = 8;
+// 16 (was 8): a vision call is ~10-25s of mostly network wait, so eight in
+// flight meant a lunchtime burst of nine users saw "busy" on the ninth photo.
+const ANALYZE_MAX_INFLIGHT = 16;
+// Global daily ceiling across ALL accounts — hard-bounds worst-case Anthropic
+// spend on a viral day (per-user caps multiply with user count; this doesn't).
+const ANALYZE_GLOBAL_MAX_PER_DAY = Number(process.env.ANALYZE_GLOBAL_MAX_PER_DAY || 2000);
+let analyzeGlobal = { day: '', count: 0 };
 // Keyed by user id, NOT token: sign-in now mints a fresh token every time, so
 // a token-keyed cap would reset itself on every sign-in.
 const analyzeUse = new Map(); // user id -> {day, count}
@@ -184,12 +192,19 @@ const clientIp = (req) => {
     req.socket.remoteAddress || '?',
   ).slice(0, 64);
 };
+/** Drop entries whose window has lapsed. Used INSTEAD of Map.clear() on every
+ *  throttle map: a wholesale clear re-armed every attacker at once, and for
+ *  the vision counters it refunded everyone's daily quota mid-day. Values are
+ *  either {t0} records or a bare timestamp (pushStamp). */
+const evictExpired = (map, ttlMs, now = Date.now()) => {
+  for (const [k, v] of map) if (now - (v?.t0 ?? v) > ttlMs) map.delete(k);
+};
 const throttled = (req, max = 30) => {
   const ip = clientIp(req);
   const now = Date.now();
   const e = authHits.get(ip);
   if (!e || now - e.t0 > 600_000) {
-    if (authHits.size > 50_000) authHits.clear(); // spoofed keys can't grow it unbounded
+    if (authHits.size > 50_000) evictExpired(authHits, 600_000, now); // bounded without a reset
     authHits.set(ip, { t0: now, count: 1 });
     return false;
   }
@@ -203,17 +218,21 @@ const emailThrottled = (mail) => {
   const now = Date.now();
   const e = pwFails.get(mail);
   if (!e || now - e.t0 > 600_000) {
-    if (pwFails.size > 50_000) pwFails.clear();
+    if (pwFails.size > 50_000) evictExpired(pwFails, 600_000, now);
     pwFails.set(mail, { t0: now, count: 0 });
     return false;
   }
   return e.count >= 10;
 };
 const noteFail = (mail) => { const e = pwFails.get(mail); if (e) e.count++; };
+// Map hygiene sweep. Age-based only — never a wholesale clear (see evictExpired).
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of authHits) if (now - v.t0 > 600_000) authHits.delete(k);
-  if (analyzeUse.size > 10_000) analyzeUse.clear(); // daily counters, bounded
+  evictExpired(authHits, 600_000, now);
+  evictExpired(pwFails, 600_000, now);
+  evictExpired(pushStamp, 3 * 86_400_000, now); // longest gap in use is the 3-day last-day stamp
+  const today = new Date().toISOString().slice(0, 10);
+  for (const [k, v] of analyzeUse) if (v.day !== today) analyzeUse.delete(k); // yesterday's quota rows
 }, 300_000);
 // Chat + competition pushes: hard per-user caps so a chatty board can't spam.
 const chatHits = new Map(); // user id -> {t0, count} — 20 messages / 5 min
@@ -227,14 +246,37 @@ const chatThrottled = (userId) => {
   e.count++;
   return e.count > 20;
 };
+// Chat moderation (App Review guideline 1.2). The word filter is deliberately
+// tiny — a hard-coded list of unambiguous English profanity and slurs, whole
+// word, case-insensitive, common suffixes tolerated. It stops the obvious;
+// block + report (a human reviews) cover everything else.
+const PROFANITY = new RegExp(
+  '\\b(?:' +
+    ['fuck', 'shit', 'bitch', 'asshole', 'cunt', 'motherfucker', 'cocksucker', 'whore', 'slut',
+      'nigger', 'nigga', 'faggot', 'fag', 'retard', 'kike', 'spic', 'chink', 'wetback'].join('|') +
+    ')(?:s|es|ed|er|ers|ing|in|y)?\\b',
+  'i',
+);
+const REPORT_REASONS = new Set(['spam', 'harassment', 'inappropriate', 'other']);
+/** A board from either its id (`board`, what the deployed client sends) or
+ *  its share code (`code`, what the moderation contract names). */
+const resolveBoard = (id, code) =>
+  (id ? store.boardById(String(id)) : code ? store.boardByCode(code) : null) ?? null;
+/** BROADCAST_KEY check shared by the admin routes: constant-time, and a
+ *  missing key or a wrong secret both look like the route doesn't exist. */
+const adminSecretOk = (secret) => {
+  const key = process.env.BROADCAST_KEY || '';
+  const sBuf = Buffer.from(String(secret || ''));
+  const kBuf = Buffer.from(key);
+  return !!key && sBuf.length === kBuf.length && timingSafeEqual(sBuf, kBuf);
+};
 const pushStamp = new Map(); // "kind:user:key" -> last-sent ms
 const pushAllowed = (kind, userId, key, gapMs) => {
   const k = `${kind}:${userId}:${key}`;
   const last = pushStamp.get(k) ?? 0;
   const now = Date.now();
   if (now - last < gapMs) return false;
-  pushStamp.set(k, now);
-  if (pushStamp.size > 20_000) pushStamp.clear(); // bounded
+  pushStamp.set(k, now); // aged out by the 5-min sweep, never cleared wholesale
   return true;
 };
 /** True if we can reach this user on ANY push channel. The native iOS app has
@@ -266,8 +308,9 @@ const CHAT_PUSH_GAP_MS = 5 * 60_000;
 const CHAT_ACTIVE_MS = 60_000;
 const notifyBoardChat = (board, sender, text) => {
   const now = Date.now();
+  const blockedBy = new Set(store.blockersOf(sender.id)); // a blocked sender must not buzz their blocker
   for (const member of store.boardMembers(board.id)) {
-    if (member.id === sender.id || !hasPushChannel(member)) continue;
+    if (member.id === sender.id || blockedBy.has(member.id) || !hasPushChannel(member)) continue;
     if (now - store.boardLastRead(board.id, member.id) < CHAT_ACTIVE_MS) continue; // in the room
     if (!pushAllowed('chat', member.id, board.id, CHAT_PUSH_GAP_MS)) continue;
     sendPush(member, `💬 ${board.title}`, `${sender.name}: ${text.slice(0, 90)}`);
@@ -549,28 +592,73 @@ const IDENTIFY_TOOL = {
 const looksPackaged = (desc) =>
   /[A-Z][a-z]+ [A-Z]/.test(desc) || /\b(brand|label|bottle|bottled|packaged|bar|shot|®|™|—)\b/i.test(desc) || desc.split(/\s+/).length >= 4;
 
+/** One Anthropic Messages call, with what every caller needs and none had:
+ *  a 60s abort (a hung socket used to pin an analyzeInFlight slot forever)
+ *  and a mark/fail so /api/status can tell credit exhaustion (401/402/403)
+ *  from a blip. Resolves { ok, status, data } or { ok:false, status, text };
+ *  network errors are recorded, then rethrown for the caller's own handling. */
+const anthropic = async (where, apiKey, payload) => {
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch (e) {
+    console.error(`anthropic network error at ${where}: ${e.message}`);
+    fail('anthropic', null, where, e.message);
+    throw e;
+  }
+  if (!r.ok) {
+    const text = (await r.text()).slice(0, 400);
+    console.error(`anthropic ${r.status} at ${where}: ${text.slice(0, 200)}`);
+    fail('anthropic', r.status, where, text.slice(0, 200));
+    return { ok: false, status: r.status, text };
+  }
+  mark('anthropic', { ok: true, where });
+  return { ok: true, status: r.status, data: await r.json() };
+};
+
+/** URLs the web_search tool actually retrieved in this response — search
+ *  hits and text-block citations. A URL in here provably exists; one the
+ *  model typed from memory does not appear. */
+const searchedUrls = (data) => {
+  const norm = (s) => {
+    try {
+      const u = new URL(String(s));
+      return `${u.hostname.replace(/^www\./, '').toLowerCase()}${u.pathname.replace(/\/+$/, '').toLowerCase()}`;
+    } catch { return ''; }
+  };
+  const seen = new Set();
+  for (const c of data?.content ?? []) {
+    if (c.type === 'web_search_tool_result' && Array.isArray(c.content))
+      for (const hit of c.content) if (hit?.url) seen.add(norm(hit.url));
+    if (c.type === 'text' && Array.isArray(c.citations))
+      for (const cit of c.citations) if (cit?.url) seen.add(norm(cit.url));
+  }
+  return { has: (url) => seen.has(norm(url)), size: seen.size };
+};
+
 async function identifyProduct(description, apiKey) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-      max_tokens: 1200,
-      system: `You identify food products for a Jewish blessings app. Given a description
+  const r = await anthropic('identify', apiKey, {
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+    max_tokens: 1200,
+    system: `You identify food products for a Jewish blessings app. Given a description
 (often from a product label), determine what the product actually IS: its generic
 name, its form (drink/juice/bar/snack/...), and its primary ingredients — search
 the web for the brand/product if the label alone doesn't say. FACTS ONLY: report
 what the product is; say nothing about blessings or Jewish law. If you cannot
 identify it, report found:false.`,
-      tools: [
-        { type: 'web_search_20250305', name: 'web_search', max_uses: 2 },
-        IDENTIFY_TOOL,
-      ],
-      messages: [{ role: 'user', content: `Product to identify: ${description}` }],
-    }),
+    tools: [
+      { type: 'web_search_20250305', name: 'web_search', max_uses: 2 },
+      IDENTIFY_TOOL,
+    ],
+    messages: [{ role: 'user', content: `Product to identify: ${description}` }],
   });
   if (!r.ok) return null;
-  const data = await r.json();
+  const data = r.data;
   const p = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_product')?.input;
   if (!p || p.found !== true || !p.canonical_name) return null;
   return {
@@ -587,13 +675,10 @@ async function researchFood(description, apiKey, product = null) {
   const context = product
     ? `\nProduct identification (factual, from the label and the open web): it is "${product.name}" — form: ${product.form}; primary ingredients: ${product.ingredients.join(', ') || 'unknown'}. ${product.summary}`
     : '';
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-      max_tokens: 3000,
-      system: `You research the correct bracha (blessing) for foods, for a Jewish blessings app.
+  const r = await anthropic('research', apiKey, {
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+    max_tokens: 3000,
+    system: `You research the correct bracha (blessing) for foods, for a Jewish blessings app.
 You may ONLY conclude a ruling that an approved site states. Search the web (results
 are restricted to chabad.org, brachos.org and oukosher.org) and report via
 report_food_entry with the citing URL. A ruling counts when a page either
@@ -604,22 +689,21 @@ What you may NOT do is derive halacha from your own knowledge or reason beyond
 what a page plainly states; if neither a specific nor a clearly applicable
 general ruling exists on these sites, report found:false. When in doubt about
 which category a food belongs to, report found:false rather than guess.`,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search',
-          allowed_domains: RESEARCH_DOMAINS,
-          max_uses: 5,
-        },
-        RESEARCH_TOOL,
-      ],
-      messages: [
-        { role: 'user', content: `Food to research: ${description}${context}` },
-      ],
-    }),
+    tools: [
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        allowed_domains: RESEARCH_DOMAINS,
+        max_uses: 5,
+      },
+      RESEARCH_TOOL,
+    ],
+    messages: [
+      { role: 'user', content: `Food to research: ${description}${context}` },
+    ],
   });
-  if (!r.ok) throw new Error(`research http ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const data = await r.json();
+  if (!r.ok) throw new Error(`research http ${r.status}: ${r.text.slice(0, 200)}`);
+  const data = r.data;
   const tu = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_food_entry');
   const e = tu?.input;
   if (!e || e.found !== true) return null;
@@ -629,13 +713,23 @@ which category a food belongs to, report found:false rather than guess.`,
   try { host = new URL(e.sourceUrl).hostname.replace(/^www\./, ''); } catch { return null; }
   if (!RESEARCH_DOMAINS.includes(host)) return null;
   // The cited page must actually exist — a fabricated URL never persists.
-  try {
-    const page = await fetch(e.sourceUrl, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(8000) });
-    if (!page.ok) return null;
-    const finalHost = new URL(page.url).hostname.replace(/^www\./, '');
-    if (!RESEARCH_DOMAINS.includes(finalHost)) return null;
-  } catch {
-    return null;
+  // chabad.org answers a server-side GET with a Cloudflare 403, which used to
+  // veto EVERY chabad ruling; for that host the proof is that the web_search
+  // tool retrieved the URL in this very call. The other two hosts still GET.
+  if (host === 'chabad.org') {
+    if (!searchedUrls(data).has(e.sourceUrl)) {
+      console.log(`research rejected (chabad url not among search results): ${description} -> ${e.sourceUrl}`);
+      return null;
+    }
+  } else {
+    try {
+      const page = await fetch(e.sourceUrl, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(8000) });
+      if (!page.ok) return null;
+      const finalHost = new URL(page.url).hostname.replace(/^www\./, '');
+      if (!RESEARCH_DOMAINS.includes(finalHost)) return null;
+    } catch {
+      return null;
+    }
   }
   const key = String(e.key || description).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
   if (!key || allFoodKeys().includes(key)) return null; // already known — nothing to learn
@@ -656,9 +750,18 @@ which category a food belongs to, report found:false rather than guess.`,
       return null;
     }
   }
+  // Reader-facing strings go through the content guard: names lose any tag or
+  // citation artefact, and a note that isn't plain prose (markup, the model
+  // talking about its search) is DROPPED — no note beats a bad note.
+  const names = (Array.isArray(e.names) ? e.names : [])
+    .map((n) => cleanProse(n).replace(/\n+/g, ' ').trim().slice(0, 60))
+    .filter(Boolean)
+    .slice(0, 6);
+  const note = e.notes ? guardProse(e.notes, {}) : null;
+  if (note && !note.ok) console.log(`research note dropped (${note.problems.join(',')}): ${description}`);
   return {
     key,
-    names: Array.isArray(e.names) && e.names.length ? e.names.map(String).slice(0, 6) : [description],
+    names: names.length ? names : [String(description).slice(0, 60)],
     category: e.isDrink ? 'Beverages' : 'Other',
     brachaRishona: e.brachaRishona,
     brachaAchrona: e.brachaAchrona,
@@ -667,7 +770,7 @@ which category a food belongs to, report found:false rather than guess.`,
     isTreeFruit: !!e.isTreeFruit,
     isWineGrape: !!e.isWineGrape,
     isDrink: !!e.isDrink,
-    notes: e.notes ? String(e.notes).slice(0, 300) : undefined,
+    notes: note?.ok && note.text ? note.text.slice(0, 300) : undefined,
     source: host === 'oukosher.org' ? 'OU' : host,
     sourceUrl: String(e.sourceUrl),
     learned: true,
@@ -759,28 +862,24 @@ const TOOL = () => ({
 async function analyze(body) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return { code: 503, body: { error: 'no_api_key' } };
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-      max_tokens: 2048,
-      system: SYSTEM_PROMPT(),
-      tools: [TOOL()],
-      tool_choice: { type: 'tool', name: 'report_foods' },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: body.media_type || 'image/jpeg', data: body.image } },
-            { type: 'text', text: 'Identify every edible item in this meal photo and map each to a database key.' },
-          ],
-        },
-      ],
-    }),
+  const r = await anthropic('analyze', key, {
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+    max_tokens: 2048,
+    system: SYSTEM_PROMPT(),
+    tools: [TOOL()],
+    tool_choice: { type: 'tool', name: 'report_foods' },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: body.media_type || 'image/jpeg', data: body.image } },
+          { type: 'text', text: 'Identify every edible item in this meal photo and map each to a database key.' },
+        ],
+      },
+    ],
   });
-  if (!r.ok) return { code: 502, body: { error: 'anthropic_error', detail: (await r.text()).slice(0, 400) } };
-  const data = await r.json();
+  if (!r.ok) return { code: 502, body: { error: 'anthropic_error', detail: r.text } };
+  const data = r.data;
   const toolUse = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_foods');
   if (!toolUse?.input) return { code: 502, body: { error: 'no_tool_output' } };
 
@@ -797,7 +896,8 @@ async function analyze(body) {
         out.items = out.items || [];
         const answered = new Set(found.map((f) => f.desc));
         for (const { desc, entry } of found) {
-          out.items.push({ db_key: entry.key, display_name: desc, state: 'unknown', confidence: 0.9 });
+          // the learned entry's own display name, not vision's raw label-dump
+          out.items.push({ db_key: entry.key, display_name: entry.names?.[0] || desc, state: 'unknown', confidence: 0.9 });
         }
         out.unmatched = out.unmatched.filter((d) => !answered.has(d));
       }
@@ -986,28 +1086,98 @@ if (ROUND_SWEEP_MS > 0) {
 // chabad.org. One lesson per US-East day, cached on the volume.
 const THOUGHT_FILE = join(DATA_DIR, 'daily-thought.json');
 // bump to invalidate every cached thought when the fetch logic changes
-// (v2: parsha cross-check — v1 once cached the ADJACENT week's lesson)
-const THOUGHT_VERSION = 2;
-const thoughtDateKey = () => new Date(Date.now() - 5 * 3_600_000).toISOString().slice(0, 10);
+// (v2: parsha cross-check — v1 once cached the ADJACENT week's lesson;
+//  v3: content guard + holiday-on-Shabbat pin + DST-correct NY day — v2
+//  shipped literal <cite> markup and, on a Rosh Hashana week, pinned the
+//  holiday's name as the parsha)
+const THOUGHT_VERSION = 3;
+/** New York calendar parts via Intl — DST-correct. The old fixed UTC−5 was an
+ *  hour off all summer, so the day key rolled at 1am EDT. */
+const nyParts = (d = new Date()) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
+  }).formatToParts(d);
+  const get = (t) => parts.find((p) => p.type === t)?.value ?? '';
+  return {
+    dateKey: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(get('weekday')),
+  };
+};
+const thoughtDateKey = () => nyParts().dateKey;
+const keyMs = (k) => Date.parse(`${k}T00:00:00Z`);
+const shiftKey = (k, days) => new Date(keyMs(k) + days * 86_400_000).toISOString().slice(0, 10);
+/** Whole days from date key a to date key b. */
+const dayKeyDiff = (a, b) => Math.round((keyMs(b) - keyMs(a)) / 86_400_000);
 let thoughtRefreshing = false;
+// Attempt gate (negative cache): a rejected or failed fetch used to be retried
+// on EVERY /api/daily-thought hit — each one a paid web_search call — while
+// the same bad answer came back. ≥30 min apart, ≤8 per NY day.
+const THOUGHT_RETRY_MS = 30 * 60_000;
+const THOUGHT_MAX_ATTEMPTS_PER_DAY = 8;
+const thoughtState = { lastAttemptAt: 0, attemptsDay: '', attemptsToday: 0, lastError: null, lastReject: null };
 
-/** The current study week's parsha from Hebcal's leyning API (the same
- *  calendar source the client's daily-parsha card uses — a calendar fact,
- *  not psak). Null on failure; the fetch then proceeds without the pin. */
+/** The 54 parshiyot in Hebcal's spelling — the ring currentParsha advances
+ *  along when the upcoming Shabbat is a holiday and carries no parsha item. */
+const PARSHA_ORDER = [
+  'Bereshit', 'Noach', 'Lech-Lecha', 'Vayera', 'Chayei Sara', 'Toldot', 'Vayetzei', 'Vayishlach', 'Vayeshev',
+  'Miketz', 'Vayigash', 'Vayechi', 'Shemot', 'Vaera', 'Bo', 'Beshalach', 'Yitro', 'Mishpatim', 'Terumah',
+  'Tetzaveh', 'Ki Tisa', 'Vayakhel', 'Pekudei', 'Vayikra', 'Tzav', 'Shmini', 'Tazria', 'Metzora', 'Achrei Mot',
+  'Kedoshim', 'Emor', 'Behar', 'Bechukotai', 'Bamidbar', 'Nasso', "Beha'alotcha", "Sh'lach", 'Korach', 'Chukat',
+  'Balak', 'Pinchas', 'Matot', 'Masei', 'Devarim', 'Vaetchanan', 'Eikev', "Re'eh", 'Shoftim', 'Ki Teitzei',
+  'Ki Tavo', 'Nitzavim', 'Vayeilech', "Ha'azinu", 'Vezot Haberakhah',
+];
+/** Spelling-tolerant parsha key — Vayelech/Vayeilech, Bereshit/Bereishit,
+ *  Ha'azinu/Haazinu collapse to one consonant skeleton. */
+const canonParsha = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/^\s*(?:parashat|parshat|parshas|parsha)\s+/, '')
+    .replace(/[^a-z]/g, '')
+    .replace(/kh/g, 'ch')
+    .replace(/[aeiou]/g, '')
+    .replace(/(.)\1+/g, '$1');
+const stripOnShabbat = (s) => String(s || '').replace(/\s*\(on Shabbat\)$/i, '').trim();
+/** The parsha after `name` in the ring; a combined week ('Nitzavim-Vayeilech')
+ *  advances from its LAST half. Null when the name isn't a parsha at all. */
+const nextParsha = (name) => {
+  const find = (n) => PARSHA_ORDER.findIndex((p) => canonParsha(p) === canonParsha(n));
+  let i = find(name); // whole name first — 'Lech-Lecha' is one parsha, not two
+  if (i < 0) i = find(String(name).split('-').pop());
+  return i < 0 ? null : PARSHA_ORDER[(i + 1) % PARSHA_ORDER.length];
+};
+
+/** The parsha this week's Daily Wisdom edition belongs to, from Hebcal's
+ *  leyning API (the same calendar source the client's parsha card uses — a
+ *  calendar fact, not psak). ONE call spanning Shabbat−21d..+14d: the upcoming
+ *  Saturday's `shabbat` item pins it; when that Saturday is a holiday (Hebcal
+ *  returns e.g. 'Rosh Hashana I (on Shabbat)' — a holiday name is NEVER a
+ *  pin), the most recent `shabbat` item advanced one step along PARSHA_ORDER
+ *  is. Returns { name, canon } or null, recorded for /api/status either way. */
 async function currentParsha() {
+  const today = nyParts();
+  const satKey = shiftKey(today.dateKey, (6 - today.weekday + 7) % 7);
   try {
-    const est = new Date(Date.now() - 5 * 3_600_000);
-    const sat = new Date(est);
-    sat.setUTCDate(est.getUTCDate() + ((6 - est.getUTCDay() + 7) % 7));
-    const day = sat.toISOString().slice(0, 10);
-    const r = await fetch(`https://www.hebcal.com/leyning?cfg=json&start=${day}&end=${day}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!r.ok) return null;
-    const items = (await r.json()).items ?? [];
-    const name = items.find((i) => i.fullkriyah)?.name?.en ?? null;
-    return name ? name.replace(/^Parashat\s+/i, '') : null;
-  } catch {
+    const r = await fetch(
+      `https://www.hebcal.com/leyning?cfg=json&start=${shiftKey(satKey, -21)}&end=${shiftKey(satKey, 14)}`,
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!r.ok) throw new Error(`hebcal http ${r.status}`);
+    const items = ((await r.json()).items ?? []).filter((i) => i?.date && i?.name?.en);
+    const parshaName = (i) => stripOnShabbat(i.name.en).replace(/^Parashat\s+/i, '');
+    const isParsha = (i) => i.type === 'shabbat' && i.parshaNum != null;
+    let name = null;
+    const sat = items.find((i) => i.date === satKey && isParsha(i));
+    if (sat) name = parshaName(sat);
+    else {
+      const recent = items.filter((i) => i.date < satKey && isParsha(i)).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+      if (recent) name = nextParsha(parshaName(recent));
+    }
+    if (!name) throw new Error(`no parsha item around ${satKey}`);
+    mark('hebcal', { ok: true });
+    return { name, canon: canonParsha(name) };
+  } catch (e) {
+    fail('hebcal', null, 'currentParsha', e.message);
+    console.error(`daily-thought: parsha pin failed: ${e.message}`);
     return null;
   }
 }
@@ -1020,12 +1190,11 @@ const THOUGHT_TOOL = {
     properties: {
       found: { type: 'boolean' },
       title: { type: 'string', description: 'the lesson title, e.g. "Trusting in G-d"' },
-      parsha: { type: 'string', description: "the parsha of the weekly edition this lesson belongs to, e.g. 'Shoftim'" },
-      dayLabel: { type: 'string', description: 'weekday + parsha, e.g. "Wednesday · Parshat Shoftim"' },
+      parsha: { type: 'string', description: "the parsha of the weekly edition this lesson belongs to, spelled exactly as given in the request, e.g. 'Shoftim'" },
       digest: {
         type: 'string',
         description:
-          'a faithful 150-220 word digest of the lesson IN YOUR OWN WORDS — cover its full arc (verse, question, teaching, takeaway); never invent content the page does not carry',
+          'a faithful 150-220 word digest of the lesson IN YOUR OWN WORDS as plain prose paragraphs — cover its full arc (verse, question, teaching, takeaway); never invent content the page does not carry; no tags, citation markers, markdown or URLs',
       },
       url: { type: 'string', description: 'the exact chabad.org Daily Wisdom lesson page URL for today' },
     },
@@ -1033,92 +1202,140 @@ const THOUGHT_TOOL = {
   },
 };
 
+/** Fetch + validate today's lesson. Resolves the cache record, or null with
+ *  the reason in thoughtState.lastReject; transport errors throw. */
 async function fetchDailyThought(apiKey) {
-  const estNow = new Date(Date.now() - 5 * 3_600_000);
-  const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Shabbat'][estNow.getUTCDay()];
+  const { dateKey, weekday: wd } = nyParts();
+  const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Shabbat'][wd];
   // Pin the week: v1 let the model drift to the ADJACENT week's edition (it
   // cached Ki Seitzei's Monday during Shoftim week). Naming the parsha in the
-  // prompt and rejecting mismatched reports closes that.
-  const parsha = await currentParsha();
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-      max_tokens: 3000,
-      system: `You find and digest ONE page for a Jewish learning app: today's lesson in
+  // prompt and rejecting mismatched reports closes that. No pin, no fetch —
+  // the day label below is built from it; the attempt gate retries later.
+  const pin = await currentParsha();
+  if (!pin) throw new Error('parsha pin unavailable (hebcal)');
+  const reject = (why) => {
+    thoughtState.lastReject = why;
+    console.error(`daily-thought: rejected — ${why}`);
+    return null;
+  };
+  const r = await anthropic('daily-thought', apiKey, {
+    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
+    max_tokens: 3000,
+    system: `You find and digest ONE page for a Jewish learning app: today's lesson in
 chabad.org's "Daily Wisdom" series (URLs contain /dailystudy/dailywisdom_cdo/), the
 daily Torah thought adapted from the Rebbe's teachings, arranged by weekly parsha
 with one lesson per weekday (Sunday through Shabbat). Find the weekly Daily Wisdom
 page for the CURRENT parsha (it lists all seven day-lessons), then open TODAY'S
 weekday lesson from that list — never a lesson from an adjacent week's edition.
 Digest ONLY what that page says — never pad it with your own Torah. Report via
-report_daily_thought with the exact lesson URL and the edition's parsha. If you
-cannot find today's lesson, report found:false.`,
-      tools: [
-        { type: 'web_search_20250305', name: 'web_search', allowed_domains: ['chabad.org'], max_uses: 6 },
-        THOUGHT_TOOL,
-      ],
-      messages: [
-        {
-          role: 'user',
-          content: `Today is ${weekday}, ${thoughtDateKey()} (US-East).${
-            parsha ? ` This week's parsha is ${parsha}.` : ''
-          } Find today's Daily Wisdom lesson (${weekday}'s entry of ${parsha ? `the ${parsha} edition` : "this week's edition"}) and digest it.`,
-        },
-      ],
-    }),
+report_daily_thought with the exact lesson URL and the edition's parsha.
+Write the digest as plain prose paragraphs separated by blank lines. Never include
+HTML/XML tags, citation markers like <cite> or [1], markdown, or URLs inside the
+digest. If you cannot open the exact lesson page, report found:false — never write
+about being unable to access it.`,
+    tools: [
+      { type: 'web_search_20250305', name: 'web_search', allowed_domains: ['chabad.org'], max_uses: 6 },
+      THOUGHT_TOOL,
+    ],
+    messages: [
+      {
+        role: 'user',
+        content: `Today is ${weekday}, ${dateKey} (New York). This week's parsha is ${pin.name}. Echo it in the parsha field exactly as spelled here. Find today's Daily Wisdom lesson (${weekday}'s entry of the ${pin.name} edition) and digest it.`,
+      },
+    ],
   });
-  if (!r.ok) throw new Error(`daily-thought http ${r.status}: ${(await r.text()).slice(0, 200)}`);
-  const data = await r.json();
+  if (!r.ok) throw new Error(`daily-thought http ${r.status}: ${r.text.slice(0, 200)}`);
+  const data = r.data;
   const t = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_daily_thought')?.input;
-  if (!t || t.found !== true) return null;
+  if (!t) return reject('no report_daily_thought tool call');
+  if (t.found !== true) return reject('found:false');
   // Validate hard before it can reach a user: chabad.org Daily Wisdom URL only,
-  // the pinned parsha when we know it, and a digest long enough to be real.
+  // the pinned parsha, and a digest/title that pass the content guard.
   let u;
-  try { u = new URL(t.url); } catch { return null; }
-  if (u.hostname.replace(/^www\./, '') !== 'chabad.org' || !/dailywisdom/i.test(u.pathname)) return null;
-  if (parsha) {
-    const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z]/g, '');
-    const reported = norm(t.parsha);
-    if (!reported || (!reported.includes(norm(parsha)) && !norm(parsha).includes(reported))) {
-      console.error(`daily-thought: rejected wrong-week lesson (${t.parsha} vs ${parsha})`);
-      return null;
-    }
-  }
-  const digest = String(t.digest || '').trim();
-  if (digest.length < 400) return null;
+  try { u = new URL(t.url); } catch { return reject(`bad url: ${String(t.url).slice(0, 80)}`); }
+  if (u.hostname.replace(/^www\./, '') !== 'chabad.org' || !/dailywisdom/i.test(u.pathname))
+    return reject(`not a Daily Wisdom url: ${u.href.slice(0, 80)}`);
+  if (!searchedUrls(data).has(u.href)) console.log(`daily-thought: url not among search results (accepted): ${u.href}`);
+  // the whole name or either hyphen half may match (Vayelech ≈ Vayeilech,
+  // 'Nitzavim-Vayeilech' ≈ 'Vayeilech') — canonParsha absorbs the spelling
+  const forms = (s) => [String(s || ''), ...String(s || '').split('-')].map(canonParsha).filter(Boolean);
+  const mine = new Set(forms(pin.name));
+  if (!forms(t.parsha).some((f) => mine.has(f))) return reject(`wrong-week lesson (${t.parsha} vs ${pin.name})`);
+  const digest = guardProse(t.digest, { minChars: 400, minSentences: 3 });
+  if (!digest.ok) return reject(`digest ${digest.problems.join(',')}`);
+  const title = guardLine(t.title, 120);
+  if (!title.ok) return reject(`title ${title.problems.join(',') || 'empty'}`);
+  thoughtState.lastReject = null;
   return {
     v: THOUGHT_VERSION,
-    dateKey: thoughtDateKey(),
-    title: String(t.title || 'Daily Wisdom').slice(0, 120),
-    dayLabel: String(t.dayLabel || weekday).slice(0, 80),
-    digest: digest.slice(0, 2400),
-    url: t.url,
+    dateKey,
+    title: title.text,
+    parsha: pin.name,
+    dayLabel: `${weekday} · Parshat ${pin.name}`, // server-built — never the model's
+    digest: digest.text.slice(0, 2400),
+    url: u.href,
     fetched: Date.now(),
   };
 }
 
+/** The cached thought. A pre-v3 record never met the content guard, so it is
+ *  cleaned on the way out (the 2026-09 <cite> incident) or dropped when it
+ *  isn't prose at all — the last good thought keeps serving while stale, but
+ *  never a bad one. */
 const readThought = () => {
-  try { return JSON.parse(readFileSync(THOUGHT_FILE, 'utf8')); } catch { return null; }
+  try {
+    const t = JSON.parse(readFileSync(THOUGHT_FILE, 'utf8'));
+    if (!t || t.v === THOUGHT_VERSION) return t;
+    const g = guardProse(t.digest, { minChars: 400, minSentences: 3 });
+    return g.ok ? { ...t, digest: g.text } : null;
+  } catch { return null; }
+};
+
+/** What /api/status reports about the thought — freshness in NY days plus the
+ *  attempt gate, so a stale card is diagnosable from the cloud. */
+const thoughtProbe = () => {
+  const cur = readThought();
+  const today = thoughtDateKey();
+  return {
+    cachedDateKey: cur?.dateKey ?? null,
+    ageDays: cur?.dateKey ? dayKeyDiff(cur.dateKey, today) : null,
+    fresh: cur?.dateKey === today,
+    lastAttemptAt: thoughtState.lastAttemptAt ? new Date(thoughtState.lastAttemptAt).toISOString() : null,
+    attemptsToday: thoughtState.attemptsDay === today ? thoughtState.attemptsToday : 0,
+    lastError: thoughtState.lastError,
+    lastReject: thoughtState.lastReject,
+  };
 };
 
 async function refreshThoughtIfStale() {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key || thoughtRefreshing) return;
   const cur = readThought();
-  if (cur?.dateKey === thoughtDateKey() && cur?.v === THOUGHT_VERSION) return;
+  const today = thoughtDateKey();
+  if (cur?.dateKey === today && cur?.v === THOUGHT_VERSION) return;
+  // attempt gate — see THOUGHT_RETRY_MS; a stale card is cheaper than a loop
+  const now = Date.now();
+  if (now - thoughtState.lastAttemptAt < THOUGHT_RETRY_MS) return;
+  if (thoughtState.attemptsDay !== today) Object.assign(thoughtState, { attemptsDay: today, attemptsToday: 0 });
+  if (thoughtState.attemptsToday >= THOUGHT_MAX_ATTEMPTS_PER_DAY) return;
+  thoughtState.lastAttemptAt = now;
+  thoughtState.attemptsToday++;
   thoughtRefreshing = true;
   try {
     const t = await fetchDailyThought(key);
     if (t) {
       writeFileSync(THOUGHT_FILE, JSON.stringify(t));
-      console.log(`daily-thought: cached "${t.title}" (${t.dateKey})`);
-    }
+      thoughtState.lastError = null;
+      mark('daily_thought', { ok: true, detail: `${t.dateKey} ${t.title}` });
+      console.log(`daily-thought: cached "${t.title}" (${t.dateKey}, ${t.dayLabel})`);
+    } else mark('daily_thought', { ok: false, detail: thoughtState.lastReject || 'no lesson accepted' });
   } catch (e) {
+    thoughtState.lastError = String(e.message).slice(0, 200);
+    mark('daily_thought', { ok: false, detail: thoughtState.lastError });
     console.error(`daily-thought refresh failed: ${e.message}`);
+  } finally {
+    thoughtRefreshing = false;
   }
-  thoughtRefreshing = false;
 }
 setTimeout(() => void refreshThoughtIfStale(), 20_000).unref(); // after boot settles
 setInterval(() => void refreshThoughtIfStale(), 3 * 3_600_000).unref(); // catches the EST day rollover
@@ -1139,7 +1356,61 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { lessons, updated: existsSync(f) ? statSync(f).mtimeMs : null });
     }
 
-    if (url.pathname === '/health') return json(res, 200, { ok: true, users: store.userCount(), vision: !!process.env.ANTHROPIC_API_KEY });
+    if (url.pathname === '/health') {
+      const cur = readThought();
+      return json(res, 200, {
+        ok: true,
+        users: store.userCount(),
+        vision: !!process.env.ANTHROPIC_API_KEY,
+        backups: backupReady(),
+        thought: { dateKey: cur?.dateKey ?? null, fresh: cur?.dateKey === thoughtDateKey() },
+      });
+    }
+
+    // Capacity + health document for the cloud watch routine (status.mjs).
+    // It exposes user counts and error details, so it is key-gated and plays
+    // dead without/with a wrong key — same posture as /api/admin/broadcast.
+    if (url.pathname === '/api/status' && req.method === 'GET') {
+      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
+      const key = url.searchParams.get('key') || '';
+      const expected = statusKey();
+      const kBuf = Buffer.from(key);
+      const eBuf = Buffer.from(expected || '');
+      if (!expected || !key || kBuf.length !== eBuf.length || !timingSafeEqual(kBuf, eBuf))
+        return json(res, 404, { error: 'not_found' });
+      const todayUtc = new Date().toISOString().slice(0, 10);
+      const doc = buildStatus({
+        db: store.getDb(),
+        dataDir: DATA_DIR,
+        probes: {
+          analyze: () => ({
+            today: analyzeGlobal.day === todayUtc ? analyzeGlobal.count : 0,
+            globalCap: ANALYZE_GLOBAL_MAX_PER_DAY,
+            perUserCap: ANALYZE_MAX_PER_DAY,
+            inFlight: analyzeInFlight,
+          }),
+          thought: thoughtProbe,
+          backupEnabled: backupReady,
+          apnsEnabled: () => !!(process.env.APNS_KEY && process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID),
+          visionKey: () => !!process.env.ANTHROPIC_API_KEY,
+          learnedMax: LEARNED_MAX,
+        },
+      });
+      // moderation queue — added here rather than in status.mjs so the
+      // reports table stays the store's business
+      const openReports = store.openReportCount();
+      doc.moderation = { open_reports: openReports };
+      if (openReports > 0) {
+        doc.alerts.push({
+          level: 'warn',
+          code: 'open_reports',
+          message: `${openReports} open chat report${openReports === 1 ? '' : 's'} awaiting review — POST /api/admin/reports {secret}`,
+          open_reports: openReports,
+        });
+        if (doc.level === 'ok') doc.level = 'warn';
+      }
+      return json(res, 200, doc);
+    }
 
     // Today's Daily Wisdom digest (public Torah content, like /api/lessons).
     // Serves the cache immediately — possibly yesterday's while a refresh runs;
@@ -1152,7 +1423,8 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
-      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
+      // 240/10min: many students share one campus/home NAT on launch day.
+      if (throttled(req, 240)) return json(res, 429, { error: 'slow_down' });
       const { name, email, password } = await readBody(req);
       if (!name || String(name).trim().length < 1) return json(res, 400, { error: 'name_required' });
       let mail = null;
@@ -1174,7 +1446,8 @@ const server = createServer(async (req, res) => {
     //   email + password       (accounts that set one)
     //   email + friend code    (legacy no-password accounts — still valid)
     if (url.pathname === '/api/signin' && req.method === 'POST') {
-      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
+      // 120/10min per IP; per-email pwFails carries the anti-stuffing load.
+      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
       const { email, code, password } = await readBody(req);
       const mail = String(email || '').trim().toLowerCase();
       if (password != null && String(password) !== '') {
@@ -1204,7 +1477,8 @@ const server = createServer(async (req, res) => {
     // token; we verify signature + iss/aud/exp against the provider JWKS.
     // Links by provider sub first, then by verified email; creates otherwise.
     if (url.pathname === '/api/oauth' && req.method === 'POST') {
-      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
+      // 240/10min: Sign in with Apple is the main iOS signup path — same NAT logic.
+      if (throttled(req, 240)) return json(res, 429, { error: 'slow_down' });
       const { provider, idToken, name } = await readBody(req);
       if (provider !== 'apple' && provider !== 'google') return json(res, 400, { error: 'bad_provider' });
       if (provider === 'google' && !GOOGLE_AUDS.length) return json(res, 501, { error: 'google_not_configured' });
@@ -1337,31 +1611,74 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true, subscribers: subs.length, sent, expired, failed });
     }
 
+    // Operator review of chat reports (App Review 1.2) and the test-account
+    // prune — same secret and play-dead semantics as /api/admin/broadcast.
+    if (url.pathname === '/api/admin/reports' && req.method === 'POST') {
+      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      const { secret } = await readBody(req);
+      if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
+      return json(res, 200, { reports: store.openReports(), open: store.openReportCount() });
+    }
+    if (url.pathname === '/api/admin/reports/resolve' && req.method === 'POST') {
+      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      const { secret, id } = await readBody(req);
+      if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
+      if (!store.resolveReport(String(id || ''))) return json(res, 404, { error: 'report_not_found' });
+      return json(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/admin/prune-test-accounts' && req.method === 'POST') {
+      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      const { secret, force } = await readBody(req);
+      if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
+      // irreversible — insist on an off-volume backup unless explicitly forced
+      if (!backupReady() && force !== true) return json(res, 409, { error: 'backups_disabled' });
+      let deleted = 0;
+      for (const id of store.testAccountIds()) {
+        store.deleteUser(id); // cascade + board ownership hand-off
+        deleted++;
+      }
+      console.log(`admin: pruned ${deleted} test account(s)`);
+      return json(res, 200, { deleted });
+    }
+
     if (url.pathname === '/api/analyze' && req.method === 'POST') {
       // Vision costs real money per call: require a token, cap per-account
       // daily use, and cap global concurrency so one client can't OOM the box.
       const who = auth(req);
       if (!who) return json(res, 401, { error: 'unauthorized' });
+      // per-IP ceiling on top of the per-account cap: a token farm on one box
+      // must not multiply vision spend (120/10min still covers a dorm's lunch)
+      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
+      // The in-flight slot is taken BEFORE the body is read: a slow upload used
+      // to sit outside the ceiling, so any number of stalled uploads could pass
+      // this check and then all hit Anthropic together.
       if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return json(res, 429, { error: 'busy' });
       // cheap fast-fail (may be stale after the await below)
       const pre = analyzeUse.get(who.user.id);
       const today = new Date().toISOString().slice(0, 10);
       if (pre?.day === today && pre.count >= ANALYZE_MAX_PER_DAY)
         return json(res, 429, { error: 'daily_limit' });
-      const body = await readBody(req, 12 * 1024 * 1024); // base64 photo
-      if (!body.image) return json(res, 400, { error: 'no_image' });
-      // Re-check AND increment atomically after the await: Node is single-
-      // threaded, so a get/check/set with no await between them can't interleave.
-      // Without this, parallel requests all read the same pre-await count and
-      // could each pass the cap (multiplying vision spend).
-      const use = analyzeUse.get(who.user.id);
-      if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
-        return json(res, 429, { error: 'daily_limit' });
-      // charge the quota only once the request is valid — a malformed or
-      // oversized body shouldn't burn one of the user's 30 daily calls
-      analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
       analyzeInFlight++;
       try {
+        // 4 MB: the client sends a ≤ ~1 MB base64 photo; the old 12 MB let one
+        // caller pin a lot of memory per slot
+        const body = await readBody(req, 4 * 1024 * 1024);
+        if (!body.image) return json(res, 400, { error: 'no_image' });
+        // Re-check AND increment atomically after the await: Node is single-
+        // threaded, so a get/check/set with no await between them can't interleave.
+        // Without this, parallel requests all read the same pre-await count and
+        // could each pass the cap (multiplying vision spend).
+        const use = analyzeUse.get(who.user.id);
+        if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
+          return json(res, 429, { error: 'daily_limit' });
+        // Global spend ceiling (same atomic-after-await discipline as above).
+        if (analyzeGlobal.day !== today) analyzeGlobal = { day: today, count: 0 };
+        if (analyzeGlobal.count >= ANALYZE_GLOBAL_MAX_PER_DAY)
+          return json(res, 429, { error: 'daily_limit' });
+        // charge the quota only once the request is valid — a malformed or
+        // oversized body shouldn't burn one of the user's 30 daily calls
+        analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
+        analyzeGlobal.count++;
         const out = await analyze(body);
         return json(res, out.code, out.body);
       } finally {
@@ -1432,7 +1749,9 @@ const server = createServer(async (req, res) => {
     // Full account deletion (App Store guideline 5.1.1(v)): removes the user
     // and unlinks them from every friend list. Irreversible.
     if (url.pathname === '/api/account/delete' && req.method === 'POST') {
-      store.deleteUser(a.user.id); // cascades: tokens, friendships, board rows
+      // cascades tokens, friendships, board rows, blocks; boards the user OWNS
+      // pass to their earliest remaining member first (store.deleteUser)
+      store.deleteUser(a.user.id);
       return json(res, 200, { ok: true });
     }
 
@@ -1574,31 +1893,76 @@ const server = createServer(async (req, res) => {
     // One room per leaderboard; membership IS board membership, so joining or
     // leaving a board automatically adds/removes chat access (rows cascade).
     if (url.pathname === '/api/boards/messages' && req.method === 'GET') {
-      const boardId = String(url.searchParams.get('board') || '');
-      if (!store.isBoardMember(boardId, a.user.id)) return json(res, 404, { error: 'board_not_found' });
+      const board = resolveBoard(url.searchParams.get('board'), url.searchParams.get('code'));
+      if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
       const since = Number(url.searchParams.get('since') || 0);
-      const messages = store.boardMessages(boardId, since, 100).map((m) => ({
+      // user_id rides along so the client can block/report a sender; senders
+      // this viewer has blocked are already gone (filtered in the query)
+      const messages = store.boardMessages(board.id, since, 100, a.user.id).map((m) => ({
         id: m.id,
+        user_id: m.user_id,
         name: m.name,
         text: m.text,
         created: m.created,
         mine: m.user_id === a.user.id,
       }));
-      store.markBoardRead(boardId, a.user.id, Date.now()); // opening the room clears the badge
+      store.markBoardRead(board.id, a.user.id, Date.now()); // opening the room clears the badge
       return json(res, 200, { messages, now: Date.now() });
     }
 
     if (url.pathname === '/api/boards/message' && req.method === 'POST') {
-      const { board: boardId, text } = await readBody(req);
-      const board = store.boardById(String(boardId || ''));
+      const { board: boardId, code, text } = await readBody(req);
+      const board = resolveBoard(boardId, code);
       if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
       const clean = String(text || '').trim().slice(0, 400);
       if (!clean) return json(res, 400, { error: 'text_required' });
+      if (PROFANITY.test(clean)) return json(res, 400, { error: 'moderated' });
       if (chatThrottled(a.user.id)) return json(res, 429, { error: 'slow_down' });
       const m = store.addBoardMessage(board.id, a.user.id, clean);
       store.markBoardRead(board.id, a.user.id, m.created);
       notifyBoardChat(board, a.user, clean); // fire-and-forget, per-member throttled
       return json(res, 200, { ok: true, id: m.id, created: m.created });
+    }
+
+    // ------------------------------------------------------ chat moderation
+    // Block is global per caller (every board, every room) and idempotent;
+    // report stores the message text for the operator, who reviews via the
+    // admin routes below. Nothing here auto-bans — a human decides.
+    if (url.pathname === '/api/boards/block' && req.method === 'POST') {
+      const { user_id } = await readBody(req);
+      const target = store.userById(String(user_id || ''));
+      if (!target) return json(res, 404, { error: 'user_not_found' });
+      if (target.id === a.user.id) return json(res, 400, { error: 'thats_you' });
+      store.blockUser(a.user.id, target.id);
+      return json(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/boards/unblock' && req.method === 'POST') {
+      const { user_id } = await readBody(req);
+      store.unblockUser(a.user.id, String(user_id || ''));
+      return json(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/boards/blocked' && req.method === 'GET')
+      return json(res, 200, { blocked: store.blockedUsers(a.user.id) });
+
+    if (url.pathname === '/api/boards/report' && req.method === 'POST') {
+      const { code, board: boardId, message_id, reason } = await readBody(req);
+      const board = resolveBoard(boardId, code);
+      if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
+      const msg = store.boardMessage(board.id, String(message_id || ''));
+      if (!msg) return json(res, 404, { error: 'message_not_found' });
+      const why = String(reason || '').trim().toLowerCase().slice(0, 200);
+      if (!REPORT_REASONS.has(why)) return json(res, 400, { error: 'bad_reason' });
+      // 10 reports / 10 min per user — enough for a real incident, not a weapon
+      if (store.reportCountSince(a.user.id, Date.now() - 600_000) >= 10) return json(res, 429, { error: 'slow_down' });
+      store.addReport({
+        boardId: board.id,
+        messageId: msg.id,
+        reporterId: a.user.id,
+        reportedUserId: msg.user_id,
+        text: msg.text,
+        reason: why,
+      });
+      return json(res, 200, { ok: true });
     }
 
     if (url.pathname === '/api/push/key') return json(res, 200, { key: vapid.publicKey });

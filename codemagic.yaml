@@ -34,10 +34,17 @@ workflows:
         script: npm ci
       - name: Server scenario tests (push + chat mocks)
         # Boots the real API against a mock APNs server and asserts every push
-        # scenario (25 checks). A red suite blocks the TestFlight upload.
+        # scenario (see the suite). A red suite blocks the TestFlight upload.
         script: |
           cd server && npm ci && cd ..
           node server/test/scenarios.mjs
+      - name: Content guard (model-written text)
+        # Dependency-free unit test of server/content-guard.mjs: cite-tag /
+        # markup stripping + refusal-text detection for every reading surface
+        # (daily thought, learned-food notes). A red guard blocks TestFlight
+        # too — a reader must never see tool artefacts or the model talking
+        # about itself.
+        script: node server/test/content-guard.mjs
       - name: Build web app
         script: npm run build
       - name: Sync Capacitor iOS

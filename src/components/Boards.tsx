@@ -498,6 +498,7 @@ export function Boards() {
       {chat && serverToken && (
         <BoardChat
           boardId={chat.id}
+          code={chat.code}
           title={chat.title}
           token={serverToken}
           onClose={() => {

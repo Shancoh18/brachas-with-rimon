@@ -29,15 +29,43 @@ export interface LeagueRow {
   you: boolean;
 }
 
+/** Every request gives up after this long — a Railway cold start or a dead
+ *  cellular link otherwise leaves a screen spinning forever with no error. */
+const CALL_TIMEOUT_MS = 15_000;
+
+/** Error shape thrown by call(): status 0 + code 'timeout' means the request
+ *  never completed — screens show "Server is slow — try again" for it. */
+export interface ApiError extends Error {
+  status: number;
+  code?: string;
+}
+
+export const isTimeout = (e: unknown): boolean => (e as ApiError | null)?.code === 'timeout';
+
 const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Promise<T> => {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts.headers ?? {}),
-    },
-  });
+  const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS);
+  // honour a caller-supplied signal too — whichever fires first aborts
+  const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...opts,
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers ?? {}),
+      },
+    });
+  } catch (e) {
+    // fetch rejects with AbortError (or TimeoutError in newer engines) when
+    // the signal fires; either way the server never answered
+    const name = (e as { name?: string }).name ?? '';
+    if (name === 'AbortError' || name === 'TimeoutError' || timeout.aborted) {
+      throw Object.assign(new Error('api timeout'), { status: 0, code: 'timeout' });
+    }
+    throw e;
+  }
   if (!res.ok) {
     // carry the server's error code so callers can branch (e.g. use_provider
     // vs use_password vs no_password on sign-in)
@@ -129,6 +157,9 @@ export interface DailyThought {
   digest: string;
   url: string;
   fetched: number;
+  /** server said this was TODAY's lesson when it was stored (client-stamped
+   *  from the response's `fresh` flag) */
+  fresh?: boolean;
 }
 export const apiDailyThought = () =>
   call<{ thought: DailyThought | null; fresh: boolean }>('/api/daily-thought');
@@ -212,6 +243,8 @@ export interface BoardMessage {
   text: string;
   created: number;
   mine: boolean;
+  /** author id — the handle Block/Report act on (never their email/code) */
+  user_id: string;
 }
 
 export const apiBoards = (token: string) => call<{ boards: Board[] }>('/api/boards', {}, token);
@@ -245,16 +278,43 @@ export const apiJoinBoard = (token: string, code: string) =>
 export const apiLeaveBoard = (token: string, id: string) =>
   call<{ ok: boolean }>('/api/boards/leave', { method: 'POST', body: JSON.stringify({ id }) }, token);
 
-export const apiBoardMessages = (token: string, boardId: string, since = 0) =>
+/** Messages from people the caller has blocked are omitted server-side. The
+ *  room is addressed by board id AND share code — the moderation contract
+ *  (2026-09) names the board by `code`; `board` stays for the older route. */
+export const apiBoardMessages = (token: string, boardId: string, since = 0, code?: string) =>
   call<{ messages: BoardMessage[]; now: number }>(
-    `/api/boards/messages?board=${encodeURIComponent(boardId)}&since=${since}`,
+    `/api/boards/messages?board=${encodeURIComponent(boardId)}${code ? `&code=${encodeURIComponent(code)}` : ''}&since=${since}`,
     {},
     token,
   );
 
+/** 400 {error:'moderated'} when the server's chat filter rejects the text. */
 export const apiSendBoardMessage = (token: string, boardId: string, text: string) =>
   call<{ ok: boolean; id: string; created: number }>(
     '/api/boards/message',
     { method: 'POST', body: JSON.stringify({ board: boardId, text }) },
     token,
   );
+
+// ------------------------------------------- chat moderation (App Review 1.2)
+// Block is GLOBAL per caller (every board), idempotent, and hides the blocked
+// user's messages server-side from then on. Reports are stored for the
+// operator (surfaced via /api/status + /api/admin/reports).
+export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'other';
+
+export const apiBlockUser = (token: string, userId: string) =>
+  call<{ ok: boolean }>('/api/boards/block', { method: 'POST', body: JSON.stringify({ user_id: userId }) }, token);
+
+export const apiUnblockUser = (token: string, userId: string) =>
+  call<{ ok: boolean }>('/api/boards/unblock', { method: 'POST', body: JSON.stringify({ user_id: userId }) }, token);
+
+export const apiBlockedUsers = (token: string) =>
+  call<{ blocked: { user_id: string; name: string }[] }>('/api/boards/blocked', {}, token);
+
+/** 404 unknown board/message; 429 past 10 reports / 10 min. `board` (the id)
+ *  rides along with `code` so either server-side lookup resolves the room. */
+export const apiReportMessage = (
+  token: string,
+  args: { code: string; board?: string; message_id: string; reason: ReportReason },
+) =>
+  call<{ ok: boolean }>('/api/boards/report', { method: 'POST', body: JSON.stringify(args) }, token);

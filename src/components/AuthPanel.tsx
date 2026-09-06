@@ -79,8 +79,12 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
     } catch (e) {
       const { status, code } = e as { status?: number; code?: string };
       if (status === 403 && code === 'use_provider') {
-        // account is linked to Apple/Google — the code can't unlock it
-        setNotice('This account signs in with Apple or Google. Use that button above, or set a password in Account after signing in.');
+        // account is linked to Apple/Google — the code can't unlock it. Name
+        // Google only where its button actually renders (App Review 4.8 /
+        // owner: never advertise a sign-in the build can't offer).
+        setNotice(
+          `This account signs in with ${googleAvailable() ? 'Apple or Google' : 'Apple'}. Use that button above, or set a password in Account after signing in.`,
+        );
       } else if (status === 403) {
         // genuinely legacy (no password) — offer the friend-code path
         setNotice('This account has no password yet — sign in with your RIMON friend code below, then set a password in Account.');

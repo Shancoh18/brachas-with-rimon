@@ -15,7 +15,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { generateKeyPairSync } from 'crypto';
+import { createHash, generateKeyPairSync } from 'crypto';
 import { startMockApns } from './mock-apns.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -30,12 +30,13 @@ const check = (name, ok, detail = '') => {
 // ---------------------------------------------------------------- helpers
 const PORT = 5188;
 const B = `http://127.0.0.1:${PORT}`;
-const api = async (path, { method = 'GET', token, body } = {}) => {
+const api = async (path, { method = 'GET', token, body, headers = {} } = {}) => {
   const res = await fetch(B + path, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
     },
     body: body != null ? JSON.stringify(body) : undefined,
   });
@@ -70,7 +71,9 @@ const child = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
     APNS_TEAM_ID: '6WT5WK8MLZ',
     APNS_HOST: `http://127.0.0.1:${mock.port}`,
     BROADCAST_KEY: 'scenario-broadcast-secret',
+    STATUS_KEY: '', // /api/status key must be the one DERIVED from BROADCAST_KEY
     ANTHROPIC_API_KEY: '', // vision stays demo — never spend on tests
+    BACKUP_KEY: '', BACKUP_REPO: '', BACKUP_TOKEN: '', // backups OFF — the prune 409 path relies on it
     ROUND_SWEEP_MS: '0', // keep the round sweep quiet — count-based asserts
     // below must only ever see the pushes they trigger themselves
   },
@@ -453,6 +456,167 @@ try {
   const allTime = lgE.json.league ?? [];
   check('all-time league ranks by lifetime points (E 70 over F 6)', allTime[0]?.name === 'Racer E' && allTime[0]?.points === 70, JSON.stringify(allTime.map((x) => ({ n: x.name, p: x.points }))));
   check('all-time league rows carry win counts', allTime.find((x) => x.name === 'Racer F')?.wins === 1 && allTime.find((x) => x.name === 'Racer E')?.wins === 0, JSON.stringify(allTime.map((x) => ({ n: x.name, w: x.wins }))));
+
+  // ------------------------------------------------------- /api/status
+  // Key-gated capacity document for the cloud watch routine. Plays dead
+  // without/with a wrong key; the real key is DERIVED from BROADCAST_KEY.
+  const STATUS_KEY = createHash('sha256').update('status:scenario-broadcast-secret').digest('hex').slice(0, 24);
+  const ADMIN_IP = { 'X-Forwarded-For': '198.51.100.77' }; // own throttle bucket — the shared per-IP counter is irrelevant here
+  r = await api('/api/status', { headers: ADMIN_IP });
+  check('status without key plays dead (404)', r.status === 404);
+  r = await api('/api/status?key=' + 'f'.repeat(24), { headers: ADMIN_IP });
+  check('status with wrong key plays dead (404)', r.status === 404);
+  r = await api('/api/status?key=' + STATUS_KEY, { headers: ADMIN_IP });
+  const statusFields = ['users', 'storage', 'process', 'vision', 'daily_thought', 'backups', 'alerts', 'dependencies', 'moderation'];
+  check('status with derived key → 200 + every top-level field', r.status === 200 && statusFields.every((f) => r.json && f in r.json), r.status === 200 ? statusFields.filter((f) => !(f in r.json)).join(',') || 'all present' : String(r.status));
+  check('status alerts include backups_disabled', (r.json?.alerts ?? []).some((x) => x.code === 'backups_disabled'), JSON.stringify((r.json?.alerts ?? []).map((x) => x.code)));
+  check('status counts users + no open reports yet', r.json?.users?.total >= 6 && r.json?.moderation?.open_reports === 0, JSON.stringify({ users: r.json?.users?.total, mod: r.json?.moderation }));
+  r = await api('/health');
+  check('/health carries backups + thought freshness', r.status === 200 && r.json.backups === false && r.json.thought?.fresh === false && r.json.thought?.dateKey === null, JSON.stringify(r.json));
+
+  // ---------------------------------------------- chat moderation (1.2)
+  // Fresh trio so the chat/throttle counters above don't leak in.
+  const tokM1 = await register('Mod Owner');
+  const tokM2 = await register('Mod Blocker');
+  const tokM3 = await register('Mod Reporter');
+  const M2_TOKEN = 'a2'.repeat(32);
+  const M3_TOKEN = 'b2'.repeat(32);
+  await api('/api/push/native', { method: 'POST', token: tokM2, body: { token: M2_TOKEN } });
+  await api('/api/push/native', { method: 'POST', token: tokM3, body: { token: M3_TOKEN } });
+  r = await api('/api/boards/create', { method: 'POST', token: tokM1, body: { title: 'Moderation Board' } });
+  const modBoard = r.json.id;
+  const modCode = r.json.code;
+  await api('/api/boards/join', { method: 'POST', token: tokM2, body: { code: modCode } });
+  await api('/api/boards/join', { method: 'POST', token: tokM3, body: { code: modCode } });
+
+  // profanity filter — whole word only, so Scunthorpe stays a place
+  r = await api('/api/boards/message', { method: 'POST', token: tokM1, body: { board: modBoard, text: 'this is SHIT' } });
+  check('profanity → 400 moderated', r.status === 400 && r.json.error === 'moderated', JSON.stringify(r.json));
+  r = await api('/api/boards/message', { method: 'POST', token: tokM1, body: { board: modBoard, text: 'Scunthorpe United won, shiitake for dinner' } });
+  check('filter is whole-word (Scunthorpe/shiitake pass)', r.status === 200 && r.json.ok, JSON.stringify(r.json));
+
+  // messages carry user_id; the board can be addressed by id OR share code
+  r = await api('/api/boards/message', { method: 'POST', token: tokM1, body: { board: modBoard, text: 'hello from the owner' } });
+  const ownerMsgId = r.json.id;
+  r = await api('/api/boards/messages?code=' + modCode, { token: tokM3 });
+  const ownerMsg = (r.json?.messages ?? []).find((m) => m.id === ownerMsgId);
+  check('messages carry user_id (board addressed by code)', r.status === 200 && !!ownerMsg && typeof ownerMsg.user_id === 'string' && ownerMsg.user_id.length > 0 && ownerMsg.mine === false, JSON.stringify(ownerMsg));
+  const ownerId = ownerMsg?.user_id;
+
+  // block / unblock / list
+  r = await api('/api/boards/block', { method: 'POST', token: tokM2, body: { user_id: ownerId } });
+  check('block → 200 ok', r.status === 200 && r.json.ok, JSON.stringify(r.json));
+  r = await api('/api/boards/block', { method: 'POST', token: tokM2, body: { user_id: ownerId } });
+  check('block is idempotent', r.status === 200 && r.json.ok);
+  r = await api('/api/boards/blocked', { token: tokM2 });
+  check('blocked list carries user_id + name', r.status === 200 && r.json.blocked?.length === 1 && r.json.blocked[0].user_id === ownerId && r.json.blocked[0].name === 'Mod Owner', JSON.stringify(r.json));
+  r = await api('/api/boards/block', { method: 'POST', token: tokM2, body: { user_id: 'nope' } });
+  check('block unknown user → 404', r.status === 404);
+  // blocking yourself: find M2's own id via a message it posts
+  r = await api('/api/boards/message', { method: 'POST', token: tokM2, body: { board: modBoard, text: 'blocker speaking' } });
+  const m2MsgId = r.json.id;
+  r = await api('/api/boards/messages?board=' + modBoard, { token: tokM2 });
+  const selfId = (r.json?.messages ?? []).find((m) => m.id === m2MsgId)?.user_id;
+  r = await api('/api/boards/block', { method: 'POST', token: tokM2, body: { user_id: selfId } });
+  check('cannot block yourself (400)', r.status === 400 && r.json.error === 'thats_you', JSON.stringify(r.json));
+
+  // a blocked sender is invisible to the blocker — and only the blocker
+  r = await api('/api/boards/message', { method: 'POST', token: tokM1, body: { board: modBoard, text: 'blocked sender talking' } });
+  const blockedMsgId = r.json.id;
+  r = await api('/api/boards/messages?board=' + modBoard, { token: tokM2 });
+  check('blocker does NOT see the blocked sender\'s messages', r.status === 200 && !r.json.messages.some((m) => m.user_id === ownerId), JSON.stringify(r.json.messages?.map((m) => m.text)));
+  r = await api('/api/boards/messages?board=' + modBoard, { token: tokM3 });
+  check('other members still see them', r.status === 200 && r.json.messages.some((m) => m.id === blockedMsgId && m.user_id === ownerId), JSON.stringify(r.json.messages?.map((m) => m.text)));
+  // pushes: a FRESH board, so neither member is inside the 5-min chat
+  // cooldown or the 60s active-reader window from the room above — the block
+  // is global, so it still applies here
+  r = await api('/api/boards/create', { method: 'POST', token: tokM1, body: { title: 'Push Board' } });
+  await api('/api/boards/join', { method: 'POST', token: tokM2, body: { code: r.json.code } });
+  await api('/api/boards/join', { method: 'POST', token: tokM3, body: { code: r.json.code } });
+  const pushBefore = { m2: mock.forToken(M2_TOKEN).length, m3: mock.forToken(M3_TOKEN).length };
+  await api('/api/boards/message', { method: 'POST', token: tokM1, body: { board: r.json.id, text: 'push from a blocked sender' } });
+  got = await mock.waitFor(() => mock.forToken(M3_TOKEN).length > pushBefore.m3);
+  await sleep(600);
+  check('blocked sender\'s chat push reaches the non-blocker', got);
+  check('blocked sender\'s chat push does NOT reach the blocker', mock.forToken(M2_TOKEN).length === pushBefore.m2, `${mock.forToken(M2_TOKEN).length - pushBefore.m2} extra`);
+  r = await api('/api/boards', { token: tokM2 });
+  check('blocked sender\'s messages don\'t count as unread for the blocker', (r.json.boards.find((b) => b.id === modBoard)?.unread ?? -1) === 0, JSON.stringify(r.json.boards.find((b) => b.id === modBoard)?.unread));
+  r = await api('/api/boards/unblock', { method: 'POST', token: tokM2, body: { user_id: ownerId } });
+  check('unblock → 200 ok', r.status === 200 && r.json.ok);
+  r = await api('/api/boards/messages?board=' + modBoard, { token: tokM2 });
+  check('after unblock the messages are visible again', r.json.messages.some((m) => m.id === blockedMsgId));
+  r = await api('/api/boards/blocked', { token: tokM2 });
+  check('blocked list empty after unblock', r.json.blocked?.length === 0);
+
+  // report → stored → operator list/resolve; 429 after 10 in 10 min
+  r = await api('/api/boards/report', { method: 'POST', token: tokM3, body: { code: modCode, message_id: blockedMsgId, reason: 'harassment' } });
+  check('report → 200 ok', r.status === 200 && r.json.ok, JSON.stringify(r.json));
+  r = await api('/api/boards/report', { method: 'POST', token: tokM3, body: { code: modCode, message_id: blockedMsgId, reason: 'because' } });
+  check('report with a non-enum reason → 400', r.status === 400 && r.json.error === 'bad_reason');
+  r = await api('/api/boards/report', { method: 'POST', token: tokM3, body: { code: modCode, message_id: 'nope', reason: 'spam' } });
+  check('report of an unknown message → 404', r.status === 404);
+  r = await api('/api/boards/report', { method: 'POST', token: tokD, body: { code: modCode, message_id: blockedMsgId, reason: 'spam' } });
+  check('non-member cannot report into a board → 404', r.status === 404);
+  r = await api('/api/admin/reports', { method: 'POST', body: { secret: 'wrong' }, headers: ADMIN_IP });
+  check('admin reports with wrong secret plays dead (404)', r.status === 404);
+  r = await api('/api/admin/reports', { method: 'POST', body: { secret: 'scenario-broadcast-secret' }, headers: ADMIN_IP });
+  const stored = (r.json?.reports ?? []).find((x) => x.message_id === blockedMsgId);
+  check('report stored with text, reason, reporter + reported ids', r.status === 200 && !!stored && stored.text === 'blocked sender talking' && stored.reason === 'harassment' && stored.reported_user_id === ownerId && stored.status === 'open' && typeof stored.reporter_id === 'string', JSON.stringify(stored));
+  let reportLimited = null;
+  for (let i = 0; i < 12 && reportLimited == null; i++) {
+    const rr = await api('/api/boards/report', { method: 'POST', token: tokM3, body: { board: modBoard, message_id: ownerMsgId, reason: 'spam' } });
+    if (rr.status === 429) reportLimited = i;
+  }
+  check('11th report in 10 min → 429 (10 stored)', reportLimited === 9, `429 came on extra attempt #${reportLimited}`);
+  r = await api('/api/status?key=' + STATUS_KEY, { headers: ADMIN_IP });
+  check('status surfaces open reports + open_reports WARN alert', r.json?.moderation?.open_reports === 10 && r.json.alerts.some((x) => x.code === 'open_reports' && x.level === 'warn') && r.json.level !== 'ok', JSON.stringify({ mod: r.json?.moderation, level: r.json?.level }));
+  r = await api('/api/admin/reports/resolve', { method: 'POST', body: { secret: 'wrong', id: stored?.id }, headers: ADMIN_IP });
+  check('resolve with wrong secret plays dead (404)', r.status === 404);
+  r = await api('/api/admin/reports/resolve', { method: 'POST', body: { secret: 'scenario-broadcast-secret', id: stored?.id }, headers: ADMIN_IP });
+  check('resolve → 200 ok', r.status === 200 && r.json.ok, JSON.stringify(r.json));
+  r = await api('/api/admin/reports', { method: 'POST', body: { secret: 'scenario-broadcast-secret' }, headers: ADMIN_IP });
+  check('resolved report leaves the open list', r.json.open === 9 && !r.json.reports.some((x) => x.id === stored?.id), JSON.stringify({ open: r.json.open }));
+
+  // ---------------------------------- owner deletes account → board survives
+  r = await api('/api/boards/create', { method: 'POST', token: tokM1, body: { title: 'Solo Board' } });
+  const soloCode = r.json.code;
+  r = await api('/api/account/delete', { method: 'POST', token: tokM1 });
+  check('owner account deleted', r.status === 200 && r.json.ok);
+  r = await api('/api/boards', { token: tokM2 });
+  const survivor = r.json.boards.find((b) => b.id === modBoard);
+  check('shared board SURVIVES the owner leaving', !!survivor, JSON.stringify(r.json.boards.map((b) => b.title)));
+  check('earliest-joined member inherits ownership', survivor?.owner === true && survivor?.members === 2, JSON.stringify({ owner: survivor?.owner, members: survivor?.members }));
+  r = await api('/api/boards', { token: tokM3 });
+  check('the later member does not', r.json.boards.find((b) => b.id === modBoard)?.owner === false);
+  r = await api('/api/boards/messages?board=' + modBoard, { token: tokM3 });
+  check('the room still works for the remaining members', r.status === 200 && r.json.messages.some((m) => m.id === m2MsgId));
+  r = await api('/api/boards/join', { method: 'POST', token: tokD, body: { code: soloCode } });
+  check('a board with no other member is deleted with its owner', r.status === 404);
+
+  // ----------------------------------------- admin prune of test accounts
+  const e2eTok = (await api('/api/register', { method: 'POST', body: { name: 'E2E Bot', email: 'e2e-77@example.com', password: 'e2e-pass-1234' } })).json.token;
+  await api('/api/register', { method: 'POST', body: { name: 'Store Demo', email: 'store-demo-3@example.com', password: 'demo-pass-1234' } });
+  await api('/api/register', { method: 'POST', body: { name: 'Test Friend' } }); // no email — the scenario "friend"
+  // the e2e bot owns a board with a real member in it — prune must hand it over, not destroy it
+  r = await api('/api/boards/create', { method: 'POST', token: e2eTok, body: { title: 'Bot Board' } });
+  await api('/api/boards/join', { method: 'POST', token: tokD, body: { code: r.json.code } });
+  const botBoard = r.json.id;
+  r = await api('/api/admin/prune-test-accounts', { method: 'POST', body: { secret: 'wrong', force: true }, headers: ADMIN_IP });
+  check('prune with wrong secret plays dead (404)', r.status === 404);
+  r = await api('/api/admin/prune-test-accounts', { method: 'POST', body: { secret: 'scenario-broadcast-secret' }, headers: ADMIN_IP });
+  check('prune refuses without backups (409 backups_disabled)', r.status === 409 && r.json.error === 'backups_disabled', JSON.stringify(r.json));
+  r = await api('/api/me', { token: e2eTok });
+  check('nothing deleted by the refused prune', r.status === 200);
+  r = await api('/api/admin/prune-test-accounts', { method: 'POST', body: { secret: 'scenario-broadcast-secret', force: true }, headers: ADMIN_IP });
+  check('forced prune deletes exactly the 3 test accounts', r.status === 200 && r.json.deleted === 3, JSON.stringify(r.json));
+  r = await api('/api/me', { token: e2eTok });
+  check('pruned account is gone (401)', r.status === 401);
+  r = await api('/api/signin', { method: 'POST', body: { email: 'store-demo-3@example.com', password: 'demo-pass-1234' } });
+  check('pruned store-demo account cannot sign in', r.status === 404);
+  r = await api('/api/me', { token: tokD });
+  check('real accounts untouched', r.status === 200 && r.json.name === 'Rival D');
+  r = await api('/api/boards', { token: tokD });
+  check('bot-owned board handed to its real member, not destroyed', r.json.boards.find((b) => b.id === botBoard)?.owner === true, JSON.stringify(r.json.boards.map((b) => ({ t: b.title, o: b.owner }))));
 } catch (e) {
   check('scenario suite ran to completion', false, String(e.message ?? e));
   console.log('--- server log tail ---');

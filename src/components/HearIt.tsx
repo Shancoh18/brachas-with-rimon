@@ -1,7 +1,7 @@
 /**
  * "Hear it" — plays the ElevenLabs-generated recitation of a bracha.
  * Pronunciations are STT-verified against the Hebrew text but still labeled
- * beta; a native recording pass can replace public/audio/*.mp3 one-to-one.
+ * "AI voice"; a native recording pass can replace public/audio/*.mp3 one-to-one.
  */
 import { useEffect, useRef, useState } from 'react';
 
@@ -56,7 +56,9 @@ export function HearIt({ src, label = 'Hear it' }: { src: string; label?: string
         {playing ? '◼' : '▶'}
       </span>
       {playing ? 'Playing…' : label}
-      <span className="text-[8.5px] font-bold uppercase tracking-widest opacity-50">beta</span>
+      {/* "AI voice", not "beta": App Review reads a beta label as unfinished
+          software; what it actually flags is that the reciter is synthesized */}
+      <span className="text-[8.5px] font-bold uppercase tracking-widest opacity-50">AI voice</span>
     </button>
   );
 }

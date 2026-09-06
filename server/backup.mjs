@@ -18,6 +18,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto';
 import { readFileSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
+import { mark, fail } from './status.mjs';
 
 const KEY_HEX = (process.env.BACKUP_KEY || '').trim();
 const REPO = (process.env.BACKUP_REPO || '').trim();
@@ -85,9 +86,12 @@ export async function runBackup(db, dataDir, stampDay) {
       ...(existing?.sha ? { sha: existing.sha } : {}),
     });
     console.log(`backup: uploaded ${path} (${enc.length} bytes)`);
+    // recorded for /api/status — a stale last_ok_at turns into a CRITICAL alert
+    mark('backup', { ok: true, detail: enc.length });
     await prune();
   } catch (e) {
     console.error(`backup FAILED (${stampDay}): ${e.message}`);
+    fail('backup', null, 'runBackup', e.message);
   } finally {
     try { if (existsSync(tmp)) unlinkSync(tmp); } catch {}
   }

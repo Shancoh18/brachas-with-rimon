@@ -3,7 +3,9 @@
  * Local-first (persisted via zustand). Friendly-for-adults tone: growth and
  * mindfulness framing, not candy-crush pressure.
  */
-import { LESSONS } from '../data/learn';
+// explicit .ts extension: server/test/progress.mjs loads this module under
+// node's type-stripping, which resolves no extensionless relative imports
+import { LESSONS } from '../data/learn.ts';
 
 /** scholar challenge counts only lessons in the CURRENT library — stale ids
  *  from removed lessons stay in lessonsRead but never inflate the count */
@@ -29,6 +31,36 @@ const dayDiff = (a: string, b: string): number => {
   return Math.round(
     (new Date(yb, mb - 1, db).getTime() - new Date(ya, ma - 1, da).getTime()) / 86_400_000,
   );
+};
+
+/** 0 = Sunday … 6 = Saturday, computed in LOCAL time from a YYYY-MM-DD key
+ *  (never `new Date(str)`, which parses as UTC midnight and shifts the weekday
+ *  west of Greenwich). */
+const weekday = (day: string): number => {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+};
+
+/**
+ * SHABBAT GRACE — does `today` continue a streak whose last log was `lastDay`?
+ *
+ * The app is not used on Shabbat (no photos, no phone), so a Friday → Sunday
+ * gap is NOT a missed day: the streak survives when the single skipped day is
+ * a Saturday. Any other 2-day gap, or anything longer, still resets. Same-day
+ * (gap 0) is "not consecutive" — callers treat it as no change, never a reset.
+ */
+export const isConsecutive = (lastDay: string, today: string): boolean => {
+  const gap = dayDiff(lastDay, today);
+  if (gap === 1) return true;
+  return gap === 2 && weekday(lastDay) === 5; // Friday → (Shabbat) → Sunday
+};
+
+/** Next streak value after a log on `today`, given the previous streak state. */
+const nextStreak = (p: ProgressState, today: string): number => {
+  if (p.lastActiveDay == null) return 1;
+  // same day (or a clock that went backwards) — unchanged, never a reset
+  if (dayDiff(p.lastActiveDay, today) <= 0) return p.streakCurrent;
+  return isConsecutive(p.lastActiveDay, today) ? p.streakCurrent + 1 : 1;
 };
 
 export interface ProgressState {
@@ -69,24 +101,18 @@ export function addPoints(p: ProgressState, pts: number): ProgressState {
   return { ...p, points: (p.points ?? 0) + pts, history: history.slice(-90) };
 }
 
-/** Record a completed meal: n brachos said (before + after), update streak. */
+/** Record a completed meal: n brachos said (before + after), update streak.
+ *  `day` defaults to the local today; the test harness injects it. */
 export function recordMeal(
   p: ProgressState,
   brachosSaid: string[],
   sevenSpecies: number,
+  day: string = todayStamp(),
 ): ProgressState {
-  const day = todayStamp();
   const byBracha = { ...p.byBracha };
   for (const b of brachosSaid) byBracha[b] = (byBracha[b] ?? 0) + 1;
 
-  let streakCurrent = p.streakCurrent;
-  if (p.lastActiveDay == null) streakCurrent = 1;
-  else {
-    const gap = dayDiff(p.lastActiveDay, day);
-    if (gap === 1) streakCurrent += 1;
-    else if (gap > 1) streakCurrent = 1;
-    // gap === 0 → same day, streak unchanged
-  }
+  const streakCurrent = nextStreak(p, day); // Shabbat grace lives in isConsecutive
 
   const history = [...p.history];
   const last = history[history.length - 1];
@@ -110,19 +136,16 @@ export function recordMeal(
  *  before-brachos were already banked by recordMeal at guide-finish).
  *  Same streak/history bookkeeping as recordMeal, but NO mealsCompleted /
  *  sevenSpecies increment: the meal itself was counted once already. */
-export function recordAfterBrachos(p: ProgressState, brachosSaid: string[]): ProgressState {
+export function recordAfterBrachos(
+  p: ProgressState,
+  brachosSaid: string[],
+  day: string = todayStamp(),
+): ProgressState {
   if (brachosSaid.length === 0) return p;
-  const day = todayStamp();
   const byBracha = { ...p.byBracha };
   for (const b of brachosSaid) byBracha[b] = (byBracha[b] ?? 0) + 1;
 
-  let streakCurrent = p.streakCurrent;
-  if (p.lastActiveDay == null) streakCurrent = 1;
-  else {
-    const gap = dayDiff(p.lastActiveDay, day);
-    if (gap === 1) streakCurrent += 1;
-    else if (gap > 1) streakCurrent = 1;
-  }
+  const streakCurrent = nextStreak(p, day); // same Shabbat-grace rule as recordMeal
 
   const history = [...p.history];
   const last = history[history.length - 1];
@@ -140,10 +163,11 @@ export function recordAfterBrachos(p: ProgressState, brachosSaid: string[]): Pro
   };
 }
 
-/** Streak is alive if last activity was today or yesterday. */
-export function streakAlive(p: ProgressState): boolean {
+/** Streak is alive if last activity was today, yesterday, or — Shabbat grace —
+ *  the Friday before a Sunday. */
+export function streakAlive(p: ProgressState, today: string = todayStamp()): boolean {
   if (!p.lastActiveDay) return false;
-  return dayDiff(p.lastActiveDay, todayStamp()) <= 1;
+  return dayDiff(p.lastActiveDay, today) <= 0 || isConsecutive(p.lastActiveDay, today);
 }
 
 // ---------------------------------------------------------------- challenges
