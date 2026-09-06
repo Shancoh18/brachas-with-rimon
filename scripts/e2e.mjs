@@ -4,6 +4,41 @@
  */
 import puppeteer from 'puppeteer-core';
 
+// PROXY: the Anthropic cloud routine that runs this suite daily lives in a sandbox whose only
+// way out is an egress proxy. curl honours HTTPS_PROXY there; headless Chrome and Node's fetch
+// do NOT (Chrome hit net::ERR_CONNECTION_RESET on 2026-09-06 while curl to the same host worked).
+// CHROME_PROXY (or the standard env vars) is applied to Chrome via --proxy-server and to this
+// script's own fetch calls via undici's ProxyAgent when undici is installed. Unset = direct.
+const PROXY = (process.env.CHROME_PROXY || process.env.HTTPS_PROXY || process.env.https_proxy ||
+  process.env.HTTP_PROXY || process.env.http_proxy || '').trim();
+const PROXY_URL = PROXY ? (PROXY.includes('://') ? PROXY : `http://${PROXY}`) : '';
+let proxyServer = '';
+let proxyAuth = null;
+if (PROXY_URL) {
+  try {
+    const u = new URL(PROXY_URL);
+    proxyServer = `${u.protocol}//${u.host}`;
+    if (u.username) proxyAuth = { username: decodeURIComponent(u.username), password: decodeURIComponent(u.password || '') };
+  } catch {
+    proxyServer = PROXY;
+  }
+}
+const noProxy = (process.env.NO_PROXY || process.env.no_proxy || '').split(',').map((x) => x.trim()).filter(Boolean);
+// Module-scoped fetch shadows the global for THIS script only; functions handed to page.evaluate
+// are serialised to text and run in the browser, where fetch is still window.fetch.
+const fetch = await (async () => {
+  if (!PROXY_URL) return globalThis.fetch;
+  try {
+    const undici = await import('undici');
+    const agent = new undici.ProxyAgent(PROXY_URL);
+    console.log(`INFO  proxy ${proxyServer}: applied to Chrome and to Node fetch (undici)`);
+    return (url, init = {}) => undici.fetch(url, { ...init, dispatcher: agent });
+  } catch {
+    console.log(`INFO  proxy ${proxyServer}: applied to Chrome; undici not installed so Node fetch stays direct (npm i --no-save undici, or NODE_USE_ENV_PROXY=1 on Node >= 24)`);
+    return globalThis.fetch;
+  }
+})();
+
 const URL = 'https://shancoh18.github.io/brachas-with-rimon/';
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -17,9 +52,18 @@ const browser = await puppeteer.launch({
   // CHROME_PATH lets the suite run from a box whose Chrome lives elsewhere (CI, a laptop)
   executablePath: process.env.CHROME_PATH || 'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
   headless: true,
-  args: ['--no-sandbox', '--disable-gpu', '--autoplay-policy=no-user-gesture-required'],
+  args: [
+    '--no-sandbox',
+    '--disable-gpu',
+    '--autoplay-policy=no-user-gesture-required',
+    ...(proxyServer ? [`--proxy-server=${proxyServer}`] : []),
+    ...(proxyServer && noProxy.length ? [`--proxy-bypass-list=${noProxy.join(';')}`] : []),
+    // CHROME_EXTRA_ARGS: space-separated extra flags (e.g. a sandbox that needs --disable-quic)
+    ...(process.env.CHROME_EXTRA_ARGS || '').split(/\s+/).filter(Boolean),
+  ],
 });
 const page = await browser.newPage();
+if (proxyAuth) await page.authenticate(proxyAuth);
 await browser.defaultBrowserContext().overridePermissions('https://shancoh18.github.io', ['notifications']);
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));

@@ -4,7 +4,7 @@ The repo is App Store-ready: the `ios/` Xcode project is committed (iPhone-only,
 portrait-only), reminders use native iOS local notifications, in-app account
 deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
-generated. Current submission: **version 1.0, build 32** (`MARKETING_VERSION`
+generated. Current submission: **version 1.0, build 33** (`MARKETING_VERSION`
 and `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`).
 What remains needs your Apple account. Two paths — pick one.
 
