@@ -9,7 +9,8 @@
  *   · Continue with Google (wherever a Google client id is configured)
  *
  * All verification happens server-side; this panel only collects
- * credentials or forwards provider identity tokens.
+ * credentials or forwards provider identity tokens (plus, for Apple, the
+ * sign-in authorization code the server needs for revocation on delete).
  */
 import { useState } from 'react';
 import { apiOauth, apiRegister, apiSignIn } from '../lib/api';
@@ -106,7 +107,8 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
     setBusy(true);
     try {
       const id = await (provider === 'apple' ? loginWithApple() : loginWithGoogle());
-      const r = await apiOauth(provider, id.idToken, id.name);
+      // authorizationCode is only ever set by loginWithApple — Google unchanged
+      const r = await apiOauth(provider, id.idToken, id.name, id.authorizationCode);
       finish(r);
     } catch (e) {
       const status = (e as { status?: number }).status;

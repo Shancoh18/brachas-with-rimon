@@ -21,6 +21,11 @@ const RAW = resolve(arg('raw', 'store-assets/raw69'));
 const OUT = resolve(arg('out', 'store-assets/boards'));
 const W = Number(arg('w', 1320));
 const H = Number(arg('h', 2868));
+// --bg=<dir>: full-bleed background plate per board (<id>.png, e.g. Higgsfield scene art); the phone
+// narrows to --phone (fraction of W, default 0.8 / 0.66 with a plate) so the scene stays visible, and a
+// cream veil keeps the headline legible over photography. The UI inside the phone is still the real capture.
+const BG = arg('bg', '') ? resolve(arg('bg', '')) : '';
+const PHONE = Number(arg('phone', BG ? 0.66 : 0.8));
 mkdirSync(OUT, { recursive: true });
 
 const ROOT = resolve('.');
@@ -51,6 +56,8 @@ const css = `
 :root{--cream:#faf7e9;--paper:#fdfbf4;--espresso:#2b1d16;--mocha:#7a6555;--gold:#b8892b;--crimson:#a8322d;}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{width:${W}px;height:${H}px;overflow:hidden;background:var(--cream)}
+.bg{position:absolute;inset:0;background-size:cover;background-position:center bottom}
+.veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(250,247,233,.94) 0%,rgba(250,247,233,.88) 26%,rgba(250,247,233,.35) 40%,rgba(250,247,233,0) 52%)}
 body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--espresso);position:relative}
 .grain{position:absolute;inset:0;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.8'/></svg>")}
 .glow{position:absolute;left:50%;top:38%;width:${W * 1.1}px;height:${W * 1.1}px;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(closest-side,rgba(184,137,43,.16),rgba(184,137,43,0) 70%)}
@@ -62,7 +69,7 @@ h1{font-family:'Frank Ruhl Libre',Georgia,serif;font-weight:800;font-size:${Math
 .sub{margin:${Math.round(W * 0.03)}px auto 0;max-width:${Math.round(W * 0.8)}px;font-size:${Math.round(W * 0.031)}px;line-height:1.45;color:var(--mocha);font-weight:500}
 .rule{width:${Math.round(W * 0.09)}px;height:4px;border-radius:2px;background:var(--gold);margin:${Math.round(W * 0.032)}px auto 0}
 .rule.crimson{background:var(--crimson)}
-.phone{position:absolute;left:50%;top:${Math.round(H * 0.315)}px;transform:translateX(-50%);width:${Math.round(W * 0.8)}px;z-index:1;border-radius:${Math.round(W * 0.085)}px;padding:${Math.round(W * 0.013)}px;background:#1a1512;box-shadow:0 ${Math.round(W * 0.04)}px ${Math.round(W * 0.09)}px rgba(43,29,22,.32),0 ${Math.round(W * 0.008)}px ${Math.round(W * 0.02)}px rgba(43,29,22,.18)}
+.phone{position:absolute;left:50%;top:${Math.round(H * (BG ? 0.3 : 0.315))}px;transform:translateX(-50%);width:${Math.round(W * PHONE)}px;z-index:1;border-radius:${Math.round(W * 0.085)}px;padding:${Math.round(W * 0.013)}px;background:#1a1512;box-shadow:0 ${Math.round(W * 0.04)}px ${Math.round(W * 0.09)}px rgba(43,29,22,.32),0 ${Math.round(W * 0.008)}px ${Math.round(W * 0.02)}px rgba(43,29,22,.18)}
 .phone .screen{display:block;width:100%;border-radius:${Math.round(W * 0.072)}px;background:#faf7e9}
 .phone .island{position:absolute;left:50%;top:${Math.round(W * 0.033)}px;transform:translateX(-50%);width:${Math.round(W * 0.2)}px;height:${Math.round(W * 0.052)}px;border-radius:999px;background:#1a1512}
 .rimon{position:absolute;z-index:2;width:${Math.round(W * 0.3)}px;filter:drop-shadow(0 ${Math.round(W * 0.012)}px ${Math.round(W * 0.03)}px rgba(43,29,22,.25))}
@@ -73,7 +80,7 @@ h1{font-family:'Frank Ruhl Libre',Georgia,serif;font-weight:800;font-size:${Math
 `;
 
 const html = (b) => `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body>
-<div class="glow ${b.accent}"></div><div class="grain"></div>
+${BG && existsSync(join(BG, `${b.id}.png`)) ? `<div class="bg" style="background-image:url(${b64(join(BG, `${b.id}.png`))})"></div><div class="veil"></div>` : `<div class="glow ${b.accent}"></div>`}<div class="grain"></div>
 <div class="top"><div class="eyebrow ${b.accent}">${b.eyebrow}</div><h1>${b.h1}</h1><div class="rule ${b.accent}"></div><p class="sub">${b.sub}</p></div>
 ${b.rimon ? `<img class="rimon ${b.rimonSide || (BOARDS.indexOf(b) % 2 ? 'left' : 'right')}" src="${mascot(b.rimon)}">` : ''}
 <div class="phone"><img class="screen" src="${b64(rawFile(b.shot))}"><div class="island"></div></div>

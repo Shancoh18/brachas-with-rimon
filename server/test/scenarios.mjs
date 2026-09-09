@@ -15,8 +15,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { createHash, generateKeyPairSync } from 'crypto';
+import { createHash, generateKeyPairSync, randomBytes, sign as cryptoSign } from 'crypto';
 import { startMockApns } from './mock-apns.mjs';
+import { startMockApple } from './mock-apple.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = join(HERE, '..', 'server.mjs');
@@ -57,10 +58,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- boot
 const dataDir = mkdtempSync(join(tmpdir(), 'rimon-scenarios-'));
-const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+const { privateKey, publicKey: apnsPublicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
 const p8 = privateKey.export({ type: 'pkcs8', format: 'pem' });
+// A SEPARATE throwaway "Sign in with Apple" key for server 1, so the suite
+// proves the dedicated APPLE_SIWA_KEY path; server 2 gets none and must fall
+// back to the APNs key (one Apple key can carry both services).
+const siwaPair = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+const p8Siwa = siwaPair.privateKey.export({ type: 'pkcs8', format: 'pem' });
+// RSA pair standing in for Apple's id-token signing key: the public half is
+// served by the mock JWKS (APPLE_JWKS_URL) and the suite mints RS256 id tokens
+// with the private half — so /api/oauth runs its REAL verification path.
+const idKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const ID_KID = 'SCENARIO-RSA';
+const mintAppleIdToken = (sub, email) => {
+  const now = Math.floor(Date.now() / 1000);
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  const head = b64({ alg: 'RS256', kid: ID_KID, typ: 'JWT' });
+  const body = b64({ iss: 'https://appleid.apple.com', aud: 'com.shancoh.brachaswithrimon', iat: now, exp: now + 600, sub, email, email_verified: true });
+  const sig = cryptoSign('sha256', Buffer.from(`${head}.${body}`), idKeys.privateKey).toString('base64url');
+  return `${head}.${body}.${sig}`;
+};
 
 const mock = await startMockApns();
+const mockApple = await startMockApple({
+  jwks: { keys: [{ ...idKeys.publicKey.export({ format: 'jwk' }), kid: ID_KID, use: 'sig', alg: 'RS256' }] },
+  secretKeys: { SIWAKEY001: siwaPair.publicKey, SCENARIOKEY: apnsPublicKey },
+  expect: { clientId: 'com.shancoh.brachaswithrimon', teamId: '6WT5WK8MLZ' },
+});
+const APPLE_ENV = {
+  APPLE_JWKS_URL: `http://127.0.0.1:${mockApple.port}/auth/keys`,
+  APPLE_SIWA_TOKEN_URL: `http://127.0.0.1:${mockApple.port}/auth/token`,
+  APPLE_SIWA_REVOKE_URL: `http://127.0.0.1:${mockApple.port}/auth/revoke`,
+};
 const child = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
   env: {
     ...process.env,
@@ -70,6 +99,12 @@ const child = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
     APNS_KEY_ID: 'SCENARIOKEY',
     APNS_TEAM_ID: '6WT5WK8MLZ',
     APNS_HOST: `http://127.0.0.1:${mock.port}`,
+    ...APPLE_ENV,
+    // dedicated Sign in with Apple key (5.1.1(v) revocation) — server 2 omits
+    // it to prove the APNS_KEY fallback, server 3 has no Apple key at all
+    APPLE_SIWA_KEY: p8Siwa,
+    APPLE_SIWA_KEY_ID: 'SIWAKEY001',
+    APPLE_TEAM_ID: '6WT5WK8MLZ',
     BROADCAST_KEY: 'scenario-broadcast-secret',
     STATUS_KEY: '', // /api/status key must be the one DERIVED from BROADCAST_KEY
     ANTHROPIC_API_KEY: '', // vision stays demo — never spend on tests
@@ -98,6 +133,8 @@ const child2 = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
     APNS_KEY_ID: 'SCENARIOKEY',
     APNS_TEAM_ID: '6WT5WK8MLZ',
     APNS_HOST: `http://127.0.0.1:${mock.port}`,
+    ...APPLE_ENV,
+    APPLE_SIWA_KEY: '', APPLE_SIWA_KEY_ID: '', APPLE_TEAM_ID: '', // → must fall back to the APNS_* key
     ANTHROPIC_API_KEY: '',
     ROUND_SWEEP_MS: '400',
     ROUND_DURATIONS_OVERRIDE: JSON.stringify({ week: 2500 }),
@@ -119,8 +156,41 @@ const api2 = async (path, { method = 'GET', token, body } = {}) => {
   return { status: res.status, json };
 };
 
-// wait for both ports to accept
-for (const base of [B, B2]) {
+// Third server with NO Apple key of any kind (no APPLE_SIWA_*, no APNS_*):
+// proves Sign in with Apple + account deletion behave exactly as before the
+// revocation feature existed, and that nothing is ever sent to Apple.
+const PORT3 = 5190;
+const B3 = `http://127.0.0.1:${PORT3}`;
+const dataDir3 = mkdtempSync(join(tmpdir(), 'rimon-nokey-'));
+const child3 = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
+  env: {
+    ...process.env,
+    DATA_DIR: dataDir3,
+    PORT: String(PORT3),
+    ...APPLE_ENV, // the mock would RECORD any call the server wrongly makes
+    APNS_KEY: '', APNS_KEY_ID: '', APNS_TEAM_ID: '',
+    APPLE_SIWA_KEY: '', APPLE_SIWA_KEY_ID: '', APPLE_TEAM_ID: '',
+    ANTHROPIC_API_KEY: '',
+    ROUND_SWEEP_MS: '0',
+  },
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+let serverLog3 = '';
+child3.stdout.on('data', (c) => { serverLog3 += c; serverLog += c; });
+child3.stderr.on('data', (c) => { serverLog3 += c; serverLog += c; });
+const api3 = async (path, { method = 'GET', token, body } = {}) => {
+  const res = await fetch(B3 + path, {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body != null ? JSON.stringify(body) : undefined,
+  });
+  let json = null;
+  try { json = await res.json(); } catch {}
+  return { status: res.status, json };
+};
+
+// wait for all three ports to accept
+for (const base of [B, B2, B3]) {
   let up = false;
   for (let i = 0; i < 60 && !up; i++) {
     try { await fetch(base + '/api/lessons'); up = true; } catch { await sleep(250); }
@@ -135,9 +205,12 @@ for (const base of [B, B2]) {
 const cleanup = async (code) => {
   child.kill();
   child2.kill();
+  child3.kill();
   await mock.close();
+  await mockApple.close();
   try { rmSync(dataDir, { recursive: true, force: true }); } catch {} // WAL handles may lag on Windows
   try { rmSync(dataDir2, { recursive: true, force: true }); } catch {}
+  try { rmSync(dataDir3, { recursive: true, force: true }); } catch {}
   process.exit(code);
 };
 
@@ -617,6 +690,118 @@ try {
   check('real accounts untouched', r.status === 200 && r.json.name === 'Rival D');
   r = await api('/api/boards', { token: tokD });
   check('bot-owned board handed to its real member, not destroyed', r.json.boards.find((b) => b.id === botBoard)?.owner === true, JSON.stringify(r.json.boards.map((b) => ({ t: b.title, o: b.owner }))));
+
+  // ------------------- Sign in with Apple token revocation (5.1.1(v))
+  // Server 1 holds a dedicated APPLE_SIWA_KEY. The id token is minted with
+  // the suite's RSA key and verified by the server against the mock JWKS, so
+  // this is the real /api/oauth path end-to-end: verify → exchange the
+  // authorization code → store the refresh token → revoke it on deletion.
+  const tokenCalls = () => mockApple.requests.filter((x) => x.path === '/auth/token');
+  const revokeCalls = () => mockApple.requests.filter((x) => x.path === '/auth/revoke');
+  // Direct row read — the token must never surface through any API. Falls
+  // back gracefully where the runner's node lacks unflagged node:sqlite; the
+  // revoke payload below then remains the proof of what was stored.
+  const readRefresh = async (dir, sub) => {
+    try {
+      const { DatabaseSync } = await import('node:sqlite');
+      const d = new DatabaseSync(join(dir, 'rimon.db'));
+      const row = d.prepare('SELECT apple_refresh FROM users WHERE apple_sub = ?').get(sub);
+      d.close();
+      return { readable: true, found: !!row, refresh: row?.apple_refresh ?? null };
+    } catch (e) {
+      return { readable: false, found: null, refresh: null, error: e.message };
+    }
+  };
+  const storedIs = (s, want) => (s.readable ? s.found && s.refresh === want : true);
+  const storedDetail = (s) => (s.readable ? `row found=${s.found}` : `db not readable from the runner (${s.error}) — proven by the revoke payload`);
+  const SUB1 = 'apple-sub-siwa-' + randomBytes(4).toString('hex');
+  const CODE1 = 'c_scenario_' + randomBytes(12).toString('hex');
+  r = await api('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB1, 'siwa-user@scenario.test'), name: 'Siwa User', authorizationCode: CODE1 } });
+  check('Apple sign-in (RS256 id token vs mock JWKS) → 200 + session', r.status === 200 && !!r.json.token && r.json.name === 'Siwa User' && r.json.email === 'siwa-user@scenario.test', JSON.stringify(r.json));
+  const siwaTok = r.json.token;
+  let ex = tokenCalls();
+  check('authorization code exchanged ONCE at /auth/token (grant_type + code)', ex.length === 1 && ex[0].form.grant_type === 'authorization_code' && ex[0].form.code === CODE1, JSON.stringify(ex.map((x) => x.form.grant_type)));
+  check('exchange is form-encoded and carries client_id + client_secret', !!ex[0] && ex[0].contentType.startsWith('application/x-www-form-urlencoded') && ex[0].form.client_id === 'com.shancoh.brachaswithrimon' && !!ex[0].form.client_secret, ex[0]?.contentType);
+  check('client_secret is an ES256 JWT: kid + iss/sub/aud + signature verify', ex[0]?.secret.ok === true && ex[0].secret.kid === 'SIWAKEY001' && ex[0].secret.claims.iss === '6WT5WK8MLZ' && ex[0].secret.claims.sub === 'com.shancoh.brachaswithrimon' && ex[0].secret.claims.aud === 'https://appleid.apple.com', ex[0]?.secret.problems.join(', ') || 'valid');
+  check('client_secret exp within Apple’s 6-month cap (1h here)', !!ex[0] && ex[0].secret.claims.exp - ex[0].secret.claims.iat <= 15_777_000 && ex[0].secret.claims.exp > Math.floor(Date.now() / 1000), JSON.stringify({ iat: ex[0]?.secret.claims.iat, exp: ex[0]?.secret.claims.exp }));
+  const RT1 = ex[0]?.issued; // the refresh token the mock handed out
+  let siwaRow = await readRefresh(dataDir, SUB1);
+  check('refresh token stored on the user row (users.apple_refresh)', !!RT1 && storedIs(siwaRow, RT1), storedDetail(siwaRow));
+  r = await api('/api/me', { token: siwaTok });
+  check('/api/me lists the apple provider but never the refresh token', r.status === 200 && r.json.providers?.includes('apple') && !JSON.stringify(r.json).includes(RT1) && !('apple_refresh' in r.json), JSON.stringify(r.json));
+  // a second sign-in of the SAME Apple id (matched-user branch) exchanges its
+  // fresh code and replaces the stored token
+  const CODE2 = 'c_scenario_' + randomBytes(12).toString('hex');
+  r = await api('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB1, 'siwa-user@scenario.test'), authorizationCode: CODE2 } });
+  ex = tokenCalls();
+  const RT2 = ex[1]?.issued;
+  siwaRow = await readRefresh(dataDir, SUB1);
+  check('repeat sign-in (matched user) exchanges the new code + replaces the token', r.status === 200 && ex.length === 2 && ex[1].form.code === CODE2 && !!RT2 && RT2 !== RT1 && storedIs(siwaRow, RT2), JSON.stringify({ calls: ex.length, stored: storedDetail(siwaRow) }));
+  // Apple rejects the code (expired / reused) → sign-in still succeeds, the
+  // previous token survives
+  r = await api('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB1, 'siwa-user@scenario.test'), authorizationCode: 'bad_' + randomBytes(6).toString('hex') } });
+  siwaRow = await readRefresh(dataDir, SUB1);
+  check('failed exchange (invalid_grant) never blocks sign-in + keeps the last good token', r.status === 200 && !!r.json.token && tokenCalls().length === 3 && storedIs(siwaRow, RT2), JSON.stringify({ status: r.status, calls: tokenCalls().length }));
+  // Apple answers with tokens for a DIFFERENT user (id_token sub mismatch) →
+  // sign-in still succeeds, nothing is stored, the previous token survives
+  r = await api('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB1, 'siwa-user@scenario.test'), authorizationCode: 'wrongsub_' + randomBytes(6).toString('hex') } });
+  siwaRow = await readRefresh(dataDir, SUB1);
+  check('exchange returning another user’s tokens is NOT stored (sub mismatch) + sign-in still 200', r.status === 200 && !!r.json.token && tokenCalls().length === 4 && storedIs(siwaRow, RT2), JSON.stringify({ status: r.status, calls: tokenCalls().length, stored: storedDetail(siwaRow) }));
+  // today's client (no authorizationCode) is untouched
+  const SUB_NOCODE = 'apple-sub-nocode-' + randomBytes(4).toString('hex');
+  r = await api('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB_NOCODE, null), name: 'Code Less' } });
+  check('Apple sign-in without an authorizationCode: 200, no exchange attempted', r.status === 200 && !!r.json.token && tokenCalls().length === 4, JSON.stringify({ status: r.status, calls: tokenCalls().length }));
+  const noCodeTok = r.json.token;
+
+  // deletion revokes the stored refresh token, then the row goes
+  r = await api('/api/account/delete', { method: 'POST', token: siwaTok });
+  check('Apple account deletion → 200 {ok:true} (shape unchanged)', r.status === 200 && JSON.stringify(r.json) === '{"ok":true}', JSON.stringify(r.json));
+  const revoked = revokeCalls();
+  check('deletion POSTed the stored refresh token to /auth/revoke', revoked.length === 1 && revoked[0].form.token === RT2 && revoked[0].form.token_type_hint === 'refresh_token' && revoked[0].form.client_id === 'com.shancoh.brachaswithrimon' && revoked[0].secret.ok === true, JSON.stringify(revoked.map((x) => ({ hint: x.form.token_type_hint, secretOk: x.secret.ok, isRT2: x.form.token === RT2 }))));
+  r = await api('/api/me', { token: siwaTok });
+  check('deleted Apple account is gone (401)', r.status === 401);
+  await sleep(150); // let the child's stdout land
+  const siwaLines = () => serverLog.split(/\r?\n/).filter((l) => l.includes('siwa:'));
+  check('server logged the revocation outcome', /siwa: account deletion — Apple token revocation OK/.test(serverLog), siwaLines().slice(-3).join(' | '));
+  check('server log never contains a refresh token or authorization code', ![RT1, RT2, CODE1, CODE2].some((s) => s && serverLog.includes(s)));
+  // an Apple account with NO stored token (pre-feature sign-in): deletion works, the gap is logged
+  r = await api('/api/account/delete', { method: 'POST', token: noCodeTok });
+  await sleep(150);
+  check('deletion without a stored refresh token still succeeds + logs "revocation NOT possible"', r.status === 200 && r.json.ok === true && revokeCalls().length === 1 && /siwa: account deletion — .*revocation NOT possible/.test(serverLog), `${siwaLines().filter((l) => l.includes('revocation NOT possible')).length} line(s)`);
+  r = await api('/api/status?key=' + STATUS_KEY, { headers: ADMIN_IP });
+  check('status surfaces the siwa dependency (last call = revoke OK)', r.status === 200 && r.json?.dependencies?.siwa?.ok === true, JSON.stringify(r.json?.dependencies?.siwa));
+
+  // APNS_KEY fallback: server 2 has no APPLE_SIWA_KEY, so the client_secret
+  // must be signed with the APNs key (kid SCENARIOKEY) — one Apple key can
+  // carry both services
+  const SUB_FB = 'apple-sub-fallback-' + randomBytes(4).toString('hex');
+  const CODE_FB = 'c_fallback_' + randomBytes(12).toString('hex');
+  r = await api2('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB_FB, 'fallback@scenario.test'), name: 'Fallback F', authorizationCode: CODE_FB } });
+  const exFb = tokenCalls().find((x) => x.form.code === CODE_FB);
+  check('APNS_KEY fallback: exchange signed with the APNs key id', r.status === 200 && !!exFb && exFb.secret.ok === true && exFb.secret.kid === 'SCENARIOKEY', exFb ? exFb.secret.problems.join(', ') || `kid ${exFb.secret.kid}` : 'no exchange call');
+  const fbTok = r.json.token;
+  r = await api2('/api/account/delete', { method: 'POST', token: fbTok });
+  check('APNS_KEY fallback: deletion revokes that refresh token', r.status === 200 && r.json.ok === true && revokeCalls().some((x) => x.form.token === exFb?.issued && x.secret.ok && x.secret.kid === 'SCENARIOKEY'), JSON.stringify(revokeCalls().map((x) => x.secret.kid)));
+
+  // NO key anywhere (server 3): sign-in + deletion exactly as before, and
+  // not one request reaches Apple's token or revoke endpoints
+  const appleCallsBefore = tokenCalls().length + revokeCalls().length;
+  const SUB_NK = 'apple-sub-nokey-' + randomBytes(4).toString('hex');
+  r = await api3('/api/oauth', { method: 'POST', body: { provider: 'apple', idToken: mintAppleIdToken(SUB_NK, 'nokey@scenario.test'), name: 'No Key', authorizationCode: 'c_nokey_' + randomBytes(12).toString('hex') } });
+  check('no key configured: Apple sign-in still works (200 + session)', r.status === 200 && !!r.json.token && r.json.name === 'No Key' && r.json.email === 'nokey@scenario.test', JSON.stringify(r.json));
+  const nkTok = r.json.token;
+  check('no key configured: no exchange call reaches Apple', tokenCalls().length + revokeCalls().length === appleCallsBefore);
+  r = await api3('/api/me', { token: nkTok });
+  check('no key configured: /api/me lists the apple provider', r.status === 200 && r.json.providers?.includes('apple') && !('apple_refresh' in r.json), JSON.stringify(r.json));
+  r = await api3('/api/account/delete', { method: 'POST', token: nkTok });
+  check('no key configured: deletion still works (200 {ok:true})', r.status === 200 && JSON.stringify(r.json) === '{"ok":true}', JSON.stringify(r.json));
+  check('no key configured: no revoke call reaches Apple', tokenCalls().length + revokeCalls().length === appleCallsBefore);
+  r = await api3('/api/me', { token: nkTok });
+  check('no key configured: deleted account is gone (401)', r.status === 401);
+  await sleep(150);
+  const siwaLines3 = serverLog3.split(/\r?\n/).filter((l) => l.includes('siwa:'));
+  check('no key configured: ONE boot log line says exchange + revocation are OFF', siwaLines3.filter((l) => /siwa: no Sign in with Apple key configured .* OFF/.test(l)).length === 1, siwaLines3.join(' | '));
+  check('no key configured: deletion logs that revocation was not possible', /siwa: account deletion — .*revocation NOT possible/.test(serverLog3));
 } catch (e) {
   check('scenario suite ran to completion', false, String(e.message ?? e));
   console.log('--- server log tail ---');

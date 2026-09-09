@@ -27,3 +27,7 @@ dist-ssr
 
 # migration safety copy — never commit
 server/server.mjs.bak
+
+# Apple private keys (APNs / Sign in with Apple) — never commit
+*.p8
+AuthKey_*

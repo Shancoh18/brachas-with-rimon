@@ -4,8 +4,12 @@ The repo is App Store-ready: the `ios/` Xcode project is committed (iPhone-only,
 portrait-only), reminders use native iOS local notifications, in-app account
 deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
-generated. Current submission: **version 1.0, build 33** (`MARKETING_VERSION`
-and `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`).
+generated. Current submission: **version 1.0, build 34** (`MARKETING_VERSION`
+and `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`) —
+build 34 is the one carrying Sign in with Apple token revocation (the client
+forwards the authorization code) and the `PrivacyInfo.xcprivacy` privacy
+manifest; build 33 was built and attached on 2026-09-07 and must not be
+re-fired.
 What remains needs your Apple account. Two paths — pick one.
 
 ## Path A — you have access to a Mac
@@ -134,6 +138,39 @@ does not ask for iPad assets.
   reminders (enabling them is what triggers the iOS notification permission
   prompt — it is deliberately not asked at sign-in), a leaderboard + chat with
   a second account (report, block, a filtered word), account delete.
+
+## Sign in with Apple token revocation (guideline 5.1.1(v))
+
+Apple requires that deleting an account created with Sign in with Apple also
+revokes the user's Sign in with Apple tokens. The server does this
+(`server/apple-siwa.mjs`): at sign-in it exchanges Apple's authorization code
+for a refresh token (stored as `users.apple_refresh`, never exposed), and
+`/api/account/delete` POSTs that token to Apple's `/auth/revoke` before the
+account row is removed. It only works once a **Sign in with Apple key** is
+configured on Railway — until then sign-in and deletion behave as before and
+the server logs that revocation was not possible. Set it up before review:
+
+1. developer.apple.com → **Certificates, Identifiers & Profiles** → **Keys**
+   → **+** → name it (e.g. `Rimon Sign in with Apple`) → tick
+   **Sign in with Apple** → **Configure** → Primary App ID
+   `com.shancoh.brachaswithrimon` → Save → Continue → Register →
+   **Download** the `.p8` (only offered once — keep it out of the repo) and
+   note the **Key ID**. Team ID is `6WT5WK8MLZ`.
+2. Railway → `brachas-rimon-api` → Variables (names only; never commit values):
+   - `APPLE_SIWA_KEY` = the `.p8` contents with line breaks as literal `\n`
+     (same convention as `APNS_KEY`)
+   - `APPLE_SIWA_KEY_ID` = the Key ID
+   - `APPLE_TEAM_ID` = `6WT5WK8MLZ`
+
+   Optional: `APPLE_SIWA_CLIENT_ID` (defaults to the bundle id / first
+   `APPLE_CLIENT_IDS` entry). If you would rather reuse the APNs key, enable
+   the Sign in with Apple service on *that* key in the portal and leave
+   `APPLE_SIWA_KEY` unset — the server then falls back to `APNS_KEY` /
+   `APNS_KEY_ID` / `APNS_TEAM_ID`; a key without the service enabled makes
+   Apple answer `invalid_client`.
+3. **Redeploy the Railway service** — variables are read at boot. The boot log
+   shows `siwa: … ON`, and `/api/status` reports exchange/revoke outcomes
+   under `dependencies.siwa`.
 
 ## Version bumps later
 

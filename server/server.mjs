@@ -20,6 +20,7 @@ import { promisify } from 'util';
 import { join } from 'path';
 import webpush from 'web-push';
 import { apnsReady, sendApns } from './apns.mjs';
+import { siwaReady, exchangeCode, revokeRefreshToken, jwtClaim } from './apple-siwa.mjs';
 import { backupReady, runBackup } from './backup.mjs';
 import { buildStatus, statusKey, mark, fail } from './status.mjs';
 import { guardProse, guardLine, cleanProse } from './content-guard.mjs';
@@ -1479,7 +1480,7 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/oauth' && req.method === 'POST') {
       // 240/10min: Sign in with Apple is the main iOS signup path — same NAT logic.
       if (throttled(req, 240)) return json(res, 429, { error: 'slow_down' });
-      const { provider, idToken, name } = await readBody(req);
+      const { provider, idToken, name, authorizationCode } = await readBody(req);
       if (provider !== 'apple' && provider !== 'google') return json(res, 400, { error: 'bad_provider' });
       if (provider === 'google' && !GOOGLE_AUDS.length) return json(res, 501, { error: 'google_not_configured' });
       const payload = await verifyIdToken(provider, idToken);
@@ -1510,6 +1511,21 @@ const server = createServer(async (req, res) => {
           u = store.userById(u.id);
         }
         token = store.issueToken(u.id);
+      }
+      // Sign in with Apple revocation (guideline 5.1.1(v)): the client also
+      // forwards Apple's single-use AUTHORIZATION CODE; exchanging it now is
+      // the only way to obtain the refresh token that account deletion will
+      // POST to /auth/revoke. Best effort — no key, Apple down, or a stale
+      // code never blocks the sign-in, and a failed exchange keeps whatever
+      // token an earlier sign-in stored.
+      if (provider === 'apple' && typeof authorizationCode === 'string' && authorizationCode && siwaReady()) {
+        const tokens = await exchangeCode(authorizationCode);
+        // the token set must belong to the identity we just verified — never
+        // file another user's refresh token under this account
+        const tokenSub = tokens?.id_token ? jwtClaim(tokens.id_token, 'sub') : null;
+        const foreign = tokenSub != null && String(tokenSub) !== sub;
+        if (tokens?.refresh_token && !foreign) store.setAppleRefresh(u.id, tokens.refresh_token);
+        else if (tokens?.refresh_token) console.error('siwa: exchange returned tokens for a different Apple user — refresh token NOT stored');
       }
       return json(res, 200, { token, code: u.code, name: u.name, email: u.email ?? null });
     }
@@ -1749,6 +1765,21 @@ const server = createServer(async (req, res) => {
     // Full account deletion (App Store guideline 5.1.1(v)): removes the user
     // and unlinks them from every friend list. Irreversible.
     if (url.pathname === '/api/account/delete' && req.method === 'POST') {
+      // Sign in with Apple (guideline 5.1.1(v)): revoke the user's Apple
+      // tokens FIRST, so the app drops off the "Sign in with Apple" list of
+      // their Apple ID. Best effort — the deletion goes ahead either way, and
+      // the outcome is logged (never the token itself).
+      if (a.user.apple) {
+        const refresh = store.appleRefreshOf(a.user.id);
+        if (refresh && siwaReady()) {
+          const ok = await revokeRefreshToken(refresh);
+          console.log(`siwa: account deletion — Apple token revocation ${ok ? 'OK' : 'FAILED (see the line above)'}`);
+        } else if (refresh) {
+          console.log('siwa: account deletion — a refresh token is stored but no Sign in with Apple key is configured; revocation NOT possible');
+        } else {
+          console.log('siwa: account deletion — Apple sign-in with no stored refresh token (signed in before code exchange existed, or the exchange failed); revocation NOT possible');
+        }
+      }
       // cascades tokens, friendships, board rows, blocks; boards the user OWNS
       // pass to their earliest remaining member first (store.deleteUser)
       store.deleteUser(a.user.id);

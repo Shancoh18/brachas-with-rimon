@@ -119,6 +119,14 @@ export const setApns = (id, token) => {
   if (token) db.prepare('UPDATE users SET apns = NULL WHERE apns = ? AND id <> ?').run(token, id);
   db.prepare('UPDATE users SET apns = ? WHERE id = ?').run(token || null, id);
 };
+/** Sign in with Apple refresh token — read ONLY by the account-deletion
+ *  route, which spends it on revocation. Deliberately not part of hydrate():
+ *  user objects get serialized into /api/me, league rows and board members,
+ *  and this token must never ride along. */
+export const appleRefreshOf = (id) =>
+  db.prepare('SELECT apple_refresh FROM users WHERE id = ?').get(id)?.apple_refresh ?? null;
+export const setAppleRefresh = (id, token) =>
+  db.prepare('UPDATE users SET apple_refresh = ? WHERE id = ?').run(token || null, id);
 /** Full account deletion. Boards the leaver OWNS are handed to their
  *  earliest-joined remaining member first (a shared league must never vanish
  *  because one person closed their account — the owner_id FK cascade would

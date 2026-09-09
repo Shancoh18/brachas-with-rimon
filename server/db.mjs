@@ -101,6 +101,11 @@ export function openDb(dataDir) {
   if (!userCols.includes('apns')) db.exec('ALTER TABLE users ADD COLUMN apns TEXT');
   // lifetime leaderboard-round wins (2026-08-10)
   if (!userCols.includes('wins')) db.exec('ALTER TABLE users ADD COLUMN wins INTEGER NOT NULL DEFAULT 0');
+  // Sign in with Apple refresh token (2026-09-09): captured at sign-in by
+  // exchanging the authorization code, spent at account deletion to revoke the
+  // sign-in (App Store guideline 5.1.1(v), server/apple-siwa.mjs). Read ONLY
+  // by store.appleRefreshOf — never hydrated into a user object.
+  if (!userCols.includes('apple_refresh')) db.exec('ALTER TABLE users ADD COLUMN apple_refresh TEXT');
 
   // Timed leaderboard rounds (2026-08-10): every board runs for a fixed
   // duration (week/month/year). Members race from 0 — each member's score is

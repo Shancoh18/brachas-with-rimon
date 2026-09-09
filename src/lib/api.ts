@@ -188,11 +188,24 @@ export const apiSignIn = (email: string, key: { password?: string; code?: string
     body: JSON.stringify({ email, ...key }),
   });
 
-/** Exchange a verified Apple/Google identity token for an account session. */
-export const apiOauth = (provider: 'apple' | 'google', idToken: string, name?: string) =>
+/** Exchange a verified Apple/Google identity token for an account session.
+ *  `authorizationCode` is Apple-only: the raw sign-in code the server swaps
+ *  for a refresh token (Sign in with Apple revocation on account deletion).
+ *  Omitted from the body when absent, so Google's request is unchanged. */
+export const apiOauth = (
+  provider: 'apple' | 'google',
+  idToken: string,
+  name?: string,
+  authorizationCode?: string,
+) =>
   call<{ token: string; code: string; name: string; email: string | null }>('/api/oauth', {
     method: 'POST',
-    body: JSON.stringify({ provider, idToken, ...(name ? { name } : {}) }),
+    body: JSON.stringify({
+      provider,
+      idToken,
+      ...(name ? { name } : {}),
+      ...(authorizationCode ? { authorizationCode } : {}),
+    }),
   });
 
 /** Set (first time) or change the account password. */
