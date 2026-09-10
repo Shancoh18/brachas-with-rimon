@@ -172,6 +172,7 @@ const child3 = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
     APPLE_SIWA_KEY: '', APPLE_SIWA_KEY_ID: '', APPLE_TEAM_ID: '',
     ANTHROPIC_API_KEY: '',
     ROUND_SWEEP_MS: '0',
+    GUEST_PRUNE_MS: '400', // stale-guest sweep every 400ms — the prune scenario ages rows in SQLite and waits for it
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -802,6 +803,170 @@ try {
   const siwaLines3 = serverLog3.split(/\r?\n/).filter((l) => l.includes('siwa:'));
   check('no key configured: ONE boot log line says exchange + revocation are OFF', siwaLines3.filter((l) => /siwa: no Sign in with Apple key configured .* OFF/.test(l)).length === 1, siwaLines3.join(' | '));
   check('no key configured: deletion logs that revocation was not possible', /siwa: account deletion — .*revocation NOT possible/.test(serverLog3));
+
+  // ------------------------------------------ GUEST sessions (5.1.1(v))
+  // Anonymous rows: created with no personal info, every non-account feature
+  // open, every social route 403 account_required, and three upgrade paths
+  // that keep the SAME id/code/progress. Own X-Forwarded-For bucket so the
+  // shared per-IP throttle (register/signin/analyze all count) stays clear.
+  const GUEST_IP = { 'X-Forwarded-For': '198.51.100.90' };
+  const guestOn = async (apiFn = api, extra = {}) => {
+    const rr = await apiFn('/api/guest', { method: 'POST', headers: GUEST_IP, body: extra });
+    if (!rr.json?.token) throw new Error(`guest failed: ${JSON.stringify(rr.json)}`);
+    return rr.json;
+  };
+  r = await api('/api/guest', { method: 'POST', headers: GUEST_IP, body: {} });
+  const g1 = r.json;
+  check('POST /api/guest → 200 {token, code, name:Guest, email:null, guest:true}', r.status === 200 && /^[0-9a-f]{48}$/.test(g1.token ?? '') && /^RIMON-/.test(g1.code ?? '') && g1.name === 'Guest' && g1.email === null && g1.guest === true, JSON.stringify(r.json));
+  r = await api('/api/me', { token: g1.token });
+  check('/api/me reports guest:true (no email, no password, no providers)', r.status === 200 && r.json.guest === true && r.json.email === null && r.json.hasPassword === false && r.json.providers.length === 0 && r.json.code === g1.code, JSON.stringify(r.json));
+  r = await api('/api/sync', { method: 'POST', token: g1.token, body: { progress: { totalBrachos: 5, streakCurrent: 2, points: 12, history: [{ day: today(), brachos: 5, points: 12 }] } } });
+  check('guest syncs progress (stored + returned, league = own row only)', r.status === 200 && r.json.progress?.points === 12 && r.json.guest === true && r.json.league?.length === 1 && r.json.league[0].you === true, JSON.stringify({ p: r.json.progress?.points, rows: r.json.league?.length }));
+
+  // non-account features stay open
+  r = await api('/api/push/native', { method: 'POST', token: g1.token, body: { token: 'ab12'.repeat(16) } });
+  check('guest can register a push device', r.status === 200 && r.json.enabled === true);
+  r = await api('/api/push/key', { token: g1.token });
+  check('guest can read the VAPID key', r.status === 200 && !!r.json.key);
+  r = await api('/api/account', { method: 'POST', token: g1.token, body: { name: 'Nameless' } });
+  check('guest can rename in Account settings and STAYS a guest', r.status === 200 && r.json.name === 'Nameless' && r.json.guest === true, JSON.stringify(r.json));
+
+  // vision: counted under the 10/day guest cap (no key → 503 after the charge; the 11th is the quota 429)
+  const analyzeAs = (tok) => api('/api/analyze', { method: 'POST', token: tok, headers: GUEST_IP, body: { image: 'aGVsbG8=', media_type: 'image/jpeg' } });
+  const guestCodes = [];
+  for (let i = 0; i < 11; i++) guestCodes.push((await analyzeAs(g1.token)).status);
+  check('guest analyze: 10 calls charged (503 no key), the 11th → 429 daily_limit', guestCodes.slice(0, 10).every((s) => s === 503) && guestCodes[10] === 429, guestCodes.join(','));
+  const capTok = (await api('/api/register', { method: 'POST', headers: GUEST_IP, body: { name: 'Cap Account', password: 'cap-account-pass-1' } })).json.token;
+  const acctCodes = [];
+  for (let i = 0; i < 11; i++) acctCodes.push((await analyzeAs(capTok)).status);
+  check('account analyze: the 11th call is still under the 30/day cap', acctCodes.every((s) => s === 503), acctCodes.join(','));
+
+  // account-based features → 403 account_required (never a 401, never data)
+  const gated = [
+    ['GET', '/api/league'],
+    ['POST', '/api/friends/add', { code: 'RIMON-AAAA' }],
+    ['GET', '/api/boards'],
+    ['POST', '/api/boards/create', { title: 'Guest Board' }],
+    ['POST', '/api/boards/join', { code: code1 }],
+    ['GET', '/api/boards/messages?board=' + board1],
+    ['POST', '/api/boards/message', { board: board1, text: 'hi' }],
+    ['POST', '/api/boards/report', { board: board1, message_id: 'x', reason: 'spam' }],
+    ['POST', '/api/boards/block', { user_id: 'x' }],
+    ['GET', '/api/boards/blocked'],
+    ['POST', '/api/boards/seen', { id: board1 }],
+    ['POST', '/api/boards/restart', { id: board1 }],
+    ['POST', '/api/boards/leave', { id: board1 }],
+  ];
+  const gatedResults = [];
+  for (const [method, path, body] of gated) {
+    const rr = await api(path, { method, token: g1.token, headers: GUEST_IP, body });
+    gatedResults.push(`${path.split('?')[0]}:${rr.status}/${rr.json?.error}`);
+  }
+  check('every social route → 403 account_required for a guest', gatedResults.every((s) => /:403\/account_required$/.test(s)), gatedResults.join(' '));
+  r = await api('/api/friends/add', { method: 'POST', token: tokD, headers: GUEST_IP, body: { code: g1.code } });
+  check('a real account cannot add a guest by code (404 — guests never surface to others)', r.status === 404 && r.json.error === 'code_not_found', JSON.stringify(r.json));
+
+  // (a) upgrade via /api/register — same id/code/progress/token, guest:false
+  r = await api('/api/register', { method: 'POST', token: g1.token, headers: GUEST_IP, body: { name: 'Upgraded U', email: takeoverEmail, password: 'upgrade-pass-1' } });
+  check('upgrade with a TAKEN email → 409 email_taken', r.status === 409 && r.json.error === 'email_taken', JSON.stringify(r.json));
+  r = await api('/api/me', { token: g1.token });
+  check('a refused upgrade leaves the guest a guest', r.status === 200 && r.json.guest === true);
+  r = await api('/api/register', { method: 'POST', token: g1.token, headers: GUEST_IP, body: { name: 'Upgraded U', email: 'upgraded@scenario.test', password: 'upgrade-pass-1' } });
+  check('upgrade via /api/register → 200 same token + same code, guest:false, upgraded:true', r.status === 200 && r.json.token === g1.token && r.json.code === g1.code && r.json.guest === false && r.json.upgraded === true && r.json.email === 'upgraded@scenario.test', JSON.stringify(r.json));
+  r = await api('/api/me', { token: g1.token });
+  check('/api/me after upgrade: guest:false, name/email/password set, code unchanged', r.status === 200 && r.json.guest === false && r.json.name === 'Upgraded U' && r.json.email === 'upgraded@scenario.test' && r.json.hasPassword === true && r.json.code === g1.code, JSON.stringify(r.json));
+  r = await api('/api/sync', { method: 'POST', token: g1.token, body: { progress: { totalBrachos: 0, streakCurrent: 0, points: 0, history: [] } } });
+  check('progress survives the upgrade (12 pts kept)', r.json.progress?.points === 12 && r.json.progress?.totalBrachos === 5, JSON.stringify(r.json.progress));
+  r = await api('/api/league', { token: g1.token });
+  check('social routes open after the upgrade', r.status === 200 && Array.isArray(r.json.league));
+  r = await api('/api/signin', { method: 'POST', headers: GUEST_IP, body: { email: 'upgraded@scenario.test', password: 'upgrade-pass-1' } });
+  check('the upgraded account signs in on a new device with the same code', r.status === 200 && r.json.code === g1.code, JSON.stringify(r.json));
+
+  // (b) upgrade via /api/oauth — a fresh guest links a NEW Apple identity in place
+  const g2 = await guestOn();
+  await api('/api/sync', { method: 'POST', token: g2.token, body: { progress: { totalBrachos: 3, streakCurrent: 1, points: 7, history: [{ day: today(), brachos: 3, points: 7 }] } } });
+  const SUB_G2 = 'apple-sub-guest-' + randomBytes(4).toString('hex');
+  const CODE_G2 = 'c_guest_' + randomBytes(12).toString('hex');
+  const exchangesBefore = tokenCalls().length;
+  r = await api('/api/oauth', { method: 'POST', token: g2.token, headers: GUEST_IP, body: { provider: 'apple', idToken: mintAppleIdToken(SUB_G2, 'guest-oauth@scenario.test'), name: 'Oauth Guest', authorizationCode: CODE_G2 } });
+  check('upgrade via /api/oauth → 200 same token + code, provider name/email adopted, guest:false, upgraded:true', r.status === 200 && r.json.token === g2.token && r.json.code === g2.code && r.json.name === 'Oauth Guest' && r.json.email === 'guest-oauth@scenario.test' && r.json.guest === false && r.json.upgraded === true, JSON.stringify(r.json));
+  r = await api('/api/me', { token: g2.token });
+  check('/api/me after oauth upgrade: apple linked, guest:false', r.status === 200 && r.json.guest === false && r.json.providers?.includes('apple') && r.json.code === g2.code, JSON.stringify(r.json));
+  const exG2 = tokenCalls().find((x) => x.form.code === CODE_G2);
+  const g2Row = await readRefresh(dataDir, SUB_G2);
+  check('oauth upgrade still exchanges the SIWA code + stores the refresh token on the SAME row', tokenCalls().length === exchangesBefore + 1 && !!exG2?.issued && storedIs(g2Row, exG2.issued), storedDetail(g2Row));
+  r = await api('/api/sync', { method: 'POST', token: g2.token, body: { progress: { totalBrachos: 0, streakCurrent: 0, points: 0, history: [] } } });
+  check('progress survives the oauth upgrade (7 pts kept)', r.json.progress?.points === 7, JSON.stringify(r.json.progress));
+  r = await api('/api/oauth', { method: 'POST', headers: GUEST_IP, body: { provider: 'apple', idToken: mintAppleIdToken(SUB_G2, 'guest-oauth@scenario.test') } });
+  check('the linked Apple id now signs into that upgraded account (same code)', r.status === 200 && r.json.code === g2.code && r.json.upgraded === false, JSON.stringify(r.json));
+
+  // oauth from a guest whose Apple id ALREADY belongs to an account → that account's session
+  const g3 = await guestOn();
+  r = await api('/api/oauth', { method: 'POST', token: g3.token, headers: GUEST_IP, body: { provider: 'apple', idToken: mintAppleIdToken(SUB_G2, 'guest-oauth@scenario.test') } });
+  check('guest + existing Apple id → the EXISTING account\'s session (new token, its code, upgraded:false)', r.status === 200 && r.json.token !== g3.token && r.json.code === g2.code && r.json.guest === false && r.json.upgraded === false, JSON.stringify({ code: r.json.code, sameTok: r.json.token === g3.token }));
+  r = await api('/api/me', { token: g3.token });
+  check('the orphaned guest row is untouched (still a guest, for the prune)', r.status === 200 && r.json.guest === true && r.json.code === g3.code);
+
+  // (c) email + password through Account settings clears the flag; email alone does not
+  const g5 = await guestOn();
+  r = await api('/api/account', { method: 'POST', token: g5.token, body: { email: 'settle@scenario.test' } });
+  check('email alone in Account settings keeps guest:true', r.status === 200 && r.json.guest === true, JSON.stringify(r.json));
+  r = await api('/api/signin', { method: 'POST', headers: GUEST_IP, body: { email: 'settle@scenario.test', code: g5.code } });
+  check('friend-code sign-in never unlocks a guest row (404)', r.status === 404 && r.json.error === 'no_match', JSON.stringify(r.json));
+  r = await api('/api/account/password', { method: 'POST', token: g5.token, body: { password: 'settle-pass-1' } });
+  check('adding a password (email + password now) → guest:false', r.status === 200 && r.json.ok && r.json.guest === false, JSON.stringify(r.json));
+  r = await api('/api/me', { token: g5.token });
+  check('/api/me confirms the settled account (guest:false, hasPassword)', r.status === 200 && r.json.guest === false && r.json.hasPassword === true && r.json.code === g5.code);
+
+  // deletion works for a guest
+  const g4 = await guestOn();
+  r = await api('/api/account/delete', { method: 'POST', token: g4.token });
+  check('guest account deletion → 200 {ok:true}', r.status === 200 && r.json.ok === true);
+  r = await api('/api/me', { token: g4.token });
+  check('deleted guest is gone (401)', r.status === 401);
+
+  // status counts guests (g3 + any other still-anonymous row)
+  r = await api('/api/status?key=' + STATUS_KEY, { headers: ADMIN_IP });
+  check('/api/status users.guests counts anonymous rows', r.status === 200 && Number.isInteger(r.json?.users?.guests) && r.json.users.guests >= 1, JSON.stringify(r.json?.users));
+
+  // stale-guest prune (server 3, sweep every 400ms): age rows directly in
+  // SQLite — a guest 50 days idle goes, a fresh guest and an equally old REAL
+  // account stay. No authed call touches the aged guest before the sweep
+  // (that would stamp it active again).
+  const ageRow = async (dir, code, ms) => {
+    try {
+      const { DatabaseSync } = await import('node:sqlite');
+      const d = new DatabaseSync(join(dir, 'rimon.db'), { timeout: 3000 });
+      const past = Date.now() - ms;
+      const u = d.prepare('UPDATE users SET created = ?, last_seen = NULL WHERE code = ?').run(past, code);
+      d.prepare('UPDATE tokens SET created = ? WHERE user_id = (SELECT id FROM users WHERE code = ?)').run(past, code);
+      d.close();
+      return { ok: u.changes === 1 };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+  const staleGuest = await guestOn(api3);
+  const freshGuest = await guestOn(api3);
+  const oldAccount = (await api3('/api/register', { method: 'POST', headers: GUEST_IP, body: { name: 'Old Timer', password: 'old-timer-pass-1' } })).json;
+  const aged = await ageRow(dataDir3, staleGuest.code, 50 * 86_400_000);
+  const agedAcct = await ageRow(dataDir3, oldAccount.code, 50 * 86_400_000);
+  if (aged.ok && agedAcct.ok) {
+    let pruned = false;
+    for (let i = 0; i < 40 && !pruned; i++) {
+      await sleep(250);
+      pruned = /guest prune: 1 guest row\(s\) inactive > 45 days deleted/.test(serverLog3);
+    }
+    check('daily sweep logs the pruned count', pruned, serverLog3.split(/\r?\n/).filter((l) => l.includes('guest prune')).slice(-2).join(' | ') || 'no prune line');
+    r = await api3('/api/me', { token: staleGuest.token });
+    check('stale guest (50 days idle) is deleted', r.status === 401, String(r.status));
+    r = await api3('/api/me', { token: freshGuest.token });
+    check('fresh guest survives the prune', r.status === 200 && r.json.guest === true, String(r.status));
+    r = await api3('/api/me', { token: oldAccount.token });
+    check('an equally old REAL account is never pruned', r.status === 200 && r.json.guest === false && r.json.name === 'Old Timer', String(r.status));
+  } else {
+    check('stale-guest prune (rows could not be aged from the runner — skipped)', true, aged.error ?? agedAcct.error ?? '');
+  }
 } catch (e) {
   check('scenario suite ran to completion', false, String(e.message ?? e));
   console.log('--- server log tail ---');

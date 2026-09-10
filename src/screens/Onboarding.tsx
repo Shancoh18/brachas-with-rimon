@@ -3,8 +3,10 @@
  * Stories-style: segmented progress bars up top that auto-advance, tap the
  * right side for next / left for back, swipe on touch, every slide a
  * full-bleed scene with a different tint and a different Rimon motion loop.
- * Final slide: account creation. The app is account-first, so declining here
- * lands on the sign-in gate (AuthGate) — the skip button says so honestly.
+ * Final slide: "Continue" straight into the app — NO account, no personal
+ * information (App Review 5.1.1(v); the app mints an anonymous guest
+ * session behind the scenes). "I have an account" opens the optional
+ * sign-in panel for people who already have one.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useBracha } from '../store';
@@ -107,19 +109,24 @@ const SLIDES: Slide[] = [
 ];
 
 export function Onboarding() {
-  const { setOnboarded, displayName, serverToken } = useBracha();
+  const { setOnboarded, displayName, serverToken, isGuest } = useBracha();
+  // replaying the intro from Account while holding a REAL account — the last
+  // slide is just a bow, no forms (a guest replaying sees the normal finish)
+  const signedIn = !!serverToken && !isGuest;
   const [idx, setIdx] = useState(0);
   const [walkerT, setWalkerT] = useState(0);
+  // the optional sign-in panel on the final slide ("I have an account")
+  const [showAuth, setShowAuth] = useState(false);
   const touchX = useRef<number | null>(null);
-  const total = SLIDES.length + 1; // + account slide
-  const atAccount = idx >= SLIDES.length;
+  const total = SLIDES.length + 1; // + the finish slide
+  const atFinal = idx >= SLIDES.length;
 
-  // stories auto-advance (never off the account slide, never under reduced motion)
+  // stories auto-advance (never off the finish slide, never under reduced motion)
   useEffect(() => {
-    if (atAccount || reducedMotion()) return;
+    if (atFinal || reducedMotion()) return;
     const id = setTimeout(() => setIdx((i) => Math.min(i + 1, SLIDES.length)), AUTO_MS);
     return () => clearTimeout(id);
-  }, [idx, atAccount]);
+  }, [idx, atFinal]);
 
   // live walker demo
   useEffect(() => {
@@ -139,9 +146,9 @@ export function Onboarding() {
         if (touchX.current == null) return;
         const dx = e.changedTouches[0].clientX - touchX.current;
         touchX.current = null;
-        // No swipe-nav on the account slide — dragging a text cursor in the
-        // form must never yank the user off it (tap zones are gated the same).
-        if (atAccount) return;
+        // No swipe-nav on the finish slide — dragging a text cursor in the
+        // sign-in form must never yank the user off it (tap zones are gated the same).
+        if (atFinal) return;
         if (Math.abs(dx) < 48) return;
         if (dx < 0) next();
         else back();
@@ -154,15 +161,15 @@ export function Onboarding() {
             <div
               key={`${i}-${idx}`}
               className={`h-full rounded-full bg-rimon ${
-                i < idx ? 'w-full' : i === idx && !atAccount && !reducedMotion() ? 'story-fill' : i === idx ? 'w-full' : 'w-0'
+                i < idx ? 'w-full' : i === idx && !atFinal && !reducedMotion() ? 'story-fill' : i === idx ? 'w-full' : 'w-0'
               }`}
-              style={i === idx && !atAccount ? { animationDuration: `${AUTO_MS}ms` } : undefined}
+              style={i === idx && !atFinal ? { animationDuration: `${AUTO_MS}ms` } : undefined}
             />
           </div>
         ))}
       </div>
 
-      {!atAccount && (
+      {!atFinal && (
         <button
           onClick={() => setIdx(total - 1)}
           className="absolute right-4 top-8 z-20 rounded-full bg-espresso/[0.06] px-4 py-2 text-[11px] font-bold text-espresso-soft transition-colors duration-150 hover:bg-espresso/10"
@@ -171,8 +178,8 @@ export function Onboarding() {
         </button>
       )}
 
-      {/* tap zones (under the interactive layer, not on the account slide) */}
-      {!atAccount && (
+      {/* tap zones (under the interactive layer, not on the finish slide) */}
+      {!atFinal && (
         <>
           <button aria-label="previous slide" onClick={back} className="absolute inset-y-0 left-0 z-10 w-1/4 cursor-w-resize opacity-0" />
           <button aria-label="next slide" onClick={next} className="absolute inset-y-0 right-0 z-10 w-1/4 cursor-e-resize opacity-0" />
@@ -239,23 +246,26 @@ export function Onboarding() {
           </section>
         ))}
 
-        {/* ------------------------------------------------ account slide */}
-        <section className="relative flex h-full w-full shrink-0 flex-col items-center justify-center gap-5 overflow-y-auto px-8 pb-16 pt-16 text-center">
+        {/* ------------------------------------------------- finish slide */}
+        <section
+          data-onboarding-finish
+          className="relative flex h-full w-full shrink-0 flex-col items-center justify-center gap-5 overflow-y-auto px-8 pb-16 pt-16 text-center"
+        >
           <div
             className="pointer-events-none absolute inset-0"
             style={{ background: 'radial-gradient(ellipse 90% 62% at 50% 26%, rgba(161,51,39,0.08) 0%, rgba(0,0,0,0) 70%)' }}
           />
-          {serverToken ? (
+          {signedIn ? (
             /* replaying the intro while signed in — no forms, just a bow */
             <>
-              <div className={atAccount ? 'rise-in' : ''}>
+              <div className={atFinal ? 'rise-in' : ''}>
                 <Rimon
                   pose="celebrate"
                   say={`Good to see you again${displayName ? `, ${displayName}` : ''}! Everything is already yours.`}
                   size={170}
                 />
               </div>
-              <header className={`space-y-2.5 ${atAccount ? 'rise-in rise-in-1' : ''}`}>
+              <header className={`space-y-2.5 ${atFinal ? 'rise-in rise-in-1' : ''}`}>
                 <Eyebrow>All set</Eyebrow>
                 <h1 className="font-display text-[36px] font-black leading-[1.05] tracking-tight text-espresso">
                   You’re signed in.
@@ -264,40 +274,61 @@ export function Onboarding() {
                   Streaks, league, reminders — all synced to your account.
                 </p>
               </header>
-              <div className={atAccount ? 'rise-in rise-in-2' : ''}>
+              <div className={atFinal ? 'rise-in rise-in-2' : ''}>
                 <PillButton variant="rimon" icon="→" onClick={() => setOnboarded(true)}>
                   Back to the app
                 </PillButton>
               </div>
             </>
-          ) : (
+          ) : showAuth ? (
+            /* optional: people who already have an account sign in here */
             <>
-          <div className={atAccount ? 'rise-in' : ''}>
-            <Rimon
-              pose="pointing"
-              say="Last thing — an account, so your streaks follow you anywhere."
-              size={130}
-            />
-          </div>
-          <header className={`space-y-2 ${atAccount ? 'rise-in rise-in-1' : ''}`}>
-            <Eyebrow>Join the league</Eyebrow>
-            <h1 className="font-display text-[34px] font-black leading-[1.05] tracking-tight text-espresso">
-              Make it yours.
-            </h1>
-            <p className="mx-auto max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
-              Streaks that sync, friends who can find you, a league to lead.
-            </p>
-          </header>
-
-          <div className={atAccount ? 'rise-in rise-in-2' : ''}>
-            <AuthPanel onDone={() => setOnboarded(true)} />
-          </div>
-          <button
-            onClick={() => setOnboarded(true)}
-            className={`text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso ${atAccount ? 'rise-in rise-in-3' : ''}`}
-          >
-            skip the tour — continue to sign-in
-          </button>
+              <div className={atFinal ? 'rise-in' : ''}>
+                <Rimon pose="pointing" say="Welcome back — sign in and everything follows you." size={110} />
+              </div>
+              <header className={`space-y-2 ${atFinal ? 'rise-in rise-in-1' : ''}`}>
+                <Eyebrow>Welcome back</Eyebrow>
+                <h1 className="font-display text-[32px] font-black leading-[1.05] tracking-tight text-espresso">
+                  Sign in.
+                </h1>
+              </header>
+              <div className="rise-in rise-in-2">
+                <AuthPanel initialMode="signin" onDone={() => setOnboarded(true)} />
+              </div>
+              <button
+                onClick={() => setShowAuth(false)}
+                className="rise-in rise-in-3 min-h-[44px] px-2 text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+              >
+                continue without an account
+              </button>
+            </>
+          ) : (
+            /* the default finish: straight into the app, nothing to fill in */
+            <>
+              <div className={atFinal ? 'rise-in' : ''}>
+                <Rimon pose="celebrate" say="That’s the tour — let’s bless something!" size={170} />
+              </div>
+              <header className={`space-y-2.5 ${atFinal ? 'rise-in rise-in-1' : ''}`}>
+                <Eyebrow>All set</Eyebrow>
+                <h1 className="font-display text-[36px] font-black leading-[1.05] tracking-tight text-espresso">
+                  Ready when you are.
+                </h1>
+                <p className="mx-auto max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
+                  Jump straight in — no account needed. Friends and leaderboards are there
+                  whenever you want them.
+                </p>
+              </header>
+              <div className={`flex flex-col items-center gap-3 ${atFinal ? 'rise-in rise-in-2' : ''}`}>
+                <PillButton variant="rimon" icon="→" onClick={() => setOnboarded(true)}>
+                  Continue
+                </PillButton>
+                <button
+                  onClick={() => setShowAuth(true)}
+                  className="min-h-[44px] px-2 text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+                >
+                  I have an account
+                </button>
+              </div>
             </>
           )}
         </section>

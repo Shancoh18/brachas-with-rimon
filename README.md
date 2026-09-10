@@ -18,6 +18,28 @@ as `bracha-daily-check` / `bracha-capacity-watch`. Monitoring lives in those
 cloud routines; any scheduled task on the local dev box is a manual fallback
 only (it runs only while that machine is awake).
 
+## Guest sessions — no sign-in required (guideline 5.1.1(v))
+
+App Review rejected version 1.0 build 33 on 2026-09-09 because the app
+required registration before any feature could be used. Since **version 1.0,
+build 35** (build 34 was superseded before submission) the app opens without
+an account: after onboarding the client silently calls `POST /api/guest`,
+which mints an anonymous user (`users.guest = 1`, no name, email or any other
+personal information) and returns `{ token, code, guest: true }`. If that call
+fails the app still renders with local-only progress and retries on the next
+boot/foreground. Everything that is not account based works as a guest — the
+blessing guide, photo identification (with its daily allowance), lessons, the
+daily thought and parsha, Journey/progress/streaks, reminders and settings.
+The account-based features (Friends: friend codes, leaderboards/boards, board
+chat, report/block) show an inline "create an account" panel inside the
+Friends tab instead — never a full-screen wall. Creating an account from a
+guest session (name + email + password, Sign in with Apple, or Google, while
+holding the guest token) upgrades the same user row in place and clears the
+guest flag, so progress and the friend code are kept; signing in to an
+existing account from a guest session switches to that account and the orphan
+guest row is pruned later. `/api/me` reports `guest` so clients and the e2e
+suite can tell the two apart.
+
 ## Sign in with Apple token revocation (guideline 5.1.1(v))
 
 When a user who signed in with Apple deletes their account, the API revokes

@@ -76,11 +76,43 @@ const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Pr
   return (await res.json()) as T;
 };
 
-export const apiRegister = (name: string, email: string, password?: string) =>
-  call<{ token: string; code: string; email: string | null }>('/api/register', {
-    method: 'POST',
-    body: JSON.stringify({ name, email, ...(password ? { password } : {}) }),
-  });
+/** The session shape every account-creating route returns. `guest` is true
+ *  only for /api/guest rows; register / oauth / signin answer false (or omit
+ *  it — an older server that predates guests is treated as "not a guest"). */
+export interface SessionResponse {
+  token: string;
+  code: string;
+  name: string;
+  email: string | null;
+  guest?: boolean;
+}
+
+/** Anonymous GUEST session — no name, no email, nothing typed (App Review
+ *  5.1.1(v): non-account features must not require registration). The row is
+ *  a real user (same id/code scheme) flagged users.guest=1, so a later
+ *  /api/register or /api/oauth sent WITH this bearer token upgrades it in
+ *  place and the synced progress survives. */
+export const apiGuest = () => call<SessionResponse>('/api/guest', { method: 'POST', body: '{}' });
+
+/** 403 {error:'account_required'} — the server refused an account-only route
+ *  (friends, boards, chat) for a guest token. */
+export const isAccountRequired = (e: unknown): boolean => {
+  const { status, code } = (e as Partial<ApiError> | null) ?? {};
+  return status === 403 && code === 'account_required';
+};
+
+/** Create an account. With `guestToken` (a guest session's bearer) the
+ *  server UPGRADES that guest row in place — same id, same code, progress
+ *  kept — instead of minting a new user. */
+export const apiRegister = (name: string, email: string, password?: string, guestToken?: string) =>
+  call<SessionResponse>(
+    '/api/register',
+    {
+      method: 'POST',
+      body: JSON.stringify({ name, email, ...(password ? { password } : {}) }),
+    },
+    guestToken,
+  );
 
 export type ServerProgress = Pick<ProgressState, 'totalBrachos' | 'streakCurrent' | 'points' | 'history'>;
 export const apiSync = (token: string, progress: ProgressState, name?: string) =>
@@ -165,11 +197,15 @@ export const apiDailyThought = () =>
   call<{ thought: DailyThought | null; fresh: boolean }>('/api/daily-thought');
 
 export const apiMe = (token: string) =>
-  call<{ name: string; email: string | null; code: string; hasPassword: boolean; providers: string[] }>(
-    '/api/me',
-    {},
-    token,
-  );
+  call<{
+    name: string;
+    email: string | null;
+    code: string;
+    hasPassword: boolean;
+    providers: string[];
+    /** true for an anonymous guest row (absent on a pre-guest server) */
+    guest?: boolean;
+  }>('/api/me', {}, token);
 
 export const apiUpdateAccount = (token: string, patch: { name?: string; email?: string }) =>
   call<{ name: string; email: string | null; code: string }>(
@@ -181,9 +217,11 @@ export const apiUpdateAccount = (token: string, patch: { name?: string; email?: 
 export const apiDeleteAccount = (token: string) =>
   call<{ ok: boolean }>('/api/account/delete', { method: 'POST' }, token);
 
-/** Sign in with email + password, or email + friend code (legacy accounts). */
+/** Sign in with email + password, or email + friend code (legacy accounts).
+ *  Never carries a guest token: signing in from a guest session SWITCHES the
+ *  device to that account (the orphan guest row is pruned server-side). */
 export const apiSignIn = (email: string, key: { password?: string; code?: string }) =>
-  call<{ token: string; code: string; name: string; email: string }>('/api/signin', {
+  call<SessionResponse>('/api/signin', {
     method: 'POST',
     body: JSON.stringify({ email, ...key }),
   });
@@ -191,22 +229,29 @@ export const apiSignIn = (email: string, key: { password?: string; code?: string
 /** Exchange a verified Apple/Google identity token for an account session.
  *  `authorizationCode` is Apple-only: the raw sign-in code the server swaps
  *  for a refresh token (Sign in with Apple revocation on account deletion).
- *  Omitted from the body when absent, so Google's request is unchanged. */
+ *  Omitted from the body when absent, so Google's request is unchanged.
+ *  With `guestToken` the provider identity is LINKED onto the guest row
+ *  (upgrade in place, progress kept) unless it already owns an account. */
 export const apiOauth = (
   provider: 'apple' | 'google',
   idToken: string,
   name?: string,
   authorizationCode?: string,
+  guestToken?: string,
 ) =>
-  call<{ token: string; code: string; name: string; email: string | null }>('/api/oauth', {
-    method: 'POST',
-    body: JSON.stringify({
-      provider,
-      idToken,
-      ...(name ? { name } : {}),
-      ...(authorizationCode ? { authorizationCode } : {}),
-    }),
-  });
+  call<SessionResponse>(
+    '/api/oauth',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        provider,
+        idToken,
+        ...(name ? { name } : {}),
+        ...(authorizationCode ? { authorizationCode } : {}),
+      }),
+    },
+    guestToken,
+  );
 
 /** Set (first time) or change the account password. */
 export const apiSetPassword = (token: string, password: string, current?: string) =>

@@ -4,12 +4,25 @@ The repo is App Store-ready: the `ios/` Xcode project is committed (iPhone-only,
 portrait-only), reminders use native iOS local notifications, in-app account
 deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
-generated. Current submission: **version 1.0, build 34** (`MARKETING_VERSION`
-and `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`) —
-build 34 is the one carrying Sign in with Apple token revocation (the client
-forwards the authorization code) and the `PrivacyInfo.xcprivacy` privacy
-manifest; build 33 was built and attached on 2026-09-07 and must not be
-re-fired.
+generated. Current submission: **version 1.0, build 35** (`MARKETING_VERSION`
+and `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`).
+
+Review history:
+
+- **Build 33** — uploaded and attached on 2026-09-07; **REJECTED 2026-09-09
+  under guideline 5.1.1(v)**: "The app requires users to register or log in to
+  access features that are not account based." The app showed a full-screen
+  sign-in gate after onboarding.
+- **Build 34** — carried Sign in with Apple token revocation and the
+  `PrivacyInfo.xcprivacy` privacy manifest; **superseded before it was ever
+  submitted**. Never re-fire 33 or 34.
+- **Build 35** — everything 34 had plus the fix: **anonymous guest sessions**.
+  After onboarding the app silently creates a guest session (no personal
+  information) and opens straight into the app. Only the social features
+  (friends, leaderboards, board chat) ask for an account, through an inline
+  panel inside the Friends tab — never a full-screen wall. Creating an account
+  upgrades the guest session in place, so nothing earned as a guest is lost.
+
 What remains needs your Apple account. Two paths — pick one.
 
 ## Path A — you have access to a Mac
@@ -52,9 +65,11 @@ What remains needs your Apple account. Two paths — pick one.
      accordingly.
    - **App Privacy** (nutrition label) — everything below is *linked to the
      user*, purpose **App Functionality**, and **not** used for tracking:
-     - *Contact Info → Name, Email Address*.
-     - *Identifiers → User ID* (account id / friend code) and *Device ID*
-       (the APNs push token).
+     - *Contact Info → Name, Email Address* — collected only when the user
+       chooses to create an account; a guest session provides neither.
+     - *Identifiers → User ID* (account id / friend code — a guest session
+       gets an anonymous id, nothing personal) and *Device ID* (the APNs push
+       token).
      - *User Content → Other User Content* (board chat messages).
      - *Usage Data → Product Interaction* (practice progress, points, streaks).
      - *User Content → Photos or Videos* (meal photos): **not linked**, App
@@ -62,41 +77,82 @@ What remains needs your Apple account. Two paths — pick one.
      - Everything else: not collected. "Used for tracking": **No** for all.
    - **Export compliance**: already answered in the app
      (`ITSAppUsesNonExemptEncryption=false`) — standard HTTPS only.
-4. **Sign-in required** → **Yes**, and fill the reviewer credential fields:
-   - User name: `review@brachaswithrimon.app`
-   - Password: `<password: kept OUT of this public repo — it is filled into the App Store Connect review fields and mirrored as BRACHA_REVIEW_PASSWORD in D:/Claude GROUP APP/group-app-ad/.env>`
+4. **Sign-in required** → leave it **UNTICKED**. Build 35 exists to remove
+   the sign-in requirement (the 5.1.1(v) rejection); ticking this box tells
+   App Review the opposite of what the notes and the app say. The reviewer
+   credentials for the account-based features (friends, leaderboards, board
+   chat) go in App Review Information → **Notes** — they are already in the
+   block below, so nothing else is needed here.
+   - Reviewer account: `review@brachaswithrimon.app` / the password kept OUT
+     of this public repo (mirrored as BRACHA_REVIEW_PASSWORD in
+     `D:/Claude GROUP APP/group-app-ad/.env`) — fill it into the Notes block
+     where marked, never into the sign-in fields.
 
    The account must exist on the live API before you submit — sign it up in
-   the app with exactly that email/password (or via `POST /api/signup`), or
-   the reviewer hits a dead login and rejects for guideline 2.1.
-5. **App Review notes** — paste this:
-   > Sign-in is required: meal photos are identified server-side by the
-   > Anthropic Claude API, which costs us per call, so every account carries a
-   > daily allowance (30 identifications per account per day) and we cannot
-   > offer the feature anonymously. Reviewer account:
-   > review@brachaswithrimon.app / <password: kept OUT of this public repo — it is filled into the App Store Connect review fields and mirrored as BRACHA_REVIEW_PASSWORD in D:/Claude GROUP APP/group-app-ad/.env> (also entered in the
-   > sign-in fields above). Creating a fresh account also works — any name +
-   > email + password; no verification email is sent. Account deletion is
-   > under Account → "delete my account permanently" and removes everything,
-   > including chat messages.
-   >
-   > Friends / leaderboards / chat need two accounts: sign in as the reviewer,
-   > Friends tab → Create a leaderboard, then on a second account (feel free
-   > to create one) → Join with the 6-character board code. Board chat is
-   > private to the members of that board. Per guideline 1.2 every message
-   > has a Report action (spam / harassment / inappropriate / other), there is
-   > a Block-user control that hides that person's messages everywhere for
-   > you, and a server-side language filter rejects an offending message
-   > before it posts ("That message was blocked by the chat filter."). Reports
-   > are delivered to the developer for review.
-   >
-   > The Donate tab is hidden in this iOS version; there are no in-app
-   > purchases, subscriptions, or external payment links in the app.
-   >
-   > Halachic rulings come only from the app's built-in database (sourced
-   > from chabad.org, brachos.org, oukosher.org); the AI only identifies
-   > foods. The app is explicitly labeled a study aid on every screen.
-6. Submit for Review. Typical turnaround: 1–2 days.
+   the app (Friends tab → account panel) with exactly that email/password (or
+   via `POST /api/register`), or the reviewer hits a dead login and rejects
+   for guideline 2.1.
+5. **App Review notes** — paste the block under "App Review notes (build 35)"
+   below, verbatim, into App Review Information → Notes.
+6. Submit for Review. With the resubmission, also post the block under "Reply
+   to App Review (build 35)" in the App Review message thread (Resolution
+   Center) so the reviewer sees what changed. Typical turnaround: 1–2 days.
+
+### App Review notes (build 35) — App Store Connect → App Review Information → Notes
+
+> Version 1.0 (35) removes the sign-in requirement: the app now works without
+> an account. After the short intro the app opens straight into the blessing
+> guide as an anonymous guest session — no name, email, or any other personal
+> information is asked for; progress is kept on the device and under an
+> anonymous id on our server. Available without an account: the blessing
+> guide (before- and after-blessings, Birkat Hamazon, the quick reference),
+> identifying a meal by photo (identification runs server-side on the
+> Anthropic Claude API, which costs us per call, so each session carries a
+> daily allowance), the Learn lessons, the daily thought and weekly parsha,
+> Journey (progress, points, streaks), mealtime reminders (local
+> notifications), and the settings under Account.
+>
+> Only the social features need an account, because other people must be able
+> to find you by a friend code and see your name on a shared board: Friends
+> (friend codes, adding friends), leaderboards / boards, and board chat with
+> its report / block tools. Opening the Friends tab as a guest shows a small
+> "create an account" panel inside that tab — never a full-screen wall — and
+> the rest of the app stays fully usable. Creating an account is optional and
+> upgrades the same guest session in place (name + email + password, or Sign
+> in with Apple), so nothing earned as a guest is lost; signing in to an
+> existing account from a guest session switches to that account.
+>
+> Reviewer account (for the account-based features): review@brachaswithrimon.app /
+> <password: kept OUT of this public repo — paste it here in the App Store Connect Notes; mirrored as BRACHA_REVIEW_PASSWORD in D:/Claude GROUP APP/group-app-ad/.env>
+> (the "Sign-in required" box is left unticked because no feature outside
+> the Friends tab needs an account). Creating a fresh account from
+> that panel also works — any name + email + password; no verification email
+> is sent. Account deletion is under Account → "delete my account permanently"
+> and removes everything, including chat messages.
+>
+> Friends / leaderboards / chat need two accounts: sign in as the reviewer
+> (Friends tab → account panel → Sign in), Friends tab → Create a leaderboard,
+> then on a second account (feel free to create one) → Join with the
+> 6-character board code. Board chat is private to the members of that board.
+> Per guideline 1.2 every message has a Report action (spam / harassment /
+> inappropriate / other), there is a Block-user control that hides that
+> person's messages everywhere for you, and a server-side language filter
+> rejects an offending message before it posts ("That message was blocked by
+> the chat filter."). Reports are delivered to the developer for review.
+>
+> The Donate tab is hidden in this iOS version; there are no in-app
+> purchases, subscriptions, or external payment links in the app.
+>
+> Halachic rulings come only from the app's built-in database (sourced from
+> chabad.org, brachos.org, oukosher.org); the AI only identifies foods. The
+> app is explicitly labeled a study aid on every screen.
+
+### Reply to App Review (build 35) — App Review message thread
+
+Plain text, under 900 characters, no bullets — paste as one message with the
+resubmission:
+
+> Thank you for the review. Build 33 was rejected under 5.1.1(v) because the app required registration before any feature could be used. Version 1.0 (35) fixes this: sign-in is no longer required. After the short intro the app opens as an anonymous guest (no personal information is requested), and the blessing guide, photo identification, lessons, daily thought, progress and streaks, reminders, and settings work without an account. Only the social features (friends by code, leaderboards, board chat) need one, since other people must be able to find you; the Friends tab shows an optional "create an account" panel inside the tab, never a full-screen wall, and creating one upgrades the guest session in place. To verify: launch, tap through the intro, and the app opens with no sign-in; then open the Friends tab to see the optional account panel. Reviewer credentials are unchanged.
 
 ## Screenshots and App Preview
 
@@ -134,10 +190,13 @@ does not ask for iPad assets.
   (run with `MSYS_NO_PATHCONV=1` on the Windows box; verify `/health` shows
   `vision:true`).
 - **TestFlight it on your own phone first**: App Store Connect → TestFlight →
-  add yourself as internal tester. Check: slideshow, sign-in, camera flow,
-  reminders (enabling them is what triggers the iOS notification permission
-  prompt — it is deliberately not asked at sign-in), a leaderboard + chat with
-  a second account (report, block, a filtered word), account delete.
+  add yourself as internal tester. Check: slideshow → the app opens as a guest
+  with NO sign-in screen, camera flow as a guest, reminders (enabling them is
+  what triggers the iOS notification permission prompt — it is deliberately
+  not asked at sign-in), Friends tab shows the inline account panel → create
+  an account there and confirm the streak/points earned as a guest survive,
+  a leaderboard + chat with a second account (report, block, a filtered
+  word), account delete.
 
 ## Sign in with Apple token revocation (guideline 5.1.1(v))
 

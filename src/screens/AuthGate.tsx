@@ -1,16 +1,18 @@
 /**
- * Full-screen sign-in gate shown after onboarding until the user has an
- * account (store.serverToken). The app is account-first: streaks, the
- * friends league and reminders all sync through the server, so sign-in
- * happens before anything else. AuthPanel flips serverToken on success and
- * App re-renders straight into the app — no callback needed.
+ * Full-screen sign-in surface. NO LONGER A WALL: since the guest flow
+ * (App Review 5.1.1(v), 2026-09) the app renders straight after onboarding
+ * on an anonymous guest session, and every account prompt lives inline —
+ * the Friends tab's AccountRequired panel and the Account tab. App.tsx does
+ * not mount this screen any more; it stays as a reusable standalone surface
+ * (a host mounts it with `onContinue` to offer the way past it) and still
+ * shows the one-shot gateNotice. AuthPanel flips serverToken on success.
  */
 import { AuthPanel } from '../components/AuthPanel';
 import { Rimon } from '../components/Rimon';
 import { Eyebrow, ScreenShell } from '../components/ui';
 import { useBracha } from '../store';
 
-export function AuthGate() {
+export function AuthGate({ onContinue }: { onContinue?: () => void }) {
   const gateNotice = useBracha((s) => s.gateNotice);
   return (
     <ScreenShell>
@@ -25,18 +27,24 @@ export function AuthGate() {
         </div>
 
         <header className="rise-in rise-in-1 space-y-3 pb-8 pt-4">
-          <Eyebrow>Welcome to Brachas with Rimon</Eyebrow>
-          <h1 className="font-display text-[34px] leading-[1.1] text-espresso">
-            Sign in to begin
-          </h1>
+          <Eyebrow>Brachas with Rimon</Eyebrow>
+          <h1 className="font-display text-[34px] leading-[1.1] text-espresso">Sign in</h1>
           <p className="mx-auto max-w-[300px] text-[13px] leading-relaxed text-mocha">
-            Your account keeps streaks, reminders and the friends league in
-            sync on every device.
+            An account keeps streaks and the friends league in sync on every device.
+            Everything else works without one.
           </p>
         </header>
 
         <div className="rise-in rise-in-2 flex w-full flex-col items-center gap-3">
-          <AuthPanel />
+          <AuthPanel onDone={onContinue} />
+          {onContinue && (
+            <button
+              onClick={onContinue}
+              className="min-h-[44px] px-2 text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+            >
+              continue without an account
+            </button>
+          )}
           <p className="max-w-[300px] text-center text-[10.5px] leading-snug text-mocha">
             Signing in on a new device brings your name, streaks and league along.
           </p>

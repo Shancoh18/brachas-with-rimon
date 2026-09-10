@@ -106,6 +106,17 @@ export function openDb(dataDir) {
   // sign-in (App Store guideline 5.1.1(v), server/apple-siwa.mjs). Read ONLY
   // by store.appleRefreshOf — never hydrated into a user object.
   if (!userCols.includes('apple_refresh')) db.exec('ALTER TABLE users ADD COLUMN apple_refresh TEXT');
+  // Anonymous guest sessions (App Store guideline 5.1.1(v), 2026-09-10): the
+  // app no longer walls its non-account features behind registration. A row
+  // created by POST /api/guest carries guest=1 and NO personal information;
+  // registering / linking a provider / setting email+password on it clears
+  // the flag IN PLACE (same id, code, progress, tokens). Guests are barred
+  // from every route that exposes other users, and inactive ones are pruned.
+  if (!userCols.includes('guest')) db.exec('ALTER TABLE users ADD COLUMN guest INTEGER NOT NULL DEFAULT 0');
+  // last activity stamp (ms), bumped ≤ hourly by the authed routes — the
+  // guest prune reads it so a guest who keeps using the app is never deleted
+  // for merely being 45 days old
+  if (!userCols.includes('last_seen')) db.exec('ALTER TABLE users ADD COLUMN last_seen INTEGER');
 
   // Timed leaderboard rounds (2026-08-10): every board runs for a fixed
   // duration (week/month/year). Members race from 0 — each member's score is

@@ -1,10 +1,17 @@
 /**
  * Account screen — the in-app home for everything sign-in (its own tab).
  *
- * Signed OUT: the shared AuthPanel — email+password, Apple, Google, and the
- * legacy RIMON friend-code pair.
+ * GUEST (the default since App Review 5.1.1(v): an anonymous session with no
+ * personal information): "You're using Brachas as a guest", what an account
+ * adds, and the shared AuthPanel in UPGRADE mode — create / Apple / Google
+ * keep the guest's progress in place; sign-in switches to an existing
+ * account. Appearance, replay-the-intro and delete-my-data stay available
+ * (deleting as a guest removes the guest row; a fresh one is minted).
  * Signed IN: profile card (name + email, editable, saved to the server),
- * password set/change, friend code with copy, replay-the-intro, sign out.
+ * password set/change, friend code with copy, blocked people, sign out,
+ * delete account.
+ * No session at all (guest mint still pending / offline): the same panel,
+ * plain — the app keeps working on local progress meanwhile.
  */
 import { useEffect, useState } from 'react';
 import { apiBlockedUsers, apiDeleteAccount, apiMe, apiPushNative, apiSetPassword, apiUnblockUser, apiUpdateAccount } from '../lib/api';
@@ -17,6 +24,13 @@ import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PASSWORD_MIN = 8;
+
+/** what a guest gains by creating an account — the pitch, kept honest */
+const ACCOUNT_ADDS = [
+  'Your streaks and points on every device — a new phone picks up where you left off.',
+  'Friends: trade codes, share leaderboards, chat in your boards.',
+  'Sign back in any time with email + password, Apple or Google.',
+];
 
 export function Account() {
   const {
@@ -31,7 +45,11 @@ export function Account() {
     setOnboarded,
     appearance,
     setAppearance,
+    isGuest,
+    setGuest,
+    gateNotice,
   } = useBracha();
+  const signedIn = !!serverToken && !isGuest;
 
   const [name, setName] = useState(displayName);
   const [email, setEmail] = useState(userEmail ?? '');
@@ -48,11 +66,19 @@ export function Account() {
   // people blocked from chat (App Review 1.2) — the undo lives here
   const [blocked, setBlocked] = useState<{ user_id: string; name: string }[]>([]);
 
-  // restore the profile card from the server (also self-heals a stale token)
+  // restore the profile card from the server (also self-heals a stale token
+  // and the guest flag — the server's word on `guest` wins)
   useEffect(() => {
     if (!serverToken) return;
     apiMe(serverToken)
       .then((r) => {
+        if (r.guest) {
+          // a guest row has no profile to restore — and its placeholder
+          // name must never become the user's display name
+          setGuest(true);
+          return;
+        }
+        setGuest(false);
         setName(r.name);
         setEmail(r.email ?? '');
         setDisplayName(r.name);
@@ -63,11 +89,16 @@ export function Account() {
       .catch((e) => {
         if ((e as { status?: number }).status === 401) clearServerAccount();
       });
+    if (isGuest) return; // the blocked list is account-only (guests can't chat)
     apiBlockedUsers(serverToken)
       .then((r) => setBlocked(Array.isArray(r.blocked) ? r.blocked : []))
       .catch(() => undefined); // offline → the section simply stays hidden
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverToken]);
+  }, [serverToken, isGuest]);
+
+  // the one-shot notice ("account deleted", "session expired") is shown once,
+  // on this screen — leaving it clears it
+  useEffect(() => () => useBracha.getState().setGateNotice(null), []);
 
   const unblock = async (userId: string) => {
     if (!serverToken) return;
@@ -136,10 +167,31 @@ export function Account() {
             : 'Couldn’t save right now — try again in a moment.',
       );
       if (status === 401) {
-        // set BEFORE the clear — clearing swaps this screen for the gate
+        // set BEFORE the clear — this screen stays mounted and shows it
         useBracha.getState().setGateNotice('Your session expired — please sign in again.');
         clearServerAccount();
       }
+    }
+    setBusy(false);
+  };
+
+  const deleteAccount = async () => {
+    if (!serverToken) return;
+    setBusy(true);
+    try {
+      await apiDeleteAccount(serverToken);
+      // set BEFORE the clear — the notice survives the state swap
+      useBracha
+        .getState()
+        .setGateNotice(
+          isGuest
+            ? 'Your guest data has been deleted from the server. Local streaks on this device remain yours.'
+            : 'Your account has been deleted. Local streaks on this device remain yours.',
+        );
+      clearServerAccount();
+      setConfirmDelete(false);
+    } catch {
+      setNotice('Couldn’t reach the server — try again in a moment.');
     }
     setBusy(false);
   };
@@ -158,18 +210,31 @@ export function Account() {
           ← home
         </button>
 
+        {gateNotice && (
+          <div
+            data-gate-notice
+            className="rise-in mb-4 rounded-[1.25rem] bg-white/70 p-4 text-[12.5px] leading-relaxed text-espresso ring-1 ring-espresso/10"
+          >
+            {gateNotice}
+          </div>
+        )}
+
         <header className="rise-in flex items-start justify-between gap-4 pb-6">
           <div className="space-y-2">
-            <Eyebrow>{serverToken ? 'Your account' : 'Join or sign in'}</Eyebrow>
-            <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-              {serverToken ? 'Account' : 'Sign in'}
+            <Eyebrow>{signedIn ? 'Your account' : isGuest ? 'Guest mode' : 'Join or sign in'}</Eyebrow>
+            <h2
+              className={`font-display font-bold leading-tight text-espresso ${
+                signedIn || !isGuest ? 'text-[32px]' : 'text-[28px]'
+              }`}
+            >
+              {signedIn ? 'Account' : isGuest ? 'You’re using Brachas as a guest' : 'Sign in'}
             </h2>
             <p className="max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
-              {serverToken
+              {signedIn
                 ? 'Your name, your email, your keys — all in one place.'
-                : 'An account syncs streaks across devices and puts you in the friends league.'}
+                : 'Everything here works without an account. Create one whenever you want your progress on other devices, or friends.'}
             </p>
-            {serverToken && providers.length > 0 && (
+            {signedIn && providers.length > 0 && (
               <div className="flex gap-1.5">
                 {providers.map((p) => (
                   <span
@@ -185,7 +250,7 @@ export function Account() {
           <Rimon pose="pointing" size={88} className="shrink-0" />
         </header>
 
-        {serverToken ? (
+        {signedIn ? (
           <>
             {/* profile */}
             <Bezel className="rise-in rise-in-1" innerClassName="px-5 py-4">
@@ -271,80 +336,113 @@ export function Account() {
                 alongside your email. Keep it private — treat it like a password.
               </p>
             </Bezel>
-
-            {/* appearance — explicit, light by default (never inferred from the OS) */}
-            <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
-              <p className={label}>Appearance</p>
-              <div data-appearance-picker className="mt-2 grid grid-cols-3 gap-2">
-                {(
-                  [
-                    { id: 'light', label: 'Light', icon: '☀️' },
-                    { id: 'dark', label: 'Dark', icon: '🌙' },
-                    { id: 'system', label: 'Auto', icon: '📱' },
-                  ] as const
-                ).map((o) => {
-                  const active = appearance === o.id;
-                  return (
-                    <button
-                      key={o.id}
-                      onClick={() => setAppearance(o.id)}
-                      aria-pressed={active}
-                      className={`rounded-2xl border px-2 py-2.5 text-center transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-                        active
-                          ? 'border-rimon/40 bg-rimon/[0.07] text-rimon'
-                          : 'border-espresso/10 bg-white/60 text-espresso hover:-translate-y-0.5'
-                      }`}
-                    >
-                      <span className="block text-[16px]">{o.icon}</span>
-                      <span className="mt-0.5 block text-[11.5px] font-bold">{o.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2.5 text-[10.5px] leading-relaxed text-mocha">
-                Auto follows your device's light/dark setting. The app stays light unless you
-                choose otherwise.
-              </p>
-            </Bezel>
-
-            {/* blocked people — only once there is someone to unblock */}
-            {blocked.length > 0 && (
-              <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
-                <div data-blocked-people>
-                  <p className={label}>Blocked people</p>
-                  <p className="mt-1 text-[10.5px] leading-snug text-mocha">
-                    You don’t see their chat messages on any leaderboard.
-                  </p>
-                  <ul className="mt-2.5 divide-y divide-espresso/[0.07]">
-                    {blocked.map((b) => (
-                      <li key={b.user_id} className="flex items-center justify-between gap-3 py-2">
-                        <span className="truncate text-[13.5px] font-semibold text-espresso">{b.name}</span>
-                        <button
-                          onClick={() => void unblock(b.user_id)}
-                          className="min-h-[44px] shrink-0 rounded-full bg-espresso/[0.05] px-4 text-[11px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
-                        >
-                          unblock
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+          </>
+        ) : (
+          <>
+            {/* guest / no session: the pitch, then the panel in upgrade mode */}
+            {isGuest && (
+              <Bezel className="rise-in rise-in-1" innerClassName="px-5 py-4">
+                <p className={label}>What an account adds</p>
+                <ul data-account-adds className="mt-2 space-y-2">
+                  {ACCOUNT_ADDS.map((line) => (
+                    <li key={line} className="flex gap-2.5 text-[12.5px] leading-snug text-espresso">
+                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
+                  Nothing you’ve done as a guest is lost — creating an account keeps this
+                  progress. Signing in switches this device to that account.
+                </p>
               </Bezel>
             )}
+            <div className={`rise-in rise-in-2 flex flex-col items-center gap-3 ${isGuest ? 'mt-5' : ''}`}>
+              <AuthPanel />
+              <p className="max-w-[300px] text-center text-[10.5px] leading-snug text-mocha">
+                Signing in on a new device brings your name, streaks and league along.
+              </p>
+            </div>
+          </>
+        )}
 
-            {notice && <p className="rise-in pt-3 text-center text-[12px] font-medium text-rimon">{notice}</p>}
+        {/* appearance — explicit, light by default (never inferred from the OS);
+            a setting, so guests have it too */}
+        <Bezel className="rise-in rise-in-2 mt-5" innerClassName="px-5 py-4">
+          <p className={label}>Appearance</p>
+          <div data-appearance-picker className="mt-2 grid grid-cols-3 gap-2">
+            {(
+              [
+                { id: 'light', label: 'Light', icon: '☀️' },
+                { id: 'dark', label: 'Dark', icon: '🌙' },
+                { id: 'system', label: 'Auto', icon: '📱' },
+              ] as const
+            ).map((o) => {
+              const active = appearance === o.id;
+              return (
+                <button
+                  key={o.id}
+                  onClick={() => setAppearance(o.id)}
+                  aria-pressed={active}
+                  className={`rounded-2xl border px-2 py-2.5 text-center transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                    active
+                      ? 'border-rimon/40 bg-rimon/[0.07] text-rimon'
+                      : 'border-espresso/10 bg-white/60 text-espresso hover:-translate-y-0.5'
+                  }`}
+                >
+                  <span className="block text-[16px]">{o.icon}</span>
+                  <span className="mt-0.5 block text-[11.5px] font-bold">{o.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2.5 text-[10.5px] leading-relaxed text-mocha">
+            Auto follows your device's light/dark setting. The app stays light unless you
+            choose otherwise.
+          </p>
+        </Bezel>
 
-            {/* extras */}
-            <div className="rise-in rise-in-3 flex flex-col items-center gap-4 pt-8">
-              <PillButton
-                variant="rimon"
-                icon="▶"
-                onClick={() => {
-                  setOnboarded(false);
-                }}
-              >
-                Watch the intro again
-              </PillButton>
+        {/* blocked people — only once there is someone to unblock */}
+        {signedIn && blocked.length > 0 && (
+          <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
+            <div data-blocked-people>
+              <p className={label}>Blocked people</p>
+              <p className="mt-1 text-[10.5px] leading-snug text-mocha">
+                You don’t see their chat messages on any leaderboard.
+              </p>
+              <ul className="mt-2.5 divide-y divide-espresso/[0.07]">
+                {blocked.map((b) => (
+                  <li key={b.user_id} className="flex items-center justify-between gap-3 py-2">
+                    <span className="truncate text-[13.5px] font-semibold text-espresso">{b.name}</span>
+                    <button
+                      onClick={() => void unblock(b.user_id)}
+                      className="min-h-[44px] shrink-0 rounded-full bg-espresso/[0.05] px-4 text-[11px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
+                    >
+                      unblock
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Bezel>
+        )}
+
+        {notice && <p className="rise-in pt-3 text-center text-[12px] font-medium text-rimon">{notice}</p>}
+
+        {/* extras */}
+        <div className="rise-in rise-in-3 flex flex-col items-center gap-4 pt-8">
+          <PillButton
+            variant="rimon"
+            icon="▶"
+            onClick={() => {
+              setOnboarded(false);
+            }}
+          >
+            Watch the intro again
+          </PillButton>
+
+          {signedIn && (
+            <>
               <button
                 onClick={() => {
                   // stop server pushes chasing a signed-out device (best-effort)
@@ -360,66 +458,47 @@ export function Account() {
                 Signing out keeps your local streaks on this device; your league account stays safe
                 on the server — sign back in any time with {signInWaysCopy}.
               </p>
+            </>
+          )}
 
-              {/* permanent deletion — inline two-step confirm */}
-              {!confirmDelete ? (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="pt-2 text-[11px] font-medium text-mocha/70 transition-colors duration-150 hover:text-rimon"
-                >
-                  delete my account permanently
-                </button>
-              ) : (
-                <div className="mt-2 w-full max-w-[320px] rounded-[1.25rem] bg-rimon/[0.06] px-5 py-4 ring-1 ring-rimon/20">
-                  <p className="text-[12px] font-semibold text-espresso">Delete your account?</p>
-                  <p className="mt-1 text-[10.5px] leading-snug text-espresso-soft">
-                    This erases your league account, friends, and synced progress from the server —
-                    permanently. There is no undo, and your friend code stops working.
-                  </p>
-                  <div className="mt-3 flex items-center justify-end gap-4">
-                    <button
-                      onClick={() => setConfirmDelete(false)}
-                      className="text-[11.5px] font-semibold text-espresso-soft hover:text-espresso"
-                    >
-                      keep my account
-                    </button>
-                    <button
-                      onClick={async () => {
-                        if (!serverToken) return;
-                        setBusy(true);
-                        try {
-                          await apiDeleteAccount(serverToken);
-                          // set BEFORE the clear — clearing unmounts this screen
-                          useBracha
-                            .getState()
-                            .setGateNotice(
-                              'Your account has been deleted. Local streaks on this device remain yours.',
-                            );
-                          clearServerAccount();
-                          setConfirmDelete(false);
-                        } catch {
-                          setNotice('Couldn’t reach the server — try again in a moment.');
-                        }
-                        setBusy(false);
-                      }}
-                      disabled={busy}
-                      className="rounded-full bg-rimon px-4 py-2 text-[11.5px] font-bold text-cream transition-transform duration-150 ease-out active:scale-95"
-                    >
-                      {busy ? 'Deleting…' : 'Delete forever'}
-                    </button>
-                  </div>
+          {/* permanent deletion — inline two-step confirm; a guest deletes
+              the guest row the same way (Apple requires in-app deletion) */}
+          {serverToken &&
+            (!confirmDelete ? (
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="pt-2 text-[11px] font-medium text-mocha/70 transition-colors duration-150 hover:text-rimon"
+              >
+                {isGuest ? 'delete my guest data from the server' : 'delete my account permanently'}
+              </button>
+            ) : (
+              <div className="mt-2 w-full max-w-[320px] rounded-[1.25rem] bg-rimon/[0.06] px-5 py-4 ring-1 ring-rimon/20">
+                <p className="text-[12px] font-semibold text-espresso">
+                  {isGuest ? 'Delete your guest data?' : 'Delete your account?'}
+                </p>
+                <p className="mt-1 text-[10.5px] leading-snug text-espresso-soft">
+                  {isGuest
+                    ? 'This erases the progress this device synced to the server — permanently. Local streaks on this device stay, and a fresh guest session starts on its own.'
+                    : 'This erases your league account, friends, and synced progress from the server — permanently. There is no undo, and your friend code stops working.'}
+                </p>
+                <div className="mt-3 flex items-center justify-end gap-4">
+                  <button
+                    onClick={() => setConfirmDelete(false)}
+                    className="text-[11.5px] font-semibold text-espresso-soft hover:text-espresso"
+                  >
+                    {isGuest ? 'keep it' : 'keep my account'}
+                  </button>
+                  <button
+                    onClick={() => void deleteAccount()}
+                    disabled={busy}
+                    className="rounded-full bg-rimon px-4 py-2 text-[11.5px] font-bold text-cream transition-transform duration-150 ease-out active:scale-95"
+                  >
+                    {busy ? 'Deleting…' : 'Delete forever'}
+                  </button>
                 </div>
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="rise-in rise-in-1 flex flex-col items-center gap-3">
-            <AuthPanel />
-            <p className="max-w-[300px] text-center text-[10.5px] leading-snug text-mocha">
-              Signing in on a new device brings your name, streaks and league along.
-            </p>
-          </div>
-        )}
+              </div>
+            ))}
+        </div>
 
         <p className="pt-8 text-center">
           <a

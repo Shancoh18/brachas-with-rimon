@@ -1,6 +1,18 @@
 /**
  * End-to-end debug of the DEPLOYED Brachas with Rimon.
  * Asserts every feature; prints PASS/FAIL lines; exits 1 on any FAIL.
+ *
+ * FLOW (build 35 — anonymous guest sessions; App Review rejected build 33
+ * under 5.1.1(v) for walling the app behind sign-in):
+ *   onboarding → the app opens with NO sign-in (a guest session is minted
+ *   silently; /api/me says guest:true) → every non-account feature runs as
+ *   that guest → the Friends tab shows the INLINE create-account panel (the
+ *   same AuthPanel inputs, never a full-screen wall) → the gate account is
+ *   registered there, upgrading the guest in place (same friend code,
+ *   guest:false, progress kept) → friends / boards / chat / account /
+ *   sign-out (drops to a fresh guest, no wall) / sign-in / save-for-later.
+ * ASSERTIONS: ~176 per run (the guide loop and the daily-thought / chat
+ *   branches move the exact number by a few); build 33's suite ran 164.
  */
 import puppeteer from 'puppeteer-core';
 
@@ -81,6 +93,48 @@ const clickText = async (txt, wait = 1200) => {
   return ok;
 };
 const text = async () => (await page.evaluate(() => document.body.innerText)).toLowerCase();
+// the persisted zustand slice — serverToken is the session, guest or account
+const readToken = () => page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon') || '{}')?.state?.serverToken ?? null).catch(() => null);
+// poll the persisted token until one appears (or, with `differentFrom`, until it changes)
+const waitToken = async (differentFrom = undefined, ms = 10_000) => {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    const tok = await readToken();
+    if (tok && tok !== differentFrom) return tok;
+    await sleep(400);
+  }
+  return null;
+};
+// /api/me for a token — the server's own view of the session (guest flag, code, email)
+const whoAmI = (token) =>
+  token
+    ? fetch(`${API}/api/me`, { headers: { Authorization: `Bearer ${token}`, Origin: 'https://shancoh18.github.io' } })
+        .then((r) => (r.ok ? r.json() : { status: r.status }))
+        .catch((e) => ({ error: String(e?.message ?? e) }))
+    : Promise.resolve(null);
+// the inline AuthPanel may sit behind a collapsed "create an account" CTA — expand it once
+const revealAuthPanel = async () => {
+  const has = () => page.evaluate(() => !!document.querySelector('input[placeholder="you@example.com"]'));
+  if (await has()) return true;
+  await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('button')];
+    // prefer the create CTA — a "sign in" one would open the panel without the name field
+    (btns.find((b) => /create (an |my )?account/i.test(b.textContent)) ?? btns.find((b) => /sign in/i.test(b.textContent)))?.click();
+  });
+  await sleep(800);
+  return has();
+};
+// where a GUEST reaches the sign-in panel: the Account tab first, then Friends
+const openAuthPanel = async () => {
+  if (await revealAuthPanel()) return 'current screen';
+  await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
+  await sleep(1000);
+  if (await revealAuthPanel()) return 'account tab';
+  await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());
+  await sleep(1200);
+  if (await revealAuthPanel()) return 'friends tab';
+  return null;
+};
 
 await page.goto(URL, { waitUntil: 'networkidle2', timeout: 60_000 });
 await sleep(2500);
@@ -104,27 +158,51 @@ check(
 );
 await clickText('Next', 900);
 await clickText('Next', 900);
+// 5.1.1(v): the tour must END without an account. Whatever the build shows
+// after the stories (a closing slide, or the app itself), NOTHING is typed —
+// the first forward CTA on offer has to open the app.
+const ENTER_CTAS = ['Let’s go', "Let's go", 'Get started', 'Start', 'Open the app', 'Begin', 'later', 'skip', 'continue', 'Done', 'Next'];
+const welcomeUp = () =>
+  page.evaluate(() => {
+    const t = document.body.innerText.toLowerCase();
+    return t.includes('tip of the day') && !!document.querySelector('nav') && !t.includes('sign in to begin');
+  });
+let enteredVia = 'already in the app';
+for (let i = 0; i < 4 && !(await welcomeUp()); i++) {
+  enteredVia = await page.evaluate((labels) => {
+    const btns = [...document.querySelectorAll('button')];
+    for (const l of labels) {
+      const b = btns.find((x) => x.textContent.trim().toLowerCase().includes(l.toLowerCase()));
+      if (b) {
+        b.click();
+        return b.textContent.trim();
+      }
+    }
+    return null;
+  }, ENTER_CTAS);
+  await sleep(1400);
+  if (!enteredVia) break;
+}
 t = await text();
-check('tutorial ends at account creation', t.includes('make it yours') && (await page.evaluate(() => !!document.querySelector('input[type="email"]'))));
-await clickText('continue to sign-in', 1200);
+check('tutorial ends WITHOUT a sign-in wall — the app opens (5.1.1(v))', (await welcomeUp()) && t.includes('brachas with rimon'), `via "${enteredVia}"`);
+check(
+  'welcome carries no sign-in form (nothing was typed to get here)',
+  await page.evaluate(() => !document.querySelector('input[type="email"]') && !document.querySelector('input[type="password"]')),
+);
 
-// ----------------------------------------------------- AUTH GATE (account-first)
-t = await text();
-check('auth gate blocks the app until sign-in', t.includes('sign in to begin'));
-const e2eEmail = 'e2e-' + Math.floor(Math.random() * 1e9) + '@example.com';
-// a fresh password per run — the repo is public, a fixed one would be a
-// known credential for every e2e account the teardown ever failed to delete
-const E2E_PASS = 'e2e-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
-await page.type('input[placeholder="you@example.com"]', e2eEmail);
-await page.type('input[placeholder="8+ characters"]', E2E_PASS);
-await clickText('Create my account', 2600);
-t = await text();
-check('account created at the gate - app unlocked', t.includes('brachas with rimon') && !t.includes('sign in to begin'));
+// ------------------------------------------------------- GUEST SESSION (silent)
+// No sign-in happened, yet the app holds a server session: POST /api/guest
+// minted an anonymous row (users.guest=1) with no personal information. That
+// token carries the whole run until the Friends tab upgrades it in place.
+const guestToken = await waitToken();
+check('guest session minted silently after onboarding (serverToken stored)', !!guestToken);
+const guestMe = await whoAmI(guestToken);
+check('/api/me reports guest:true for the fresh session', guestMe?.guest === true, JSON.stringify(guestMe));
+check('guest row carries no personal information (no email)', !!guestMe && guestMe.guest === true && !guestMe.email, `email=${guestMe?.email ?? 'null'}`);
+check('guest session already owns a friend code (the in-place upgrade keeps it)', /^RIMON-[A-Z2-9]{4}$/.test(guestMe?.code ?? ''), guestMe?.code);
 // the gate account's session token, for the teardown at the very end (the
 // suite signs out before it finishes, so it can't be read from the page then)
-const readToken = () => page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon') || '{}')?.state?.serverToken ?? null).catch(() => null);
-let gateToken = await readToken();
+let gateToken = null;
 
 // ---------------------------------------------------------------- WELCOME
 t = await text();
@@ -584,6 +662,8 @@ await page.reload({ waitUntil: 'networkidle2' });
 await sleep(2000);
 const persisted = await page.evaluate(() => JSON.parse(localStorage.getItem('brachas-with-rimon')).state.progress);
 check('progress persisted across reload', persisted.totalBrachos >= 6 && persisted.streakCurrent === 1, `total=${persisted.totalBrachos} streak=${persisted.streakCurrent}`);
+// a boot with a stored guest token must REUSE it — never mint a second guest row
+check('guest token survives the reload (no second guest minted)', (await readToken()) === guestToken);
 t = await text();
 check('today widget flips to Bracha said ✓', t.includes('bracha said'));
 
@@ -750,11 +830,62 @@ check('starring pins a lesson', t.includes('starred'));
 }
 
 // ---------------------------------------------------------------- FRIENDS (live server)
+// ACCOUNT-BASED features. As a guest the tab renders the INLINE create-account
+// panel (the same AuthPanel inputs the old gate used) in place of the friend
+// code / league / boards — the tab bar stays, the app is never walled.
 await page.evaluate(() => [...document.querySelectorAll('nav button')][3]?.click());
-await sleep(1200);
+await sleep(1500);
+const panelRevealed = await revealAuthPanel();
 t = await text();
-const codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
-check('league membership from gate signup - friend code shows', !!codeMatch, codeMatch?.[0]);
+const guestFriends = await page.evaluate(() => ({
+  panel:
+    !!document.querySelector('input[placeholder="you@example.com"]') &&
+    [...document.querySelectorAll('button')].some((b) => /create (my )?account/i.test(b.textContent)),
+  nav: !!document.querySelector('nav'),
+  code: /RIMON-[A-Z2-9]{4}/.test(document.body.innerText),
+  addFriend: !!document.querySelector('input[placeholder="RIMON-XXXX"]'),
+  boards: !!document.querySelector('[data-boards-empty]') || [...document.querySelectorAll('button')].some((b) => b.textContent.trim() === '+ New'),
+}));
+check(
+  'Friends as a guest: INLINE create-account panel, tab bar still up (no full-screen wall)',
+  panelRevealed && guestFriends.panel && guestFriends.nav && !t.includes('sign in to begin'),
+  JSON.stringify(guestFriends),
+);
+check(
+  'Friends as a guest: friend code / add-by-code / boards withheld until an account exists',
+  !guestFriends.code && !guestFriends.addFriend && !guestFriends.boards,
+  JSON.stringify(guestFriends),
+);
+
+// register the gate account FROM THE PANEL — the guest session upgrades in place
+const e2eEmail = 'e2e-' + Math.floor(Math.random() * 1e9) + '@example.com';
+// a fresh password per run — the repo is public, a fixed one would be a
+// known credential for every e2e account the teardown ever failed to delete
+const E2E_PASS = 'e2e-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+await page.type('input[placeholder="e.g. Shan"]', 'E2E Debug');
+await page.type('input[placeholder="you@example.com"]', e2eEmail);
+await page.type('input[placeholder="8+ characters"]', E2E_PASS);
+await clickText('Create my account', 2600);
+let codeMatch = null;
+for (let i = 0; i < 12 && !codeMatch; i++) {
+  codeMatch = (await page.evaluate(() => document.body.innerText)).match(/RIMON-[A-Z2-9]{4}/);
+  if (!codeMatch) await sleep(500);
+}
+t = await text();
+check(
+  'account created from the inline panel — friend code shows, panel gone',
+  !!codeMatch && !(await page.evaluate(() => !!document.querySelector('input[placeholder="8+ characters"]'))),
+  codeMatch?.[0],
+);
+gateToken = (await readToken()) || guestToken;
+const upgradedMe = await whoAmI(gateToken);
+check('/api/me reports guest:false after the upgrade', upgradedMe?.guest === false, JSON.stringify(upgradedMe));
+check(
+  'upgrade kept the SAME user — friend code unchanged from the guest session',
+  !!guestMe?.code && upgradedMe?.code === guestMe.code && codeMatch?.[0] === guestMe.code,
+  `guest=${guestMe?.code} account=${upgradedMe?.code} shown=${codeMatch?.[0]}`,
+);
+check('upgraded account carries the e2e name + email', upgradedMe?.email === e2eEmail && /e2e debug/i.test(upgradedMe?.name ?? ''), `${upgradedMe?.name} <${upgradedMe?.email}>`);
 // Friend-add is CODE-ONLY (email adds were removed 2026-08-06 — a security fix).
 // Mint a real friend via the API to get a genuine RIMON code, then add by it.
 const friendReg = await fetch(`${API}/api/register`, {
@@ -790,7 +921,7 @@ const youRow = await page.evaluate(() => {
   return row ? row.innerText.replace(/\n/g, ' | ') : '';
 });
 check(
-  'my league row carries real all-time numbers (points + brachos > 0)',
+  'my league row carries real all-time numbers (points + brachos > 0 — earned as a guest, kept through the upgrade)',
   /⭐\s*([1-9]\d*)/.test(youRow) && /\b[1-9]\d*[\s|]*brachos/i.test(youRow),
   youRow,
 );
@@ -1024,11 +1155,30 @@ await sleep(1500);
 t = await text();
 check('account tab opens from bottom bar (signed in)', t.includes('your account') && t.includes('save changes'));
 check('friend code card shows', /rimon-[a-z2-9]{4}/.test(t));
-check('password card offers change-password (set at the gate)', t.includes('change password'));
-// sign out - the auth gate must re-arm; then back in with email + password
+check('password card offers change-password (set from the Friends panel)', t.includes('change password'));
+// sign out — NO wall may re-arm: the app stays open and drops to a FRESH guest
+// session (a new anonymous row; the account stays on the server). Then back
+// in with email + password from wherever the build surfaces the panel.
 await clickText('sign out on this device', 1500);
 t = await text();
-check('signing out re-arms the auth gate', t.includes('sign in to begin'));
+check('signing out never re-arms a wall — the app stays open', !t.includes('sign in to begin') && (await page.evaluate(() => !!document.querySelector('nav'))));
+let guestAfterSignOut = await waitToken(gateToken, 8000);
+if (!guestAfterSignOut) {
+  // a build that mints the guest only at boot/foreground: a reload IS a boot
+  await page.reload({ waitUntil: 'networkidle2' });
+  await sleep(2200);
+  guestAfterSignOut = await waitToken(gateToken, 8000);
+}
+const orphanGuests = []; // signed-out guest rows — deleted best-effort in the teardown
+if (guestAfterSignOut) orphanGuests.push(guestAfterSignOut);
+const guestAgainMe = await whoAmI(guestAfterSignOut);
+check(
+  'sign-out drops to a FRESH guest session (new token, guest:true)',
+  !!guestAfterSignOut && guestAfterSignOut !== gateToken && guestAgainMe?.guest === true,
+  JSON.stringify(guestAgainMe),
+);
+const panelAt = await openAuthPanel();
+check('a guest can reach the sign-in panel (Account or Friends tab)', !!panelAt, panelAt ?? 'panel not found');
 await clickText('Sign in', 800); // mode toggle (first matching button)
 await page.type('input[placeholder="you@example.com"]', e2eEmail);
 await page.type('input[placeholder="your password"]', E2E_PASS);
@@ -1043,6 +1193,12 @@ t = await text();
 const restoredName = await page.evaluate(() => [...document.querySelectorAll('input')].map((i) => i.value).find((v) => v.includes('E2E')) ?? '');
 check('email + password sign-in restores the account', t.includes('your account') && restoredName.includes('E2E Debug'), `name=${restoredName}`);
 gateToken = (await readToken()) || gateToken;
+const signedBackMe = await whoAmI(gateToken);
+check(
+  'signing in from a guest session switches to the account (guest:false, same friend code)',
+  signedBackMe?.guest === false && signedBackMe?.code === guestMe?.code && signedBackMe?.email === e2eEmail,
+  JSON.stringify(signedBackMe),
+);
 
 // ------------------------------------------ SAVE-FOR-LATER after-blessings
 // second meal (one apple): guide → meal logs at guide-finish (crash safety) →
@@ -1085,11 +1241,21 @@ await sleep(1200);
 t = await text();
 check('widget gone after the after-blessing is said', !t.includes('after-blessings saved'));
 
-// back to Account for the sign-out / friend-code checks below
+// back to Account: sign out again (→ another fresh guest, no wall) and check
+// the sign-in panel still offers the friend-code fallback for legacy accounts
 await page.evaluate(() => [...document.querySelectorAll('nav button')][5]?.click());
 await sleep(1000);
-// friend-code fallback link present on the gate sign-in for legacy accounts
 await clickText('sign out on this device', 1200);
+{
+  let g = await waitToken(gateToken, 8000);
+  if (!g) {
+    await page.reload({ waitUntil: 'networkidle2' });
+    await sleep(2200);
+    g = await waitToken(gateToken, 8000);
+  }
+  if (g && !orphanGuests.includes(g)) orphanGuests.push(g);
+}
+await openAuthPanel();
 await clickText('Sign in', 700);
 t = await text();
 check('friend-code fallback offered on sign-in', t.includes('no password? sign in with your friend code'));
@@ -1139,8 +1305,10 @@ const realErrors = errors.filter((e) => !e.includes('favicon') && !e.includes('M
 check('no console/page errors', realErrors.length === 0, realErrors.slice(0, 3).join(' | '));
 
 // ---------------------------------------------------------------- TEARDOWN
-// Every run mints two live accounts (the gate account + "Test Friend"); delete
-// both so the production DB doesn't fill with e2e users and stale boards.
+// Every run mints live rows: the gate account (the upgraded guest), "Test
+// Friend", and the orphan guests the two sign-outs left behind. Delete them
+// all so the production DB doesn't fill with e2e users and stale boards (the
+// server prunes orphan guests on its own schedule; this just doesn't wait).
 // Cleanup is best-effort — it must never turn a green suite red.
 try {
   const del = (token) =>
@@ -1150,9 +1318,12 @@ try {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Origin: 'https://shancoh18.github.io' },
         }).then((r) => r.status)
       : Promise.resolve('no token');
-  gateToken = (await readToken()) || gateToken; // freshest session if still signed in
-  const [gateDel, friendDel] = await Promise.all([del(gateToken), del(friendReg?.token)]);
-  console.log(`teardown: gate account delete → ${gateDel}; Test Friend delete → ${friendDel}`);
+  // the page is signed out into a guest right now — that token is an orphan,
+  // NOT the gate account (never let it overwrite gateToken)
+  const current = await readToken();
+  if (current && current !== gateToken && !orphanGuests.includes(current)) orphanGuests.push(current);
+  const [gateDel, friendDel, ...guestDels] = await Promise.all([del(gateToken), del(friendReg?.token), ...orphanGuests.map(del)]);
+  console.log(`teardown: gate account delete → ${gateDel}; Test Friend delete → ${friendDel}; orphan guests (${orphanGuests.length}) → ${guestDels.join(', ') || 'none'}`);
 } catch (e) {
   console.log(`teardown skipped: ${String(e?.message ?? e)}`);
 }

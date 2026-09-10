@@ -43,9 +43,11 @@ export interface AnalyzeResult {
 }
 
 export async function analyzePhoto(base64: string, mediaType: string): Promise<AnalyzeResult> {
-  // /api/analyze is authenticated (vision costs money per call) — the app is
-  // account-first, so a token always exists by the time a photo can be taken.
-  const { serverToken } = (await import('../store')).useBracha.getState();
+  // /api/analyze is authenticated (vision costs money per call). Since build
+  // 35 the token is a silently minted guest session: a photo taken on a cold
+  // start can beat the mint, so wait for it (never throws; a failed mint
+  // simply sends the request token-less and the server answers 401).
+  const serverToken = await (await import('./guestSession')).waitForSession();
   const res = await fetch(`${API_BASE}/api/analyze`, {
     method: 'POST',
     headers: {

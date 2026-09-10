@@ -43,6 +43,8 @@ const hydrate = (r) =>
     push: parse(r.push),
     apns: r.apns ?? null,
     wins: r.wins ?? 0,
+    guest: !!r.guest, // anonymous session — no personal info, no social routes
+    lastSeen: r.last_seen ?? null,
     created: r.created,
   };
 
@@ -94,15 +96,41 @@ export function issueToken(userId) {
 export const revokeOtherTokens = (userId, keepRaw) =>
   db.prepare('DELETE FROM tokens WHERE user_id = ? AND hash <> ?').run(userId, tokenHash(String(keepRaw ?? '')));
 
-export function createUser({ name, email = null, pass = null, apple = null, google = null }) {
+export function createUser({ name, email = null, pass = null, apple = null, google = null, guest = 0 }) {
   const id = newId();
   const code = freshFriendCode();
+  const now = Date.now();
   db.prepare(
-    `INSERT INTO users (id,name,email,code,pass_salt,pass_hash,apple_sub,google_sub,progress,push,created)
-     VALUES (?,?,?,?,?,?,?,?,NULL,NULL,?)`,
-  ).run(id, String(name).slice(0, 20), email, code, pass?.salt ?? null, pass?.hash ?? null, apple, google, Date.now());
+    `INSERT INTO users (id,name,email,code,pass_salt,pass_hash,apple_sub,google_sub,progress,push,created,guest,last_seen)
+     VALUES (?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)`,
+  ).run(id, String(name).slice(0, 20), email, code, pass?.salt ?? null, pass?.hash ?? null, apple, google, now, guest ? 1 : 0, now);
   return { id, code, token: issueToken(id) };
 }
+
+// ------------------------------------------------------------- guests
+/** Flip the anonymous-session flag. 0 = the row is now a real account. */
+export const setGuest = (id, guest) => db.prepare('UPDATE users SET guest = ? WHERE id = ?').run(guest ? 1 : 0, id);
+/** Link a verified provider identity to an EXISTING row (guest upgrade). */
+export const setProvider = (id, provider, sub) =>
+  db.prepare(`UPDATE users SET ${provider === 'apple' ? 'apple_sub' : 'google_sub'} = ? WHERE id = ?`).run(String(sub), id);
+/** Record activity — the guest prune's "still in use" signal. Callers gate
+ *  it to about once an hour per user, so it never becomes a write per request. */
+export const touchUser = (id, now = Date.now()) => db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now, id);
+export const guestCount = () => db.prepare('SELECT COUNT(*) n FROM users WHERE guest = 1').get().n;
+/** Guest rows with no activity for `days`. Activity = the freshest of the
+ *  last_seen stamp, the newest session token, and the row's creation — so a
+ *  guest who is still opening the app (sync/analyze bump last_seen) or just
+ *  minted a session is never listed. Real accounts are never listed. */
+export const listStaleGuests = (days) =>
+  db
+    .prepare(
+      `SELECT u.id FROM users u
+        WHERE u.guest = 1
+          AND MAX(COALESCE(u.last_seen, 0), u.created,
+                  COALESCE((SELECT MAX(t.created) FROM tokens t WHERE t.user_id = u.id), 0)) < ?`,
+    )
+    .all(Date.now() - Number(days) * 86_400_000)
+    .map((r) => r.id);
 
 export const setProgress = (id, progress) =>
   db.prepare('UPDATE users SET progress = ? WHERE id = ?').run(JSON.stringify(progress), id);

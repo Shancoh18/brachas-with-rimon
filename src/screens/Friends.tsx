@@ -1,20 +1,25 @@
 /**
- * Friends tab — the real social layer.
- * The app is account-first (AuthGate mounts whenever there's no serverToken),
- * so this screen always renders signed-in: friend code (RIMON-XXXX) → trade
- * codes → shared weekly league + boards synced through the Railway backend.
+ * Friends tab — the real social layer: friend code (RIMON-XXXX) → trade
+ * codes → shared league + boards + chat synced through the Railway backend.
  * Shows the local Rimon-pacer league only while offline / before first sync.
+ *
+ * This is the ONE account-based tab (App Review 5.1.1(v)): a GUEST session
+ * sees the tab and its header, and — in place of the feature — the inline
+ * AccountRequired panel (create / Apple / Google upgrade the guest in place,
+ * or sign in to an existing account). The moment the store holds a real
+ * account the normal screen renders.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { apiAddFriend, apiLeague, apiSync, type LeagueRow } from '../lib/api';
+import { apiAddFriend, apiLeague, apiSync, isAccountRequired, type LeagueRow } from '../lib/api';
 import { streakAlive } from '../lib/progress';
 import { useBracha } from '../store';
+import { AccountRequired } from '../components/AccountRequired';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 import { Boards } from '../components/Boards';
 
 export function Friends() {
-  const { progress, displayName, setDisplayName, serverToken, friendCode, clearServerAccount } =
+  const { progress, displayName, setDisplayName, serverToken, friendCode, clearServerAccount, isGuest, setGuest } =
     useBracha();
   const [league, setLeagueLocal] = useState<LeagueRow[] | null>(null);
   const setLeagueSnapshot = useBracha((s) => s.setLeagueSnapshot);
@@ -33,7 +38,7 @@ export function Friends() {
   // while the screen stays open (30s poll) — friends' bracha counts used to
   // freeze at whatever they were on mount (owner-reported 2026-08-06)
   useEffect(() => {
-    if (!serverToken) return;
+    if (!serverToken || isGuest) return;
     let cancelled = false;
     const pull = (first: boolean) => {
       if (first) setStatus('busy');
@@ -47,7 +52,10 @@ export function Friends() {
         .catch((e) => {
           if (cancelled) return;
           if ((e as { status?: number }).status === 401) {
-            clearServerAccount(); // server no longer knows us — re-join cleanly
+            clearServerAccount(); // server no longer knows us — a fresh guest is minted
+            setStatus('idle');
+          } else if (isAccountRequired(e)) {
+            setGuest(true); // the server says this token is a guest's — show the panel
             setStatus('idle');
           } else if (first) setStatus('offline'); // background polls fail silently
         });
@@ -59,7 +67,7 @@ export function Friends() {
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverToken]);
+  }, [serverToken, isGuest]);
 
   const addFriend = async () => {
     if (!serverToken || !codeInput.trim()) return;
@@ -125,6 +133,29 @@ export function Friends() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
+
+  // Guest (or no session yet): the tab stays, the feature gives way to the
+  // inline account panel. AuthPanel flips isGuest off on success and this
+  // same component re-renders as the full screen — no navigation needed.
+  if (isGuest || !serverToken) {
+    return (
+      <ScreenShell>
+        <div className="pb-24">
+          <header className="rise-in flex items-start justify-between gap-4 pb-6">
+            <div className="space-y-2">
+              <Eyebrow>Blessings were meant to be heard</Eyebrow>
+              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Friends</h2>
+              <p className="text-[13px] leading-relaxed text-espresso-soft">
+                Trade codes, race on shared leaderboards, and cheer each other on in board chat.
+              </p>
+            </div>
+            <Rimon pose="pointing" size={88} />
+          </header>
+          <AccountRequired reason="Friends, leaderboards and chat need an account so people can find you." />
+        </div>
+      </ScreenShell>
+    );
+  }
 
   return (
     <ScreenShell>

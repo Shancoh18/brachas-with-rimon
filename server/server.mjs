@@ -1,8 +1,9 @@
 /**
  * Brachas with Rimon — backend (Railway).
  * Accounts (email+password, Apple/Google OAuth, legacy friend-code sign-in),
- * friend leagues, shareable boards, Web-Push mealtime reminders, and the
- * Claude vision proxy.
+ * anonymous GUEST sessions (App Store 5.1.1(v): non-account features need no
+ * personal info; a guest row upgrades in place), friend leagues, shareable
+ * boards, Web-Push mealtime reminders, and the Claude vision proxy.
  *
  * Design rules (mirrors the app's CLAUDE.md):
  *  - Claude ONLY identifies foods and maps them to database keys (enum-forced
@@ -115,6 +116,34 @@ const auth = (req) => {
   const user = store.userByToken(t); // digest lookup; tokens aren't stored raw
   return user ? { token: t, user } : null;
 };
+/** The session on this request ONLY if it is an anonymous guest — the
+ *  register/oauth routes upgrade that row in place instead of creating one. */
+const guestBearer = (req) => {
+  const a = auth(req);
+  return a?.user.guest ? a : null;
+};
+/** Activity stamp for the guest prune (users.last_seen) — one write per user
+ *  per hour at most, never one per request. */
+const TOUCH_GAP_MS = 60 * 60_000;
+const touchIfStale = (user) => {
+  if (!user.lastSeen || Date.now() - user.lastSeen > TOUCH_GAP_MS) store.touchUser(user.id);
+};
+/** A guest row that now holds a real credential (email + password) IS an
+ *  account — clear the flag. Returns the fresh row either way. */
+const settleGuest = (id) => {
+  const me = store.userById(id);
+  if (me?.guest && me.email && me.pass) {
+    store.setGuest(id, 0);
+    return store.userById(id);
+  }
+  return me;
+};
+// ACCOUNT-BASED features (guideline 5.1.1(v)): everything that exposes other
+// users — the friends league, friend codes, and every board route (standings,
+// chat, moderation, reveal). A guest gets 403 account_required and the client
+// renders its inline "create an account" panel; nothing else is gated.
+const ACCOUNT_ONLY = ['/api/league', '/api/friends', '/api/boards'];
+const accountRequired = (pathname) => ACCOUNT_ONLY.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
 // A board is a social circle, not a public feed: bound both directions so one
 // viral code can't turn every /api/boards call into a huge computation.
@@ -166,6 +195,10 @@ const standings = (me, scoredMembers) => {
 // ------------------------------------------------- abuse limits (in-memory)
 // Vision spend: per-account daily cap + global concurrency ceiling.
 const ANALYZE_MAX_PER_DAY = 30;
+// Anonymous guests get a third of that: the feature works without an account
+// (5.1.1(v)) but a token farm of free guest rows must not scale vision spend
+// — the global ceiling and the per-IP throttle still apply on top.
+const ANALYZE_GUEST_MAX_PER_DAY = 10;
 // 16 (was 8): a vision call is ~10-25s of mostly network wait, so eight in
 // flight meant a lunchtime burst of nine users saw "busy" on the ninth photo.
 const ANALYZE_MAX_INFLIGHT = 16;
@@ -1078,6 +1111,36 @@ if (ROUND_SWEEP_MS > 0) {
   setTimeout(sweepRounds, Math.min(5_000, ROUND_SWEEP_MS)).unref(); // catch rounds that ended while we were down
 }
 
+// ------------------------------------------------------------- guest prune
+// Anonymous rows nobody has touched for 45 days go: no activity stamp, no
+// fresh session, nothing but a creation date that old (store.listStaleGuests).
+// Real accounts are never candidates. A guest who reinstalls or whose token
+// was superseded by a sign-in leaves exactly such an orphan behind, and the
+// client keeps its own progress locally, so a pruned-then-returning guest
+// simply mints a new session and re-syncs. Daily, plus once shortly after
+// boot; GUEST_PRUNE_MS exists for the scenario suite (0 disables).
+const GUEST_PRUNE_DAYS = 45;
+const GUEST_PRUNE_MS = Number(process.env.GUEST_PRUNE_MS ?? 24 * 3_600_000);
+const pruneStaleGuests = () => {
+  let deleted = 0;
+  for (const id of store.listStaleGuests(GUEST_PRUNE_DAYS)) {
+    try {
+      store.deleteUser(id); // same cascade as account deletion (guests own no boards)
+      deleted++;
+    } catch (e) {
+      console.error(`guest prune: delete failed for ${id}: ${e.message}`);
+    }
+  }
+  // the count, every scheduled run; a sub-hourly (test) cadence logs only work done
+  if (deleted || GUEST_PRUNE_MS >= 3_600_000)
+    console.log(`guest prune: ${deleted} guest row(s) inactive > ${GUEST_PRUNE_DAYS} days deleted`);
+  return deleted;
+};
+if (GUEST_PRUNE_MS > 0) {
+  setInterval(pruneStaleGuests, GUEST_PRUNE_MS).unref();
+  setTimeout(pruneStaleGuests, Math.min(60_000, GUEST_PRUNE_MS)).unref();
+}
+
 // ------------------------------------------------------------ daily thought
 // "Daily Wisdom" (chabad.org/dailystudy/dailywisdom_cdo) — one lesson per day
 // adapted from the Rebbe's teachings; the Learn tab shows a faithful digest +
@@ -1401,6 +1464,9 @@ const server = createServer(async (req, res) => {
       // reports table stays the store's business
       const openReports = store.openReportCount();
       doc.moderation = { open_reports: openReports };
+      // anonymous sessions ride the same users table; the watch routine
+      // should see how much of the count is guests (pruned after 45 idle days)
+      doc.users.guests = store.guestCount();
       if (openReports > 0) {
         doc.alerts.push({
           level: 'warn',
@@ -1423,24 +1489,56 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { thought: cur ?? null, fresh });
     }
 
+    // Anonymous guest session (App Store guideline 5.1.1(v)). The app's
+    // non-account features (guide, photo identify, learn, journey, reminders)
+    // need no personal information, so a fresh install past onboarding gets a
+    // server row with NONE: name 'Guest', no email/password/provider, guest=1.
+    // The SAME row is upgraded in place — id, code, progress and sessions kept
+    // — by /api/register or /api/oauth while its token is the bearer, or by
+    // /api/account + /api/account/password once it holds email + password.
+    // Account-only routes answer 403 account_required until then.
+    if (url.pathname === '/api/guest' && req.method === 'POST') {
+      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
+      const { name } = await readBody(req);
+      const clean = String(name ?? '').trim().slice(0, 20) || 'Guest';
+      const created = store.createUser({ name: clean, guest: 1 });
+      return json(res, 200, { token: created.token, code: created.code, name: clean, email: null, guest: true });
+    }
+
     if (url.pathname === '/api/register' && req.method === 'POST') {
       // 240/10min: many students share one campus/home NAT on launch day.
       if (throttled(req, 240)) return json(res, 429, { error: 'slow_down' });
+      // a guest's bearer token turns this into an UPGRADE of that row
+      const guestSession = guestBearer(req);
       const { name, email, password } = await readBody(req);
       if (!name || String(name).trim().length < 1) return json(res, 400, { error: 'name_required' });
+      const cleanName = String(name).trim().slice(0, 20);
       let mail = null;
       if (email != null && String(email).trim() !== '') {
         mail = String(email).trim().toLowerCase().slice(0, 254);
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) return json(res, 400, { error: 'email_invalid' });
-        if (store.emailTaken(mail)) return json(res, 409, { error: 'email_taken' });
+        // taken by ANOTHER row — the upgrading guest may already hold it itself
+        const holder = store.userByEmail(mail);
+        if (holder && holder.id !== guestSession?.user.id) return json(res, 409, { error: 'email_taken' });
       }
       let pass = null;
       if (password != null && String(password) !== '') {
         if (String(password).length < PASSWORD_MIN) return json(res, 400, { error: 'password_short' });
         pass = await hashPassword(String(password).slice(0, 200));
       }
-      const created = store.createUser({ name: String(name).trim().slice(0, 20), email: mail, pass });
-      return json(res, 200, { token: created.token, code: created.code, email: mail });
+      if (guestSession) {
+        // UPGRADE IN PLACE: same id, friend code, progress and sessions —
+        // the caller keeps using the token it sent
+        const id = guestSession.user.id;
+        store.setName(id, cleanName);
+        if (mail) store.setEmail(id, mail);
+        if (pass) store.setPassword(id, pass);
+        store.setGuest(id, 0);
+        const me = store.userById(id);
+        return json(res, 200, { token: guestSession.token, code: me.code, name: me.name, email: me.email ?? null, guest: false, upgraded: true });
+      }
+      const created = store.createUser({ name: cleanName, email: mail, pass });
+      return json(res, 200, { token: created.token, code: created.code, name: cleanName, email: mail, guest: false });
     }
 
     // Sign in on a new device. Two key pairs are accepted:
@@ -1466,6 +1564,9 @@ const server = createServer(async (req, res) => {
       const c = normalizeCode(code);
       const u = store.userByEmail(mail);
       if (!u || u.code !== c) return json(res, 404, { error: 'no_match' });
+      // a guest row has no credential at all — the legacy path is for
+      // pre-password ACCOUNTS only
+      if (u.guest) return json(res, 404, { error: 'no_match' });
       // The code unlocks ONLY genuinely legacy accounts (no password, no OAuth
       // provider). An account with a password or an Apple/Google link must sign
       // in through that — otherwise the published invite code is a back door.
@@ -1491,9 +1592,26 @@ const server = createServer(async (req, res) => {
       // Match by provider `sub` ONLY. Auto-linking by email would let anyone
       // who pre-registered a victim's email capture their Apple/Google
       // sign-in into an attacker-controlled account.
+      const guestSession = guestBearer(req);
       let u = store.userByProvider(provider, sub);
       let token;
-      if (!u) {
+      let upgraded = false;
+      if (!u && guestSession) {
+        // UPGRADE IN PLACE: a provider identity nobody holds becomes this
+        // guest's credential — same id/code/progress/sessions, guest flag
+        // off. (A sub that DOES belong to someone falls through to the
+        // sign-in branch below: the caller gets that account's session and
+        // the client discards the guest, which the prune reaps later.)
+        const g = guestSession.user;
+        store.setProvider(g.id, provider, sub);
+        if (mail && !g.email && !store.emailTaken(mail)) store.setEmail(g.id, mail);
+        const fromProvider = String(name || (mail ? mail.split('@')[0] : '')).trim().slice(0, 20);
+        if (g.name === 'Guest' && fromProvider) store.setName(g.id, fromProvider);
+        store.setGuest(g.id, 0);
+        token = guestSession.token;
+        u = store.userById(g.id);
+        upgraded = true;
+      } else if (!u) {
         const displayName = String(name || (mail ? mail.split('@')[0] : 'Friend')).trim().slice(0, 20) || 'Friend';
         // never claim an email another account already holds
         const freeMail = mail && !store.emailTaken(mail) ? mail : null;
@@ -1527,7 +1645,7 @@ const server = createServer(async (req, res) => {
         if (tokens?.refresh_token && !foreign) store.setAppleRefresh(u.id, tokens.refresh_token);
         else if (tokens?.refresh_token) console.error('siwa: exchange returned tokens for a different Apple user — refresh token NOT stored');
       }
-      return json(res, 200, { token, code: u.code, name: u.name, email: u.email ?? null });
+      return json(res, 200, { token, code: u.code, name: u.name, email: u.email ?? null, guest: false, upgraded });
     }
 
     if (url.pathname === '/api/foods/learned' && req.method === 'GET') {
@@ -1669,10 +1787,13 @@ const server = createServer(async (req, res) => {
       // to sit outside the ceiling, so any number of stalled uploads could pass
       // this check and then all hit Anthropic together.
       if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return json(res, 429, { error: 'busy' });
+      touchIfStale(who.user); // a guest identifying meals is an active guest
+      // per-account daily cap — guests get the smaller one
+      const dailyCap = who.user.guest ? ANALYZE_GUEST_MAX_PER_DAY : ANALYZE_MAX_PER_DAY;
       // cheap fast-fail (may be stale after the await below)
       const pre = analyzeUse.get(who.user.id);
       const today = new Date().toISOString().slice(0, 10);
-      if (pre?.day === today && pre.count >= ANALYZE_MAX_PER_DAY)
+      if (pre?.day === today && pre.count >= dailyCap)
         return json(res, 429, { error: 'daily_limit' });
       analyzeInFlight++;
       try {
@@ -1685,7 +1806,7 @@ const server = createServer(async (req, res) => {
         // Without this, parallel requests all read the same pre-await count and
         // could each pass the cap (multiplying vision spend).
         const use = analyzeUse.get(who.user.id);
-        if (use?.day === today && use.count >= ANALYZE_MAX_PER_DAY)
+        if (use?.day === today && use.count >= dailyCap)
           return json(res, 429, { error: 'daily_limit' });
         // Global spend ceiling (same atomic-after-await discipline as above).
         if (analyzeGlobal.day !== today) analyzeGlobal = { day: today, count: 0 };
@@ -1705,6 +1826,10 @@ const server = createServer(async (req, res) => {
     // ------- authed routes
     const a = auth(req);
     if (!a) return json(res, 401, { error: 'unauthorized' });
+    touchIfStale(a.user);
+    // guests never reach a route that shows other people (or shows them to
+    // other people) — the client swaps the feature for its account panel
+    if (a.user.guest && accountRequired(url.pathname)) return json(res, 403, { error: 'account_required', guest: true });
 
     if (url.pathname === '/api/sync' && req.method === 'POST') {
       const { progress, name } = await readBody(req);
@@ -1716,7 +1841,8 @@ const server = createServer(async (req, res) => {
       if (newPts > oldPts) notifyOvertaken(me, oldPts, newPts);
       // return the authoritative stored progress so a fresh device can adopt
       // it instead of pushing its empty state up (the wipe this merge prevents)
-      return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null, progress: me.progress ?? null });
+      // (a guest's league is just their own row — they can have no friends)
+      return json(res, 200, { league: leagueFor(me), code: me.code, email: me.email ?? null, progress: me.progress ?? null, guest: me.guest });
     }
 
     // Who am I — lets a device restore its profile card from just the token.
@@ -1727,6 +1853,7 @@ const server = createServer(async (req, res) => {
         code: a.user.code,
         hasPassword: !!a.user.pass,
         providers: ['apple', 'google'].filter((p) => !!a.user[p]),
+        guest: a.user.guest,
       });
     }
 
@@ -1745,8 +1872,9 @@ const server = createServer(async (req, res) => {
         if (holder && holder.id !== a.user.id) return json(res, 409, { error: 'email_taken' });
         store.setEmail(a.user.id, mail);
       }
-      const me = store.userById(a.user.id);
-      return json(res, 200, { name: me.name, email: me.email ?? null, code: me.code });
+      // a guest whose row now carries email + password has become an account
+      const me = settleGuest(a.user.id);
+      return json(res, 200, { name: me.name, email: me.email ?? null, code: me.code, guest: me.guest });
     }
 
     // Set or change the account password. Requires the current password only
@@ -1759,7 +1887,8 @@ const server = createServer(async (req, res) => {
       // a changed password must lock out anyone holding an old session —
       // revoke every other token, keeping only the one that made this request
       store.revokeOtherTokens(a.user.id, a.token);
-      return json(res, 200, { ok: true });
+      const me = settleGuest(a.user.id); // email + password on a guest row → account
+      return json(res, 200, { ok: true, guest: me.guest });
     }
 
     // Full account deletion (App Store guideline 5.1.1(v)): removes the user
@@ -1797,7 +1926,9 @@ const server = createServer(async (req, res) => {
       // email into a takeover primitive (the response used to carry codes).
       if (raw.includes('@')) return json(res, 400, { error: 'use_code' });
       const other = store.userByCode(normalizeCode(raw));
-      if (!other) return json(res, 404, { error: 'code_not_found' });
+      // a guest's code never resolves for anyone: they hold no account, and
+      // their name must never surface in another user's league
+      if (!other || other.guest) return json(res, 404, { error: 'code_not_found' });
       if (other.id === a.user.id) return json(res, 400, { error: 'thats_you' });
       store.addFriend(a.user.id, other.id);
       return json(res, 200, { league: leagueFor(a.user), added: other.name });

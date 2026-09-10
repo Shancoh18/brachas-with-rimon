@@ -96,8 +96,8 @@ interface BrachaState {
    *  because a user who taps past a banner would bless food they aren't eating. */
   demoFallback: boolean;
   setDemoFallback: (v: boolean) => void;
-  /** One-shot message shown on the AuthGate (e.g. "account deleted") — set it
-   *  BEFORE clearServerAccount(), since that unmounts the screen that set it. */
+  /** One-shot message shown on the Account screen / AuthGate (e.g. "account
+   *  deleted", "session expired") — set it BEFORE clearServerAccount(). */
   gateNotice: string | null;
   setGateNotice: (m: string | null) => void;
 
@@ -163,6 +163,17 @@ interface BrachaState {
   friendCode: string | null;
   userEmail: string | null;
   setUserEmail: (e: string | null) => void;
+  /** True while serverToken belongs to an ANONYMOUS guest row (POST /api/guest
+   *  — no name, no email; App Review 5.1.1(v)). Everything that isn't
+   *  account-based works exactly as signed in; Friends / boards / chat show an
+   *  inline "create an account" panel instead of the feature. Persisted, so a
+   *  relaunch knows not to treat the guest as a full account. */
+  isGuest: boolean;
+  setGuest: (v: boolean) => void;
+  /** adopt a fresh anonymous guest session (token + code from /api/guest) */
+  setGuestSession: (token: string, code: string) => void;
+  /** a FULL account session (register, OAuth upgrade, or sign-in) — clears
+   *  the guest flag, so this doubles as the upgrade helper */
   setServerAccount: (token: string, code: string) => void;
   clearServerAccount: () => void;
 
@@ -298,6 +309,8 @@ const sanitizePersisted = (raw: unknown) => {
     serverToken: strOrNull(s.serverToken),
     friendCode: strOrNull(s.friendCode),
     userEmail: strOrNull(s.userEmail),
+    // stores written before guests existed carry a real account → false
+    isGuest: s.isGuest === true,
     starredLessons: strArr(s.starredLessons),
     remoteLessons: sanitizeLessons(s.remoteLessons),
     parsha: sanitizeParsha(s.parsha),
@@ -547,8 +560,13 @@ export const useBracha = create<BrachaState>()(
       friendCode: null,
       userEmail: null,
       setUserEmail: (userEmail) => set({ userEmail }),
-      setServerAccount: (serverToken, friendCode) => set({ serverToken, friendCode, gateNotice: null }),
-      clearServerAccount: () => set({ serverToken: null, friendCode: null, userEmail: null }),
+      isGuest: false,
+      setGuest: (isGuest) => set({ isGuest }),
+      setGuestSession: (serverToken, friendCode) =>
+        set({ serverToken, friendCode, userEmail: null, isGuest: true }),
+      setServerAccount: (serverToken, friendCode) =>
+        set({ serverToken, friendCode, gateNotice: null, isGuest: false }),
+      clearServerAccount: () => set({ serverToken: null, friendCode: null, userEmail: null, isGuest: false }),
 
       reset: () =>
         set({
@@ -586,6 +604,7 @@ export const useBracha = create<BrachaState>()(
         serverToken: s.serverToken,
         friendCode: s.friendCode,
         userEmail: s.userEmail,
+        isGuest: s.isGuest,
         starredLessons: s.starredLessons,
         remoteLessons: s.remoteLessons,
         parsha: s.parsha,

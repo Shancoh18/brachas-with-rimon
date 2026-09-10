@@ -1,12 +1,19 @@
 /**
- * The one sign-in surface — used by the Account tab and the final
- * onboarding slide, so every prompt offers the same full menu:
+ * The one sign-in surface — used by the Account tab, the Friends tab's
+ * inline "account required" panel and the optional final onboarding slide,
+ * so every prompt offers the same full menu:
  *
  *   · create account with email + password
  *   · sign in with email + password
  *   · sign in with the RIMON friend code (legacy accounts, pre-password)
  *   · Sign in with Apple (native iOS)
  *   · Continue with Google (wherever a Google client id is configured)
+ *
+ * UPGRADE MODE is automatic: while the store holds a GUEST session
+ * (isGuest), "create account" and Apple/Google send the guest bearer token
+ * along, so the server upgrades / links the SAME user in place — id, code
+ * and synced progress all survive. Plain sign-in never carries the guest
+ * token: it switches this device to the existing account.
  *
  * All verification happens server-side; this panel only collects
  * credentials or forwards provider identity tokens (plus, for Apple, the
@@ -26,10 +33,26 @@ const LABEL = 'text-[9.5px] font-bold uppercase tracking-[0.18em] text-mocha';
 const FIELD =
   'mt-0.5 w-full bg-transparent text-[15px] font-medium text-espresso outline-none placeholder:text-mocha/40';
 
-export function AuthPanel({ onDone }: { onDone?: () => void }) {
+export function AuthPanel({
+  onDone,
+  initialMode = 'create',
+  hideToggle = false,
+}: {
+  onDone?: () => void;
+  /** which form opens first — a host that offers its own "sign in instead"
+   *  link passes 'signin' and re-keys the panel */
+  initialMode?: 'create' | 'signin';
+  /** hide the create/sign-in pill toggle (the host renders its own switch) */
+  hideToggle?: boolean;
+}) {
   const { displayName, setDisplayName, setUserEmail, setServerAccount, userEmail } = useBracha();
+  const isGuest = useBracha((s) => s.isGuest);
+  const serverToken = useBracha((s) => s.serverToken);
+  // the bearer that turns "create account" / Apple / Google into an in-place
+  // upgrade of the current guest row (undefined = fresh registration)
+  const guestToken = isGuest && serverToken ? serverToken : undefined;
 
-  const [mode, setMode] = useState<'create' | 'signin'>('create');
+  const [mode, setMode] = useState<'create' | 'signin'>(initialMode);
   const [name, setName] = useState(displayName);
   const [email, setEmail] = useState(userEmail ?? '');
   const [password, setPassword] = useState('');
@@ -39,7 +62,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const finish = (r: { token: string; code: string; name?: string; email?: string | null }) => {
-    setServerAccount(r.token, r.code);
+    setServerAccount(r.token, r.code); // also clears isGuest — the upgrade is complete
     if (r.name) setDisplayName(r.name);
     if (r.email !== undefined) setUserEmail(r.email ?? null);
     setNotice(null);
@@ -55,7 +78,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
       return setNotice(`Pick a password of at least ${PASSWORD_MIN} characters.`);
     setBusy(true);
     try {
-      const r = await apiRegister(n, mail, password);
+      const r = await apiRegister(n, mail, password, guestToken);
       setDisplayName(n);
       finish({ ...r, name: n, email: mail });
     } catch (e) {
@@ -108,7 +131,7 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
     try {
       const id = await (provider === 'apple' ? loginWithApple() : loginWithGoogle());
       // authorizationCode is only ever set by loginWithApple — Google unchanged
-      const r = await apiOauth(provider, id.idToken, id.name, id.authorizationCode);
+      const r = await apiOauth(provider, id.idToken, id.name, id.authorizationCode, guestToken);
       finish(r);
     } catch (e) {
       const status = (e as { status?: number }).status;
@@ -131,24 +154,26 @@ export function AuthPanel({ onDone }: { onDone?: () => void }) {
   const showGoogle = googleAvailable();
 
   return (
-    <div className="w-full max-w-[320px] space-y-3">
+    <div className="w-full max-w-[320px] space-y-3" data-auth-panel={guestToken ? 'upgrade' : 'fresh'}>
       {/* create / sign-in toggle */}
-      <div className="mx-auto flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
-        {(['create', 'signin'] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => {
-              setMode(m);
-              setNotice(null);
-            }}
-            className={`rounded-full px-5 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
-              mode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
-            }`}
-          >
-            {m === 'create' ? 'Create account' : 'Sign in'}
-          </button>
-        ))}
-      </div>
+      {!hideToggle && (
+        <div className="mx-auto flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
+          {(['create', 'signin'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m);
+                setNotice(null);
+              }}
+              className={`rounded-full px-5 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
+                mode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
+              }`}
+            >
+              {m === 'create' ? 'Create account' : 'Sign in'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="space-y-2.5 text-left">
         {mode === 'create' && (
