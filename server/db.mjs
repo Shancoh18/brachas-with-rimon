@@ -99,6 +99,10 @@ export function openDb(dataDir) {
   const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
   // APNs device token for the native iOS app (WKWebView has no Web Push)
   if (!userCols.includes('apns')) db.exec('ALTER TABLE users ADD COLUMN apns TEXT');
+  // FCM registration token for the native Android app (2026-09-22) —
+  // Capacitor's Android WebView has no Web Push either; server/fcm.mjs is
+  // the APNs twin and sendPush() fans out to whichever column is set
+  if (!userCols.includes('fcm')) db.exec('ALTER TABLE users ADD COLUMN fcm TEXT');
   // lifetime leaderboard-round wins (2026-08-10)
   if (!userCols.includes('wins')) db.exec('ALTER TABLE users ADD COLUMN wins INTEGER NOT NULL DEFAULT 0');
   // Sign in with Apple refresh token (2026-09-09): captured at sign-in by
@@ -117,6 +121,14 @@ export function openDb(dataDir) {
   // guest prune reads it so a guest who keeps using the app is never deleted
   // for merely being 45 days old
   if (!userCols.includes('last_seen')) db.exec('ALTER TABLE users ADD COLUMN last_seen INTEGER');
+  // Google Play UGC policy (2026-09-22): a member must accept the community
+  // rules (public/terms.html) before posting board chat — stamped once,
+  // enforced by POST /api/boards/message, so it holds across devices
+  if (!userCols.includes('terms_accepted_at')) db.exec('ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER');
+  // the user's UTC offset (minutes, Date.getTimezoneOffset) from the last
+  // /api/sync — "today" for league points and evening pushes used to come
+  // only from Web-Push prefs, so every native user was scored on UTC days
+  if (!userCols.includes('tz_offset')) db.exec('ALTER TABLE users ADD COLUMN tz_offset INTEGER');
 
   // Timed leaderboard rounds (2026-08-10): every board runs for a fixed
   // duration (week/month/year). Members race from 0 — each member's score is

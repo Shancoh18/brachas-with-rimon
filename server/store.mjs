@@ -42,6 +42,9 @@ const hydrate = (r) =>
     progress: parse(r.progress),
     push: parse(r.push),
     apns: r.apns ?? null,
+    fcm: r.fcm ?? null,
+    tz: r.tz_offset ?? null,
+    termsAcceptedAt: r.terms_accepted_at ?? null,
     wins: r.wins ?? 0,
     guest: !!r.guest, // anonymous session — no personal info, no social routes
     lastSeen: r.last_seen ?? null,
@@ -116,6 +119,10 @@ export const setProvider = (id, provider, sub) =>
 /** Record activity — the guest prune's "still in use" signal. Callers gate
  *  it to about once an hour per user, so it never becomes a write per request. */
 export const touchUser = (id, now = Date.now()) => db.prepare('UPDATE users SET last_seen = ? WHERE id = ?').run(now, id);
+export const setTz = (id, minutes) => db.prepare('UPDATE users SET tz_offset = ? WHERE id = ?').run(minutes, id);
+/** Community-rules acceptance (Play UGC policy) — first acceptance wins, never cleared by the user. */
+export const setTermsAccepted = (id, ts = Date.now()) =>
+  db.prepare('UPDATE users SET terms_accepted_at = COALESCE(terms_accepted_at, ?) WHERE id = ?').run(ts, id);
 export const guestCount = () => db.prepare('SELECT COUNT(*) n FROM users WHERE guest = 1').get().n;
 /** Guest rows with no activity for `days`. Activity = the freshest of the
  *  last_seen stamp, the newest session token, and the row's creation — so a
@@ -146,6 +153,11 @@ export const setPush = (id, push) =>
 export const setApns = (id, token) => {
   if (token) db.prepare('UPDATE users SET apns = NULL WHERE apns = ? AND id <> ?').run(token, id);
   db.prepare('UPDATE users SET apns = ? WHERE id = ?').run(token || null, id);
+};
+/** FCM registration token (native Android) — same device-uniqueness rule. */
+export const setFcm = (id, token) => {
+  if (token) db.prepare('UPDATE users SET fcm = NULL WHERE fcm = ? AND id <> ?').run(token, id);
+  db.prepare('UPDATE users SET fcm = ? WHERE id = ?').run(token || null, id);
 };
 /** Sign in with Apple refresh token — read ONLY by the account-deletion
  *  route, which spends it on revocation. Deliberately not part of hydrate():
@@ -456,6 +468,8 @@ export const reportCountSince = (userId, since) =>
 export const allLearned = () =>
   db.prepare('SELECT entry FROM learned_foods ORDER BY added').all().map((r) => parse(r.entry)).filter(Boolean);
 export const learnedCount = () => db.prepare('SELECT COUNT(*) n FROM learned_foods').get().n;
+/** Operator correction: drop a learned row (a wrong or superseded ruling). */
+export const deleteLearned = (key) => db.prepare('DELETE FROM learned_foods WHERE key = ?').run(String(key)).changes;
 export const learnedKeys = () => db.prepare('SELECT key FROM learned_foods').all().map((r) => r.key);
 export const addLearned = (entry) =>
   db.prepare('INSERT OR IGNORE INTO learned_foods (key,entry,added) VALUES (?,?,?)').run(entry.key, JSON.stringify(entry), Date.now());
@@ -468,13 +482,15 @@ export const pushSubscribers = () =>
     .prepare("SELECT * FROM users WHERE push IS NOT NULL")
     .all()
     .map(hydrate)
-    .filter((u) => u.push?.subscription && u.push?.times?.length);
+    // native apps schedule mealtime reminders on-device — never double them
+    // with a Web Push left over from the PWA days
+    .filter((u) => u.push?.subscription && u.push?.times?.length && !u.apns && !u.fcm);
 
-/** Everyone reachable on ANY push channel (Web Push or native APNs) —
- *  the owner-broadcast audience. */
+/** Everyone reachable on ANY push channel (Web Push, native APNs on iOS or
+ *  FCM on Android) — the owner-broadcast audience. */
 export const pushAudience = () =>
   db
-    .prepare('SELECT * FROM users WHERE push IS NOT NULL OR apns IS NOT NULL')
+    .prepare('SELECT * FROM users WHERE push IS NOT NULL OR apns IS NOT NULL OR fcm IS NOT NULL')
     .all()
     .map(hydrate)
-    .filter((u) => u.push?.subscription || u.apns);
+    .filter((u) => u.push?.subscription || u.apns || u.fcm);

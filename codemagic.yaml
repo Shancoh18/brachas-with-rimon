@@ -1,12 +1,45 @@
-# Codemagic CI — builds the iOS app in the cloud (no Mac needed) and uploads
-# it to App Store Connect / TestFlight.
+# Codemagic CI — builds the native apps in the cloud (no Mac, no Android
+# Studio needed) and uploads them to the stores.
 #
-# One-time setup on codemagic.io (see APPSTORE.md for the walkthrough):
+#   ios-app-store      every push to master → signed IPA → TestFlight
+#   android-play       manual start → signed AAB (App Bundle) for Google Play
+#   android-debug-apk  manual start → debug-signed APK anyone can sideload;
+#                      needs NO secrets, so it works before the keystore exists
+#
+# One-time setup on codemagic.io (see APPSTORE.md / PLAYSTORE.md):
 #   1. Sign in with GitHub, add the Shancoh18/brachas-with-rimon repo.
-#   2. Teams > Integrations > App Store Connect: add an API key
+#   2. iOS: Teams > Integrations > App Store Connect: add an API key
 #      (App Store Connect > Users and Access > Integrations > App Store Connect API).
-#   3. In the app's settings enable "iOS automatic code signing" with that key.
-# Every push to master then builds and uploads a TestFlight build.
+#   3. iOS: in the app's settings enable "iOS automatic code signing" with that key.
+#   4. Android: Teams > Code signing identities > Android keystores > upload
+#      group-app-ad/android-signing/brachas-upload.p12 with reference name
+#      `brachas_upload` (alias `upload`; password in group-app-ad/.env as
+#      BRACHA_ANDROID_UPLOAD_KEYSTORE_PASSWORD). The android-play workflow
+#      refuses to start until that reference exists.
+#   5. Android (later, optional): Teams > Environment variables > group
+#      `google_play` with GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (a Play Console
+#      service-account JSON) to publish straight to the internal track — see
+#      the commented `publishing:` block. The very FIRST bundle must be uploaded
+#      by hand in Play Console regardless (Google's rule).
+
+definitions:
+  web_tests: &web_tests
+    - name: Install dependencies
+      script: npm ci
+    - name: Server scenario tests (push + chat mocks — APNs, FCM, Apple)
+      # Boots the real API against mock APNs / FCM / Apple servers and asserts
+      # every push scenario (see the suite). A red suite blocks any upload.
+      script: |
+        cd server && npm ci && cd ..
+        node server/test/scenarios.mjs
+    - name: Content guard (model-written text)
+      # Dependency-free unit test of server/content-guard.mjs: cite-tag /
+      # markup stripping + refusal-text detection for every reading surface
+      # (daily thought, learned-food notes). A reader must never see tool
+      # artefacts or the model talking about itself.
+      script: node server/test/content-guard.mjs
+    - name: Build web app
+      script: npm run build
 
 workflows:
   ios-app-store:
@@ -30,23 +63,7 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.shancoh.brachaswithrimon
     scripts:
-      - name: Install dependencies
-        script: npm ci
-      - name: Server scenario tests (push + chat mocks)
-        # Boots the real API against a mock APNs server and asserts every push
-        # scenario (see the suite). A red suite blocks the TestFlight upload.
-        script: |
-          cd server && npm ci && cd ..
-          node server/test/scenarios.mjs
-      - name: Content guard (model-written text)
-        # Dependency-free unit test of server/content-guard.mjs: cite-tag /
-        # markup stripping + refusal-text detection for every reading surface
-        # (daily thought, learned-food notes). A red guard blocks TestFlight
-        # too — a reader must never see tool artefacts or the model talking
-        # about itself.
-        script: node server/test/content-guard.mjs
-      - name: Build web app
-        script: npm run build
+      - *web_tests
       - name: Sync Capacitor iOS
         script: npx cap sync ios
       - name: Build signed IPA
@@ -63,3 +80,57 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
+
+  android-play:
+    name: Android Play build (signed AAB)
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    # No `triggering:` on purpose — start it by hand (Start new build → branch
+    # master → this workflow) once the keystore is in Codemagic. versionCode in
+    # android/app/build.gradle must be bumped before every upload to Play.
+    environment:
+      node: 22
+      java: 17
+      android_signing:
+        - brachas_upload # reference name of the uploaded keystore (see header)
+    scripts:
+      - *web_tests
+      - name: Sync Capacitor Android
+        script: npx cap sync android
+      - name: Build signed App Bundle
+        # Codemagic's android_signing step exports CM_KEYSTORE_PATH /
+        # CM_KEYSTORE_PASSWORD / CM_KEY_ALIAS / CM_KEY_PASSWORD; app/build.gradle
+        # reads exactly those, so the bundle comes out upload-key signed.
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease --no-daemon
+          echo "--- signer of the bundle ---"
+          keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab | head -20 || true
+    artifacts:
+      - android/app/build/outputs/bundle/release/*.aab
+      - android/app/build/outputs/mapping/**/mapping.txt
+    # publishing:
+    #   google_play:
+    #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+    #     track: internal
+    #     submit_as_draft: true
+
+  android-debug-apk:
+    name: Android debug APK (sideload, no secrets)
+    max_build_duration: 45
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      java: 17
+    scripts:
+      - *web_tests
+      - name: Sync Capacitor Android
+        script: npx cap sync android
+      - name: Build debug APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk

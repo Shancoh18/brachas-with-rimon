@@ -96,6 +96,13 @@ interface BrachaState {
    *  because a user who taps past a banner would bless food they aren't eating. */
   demoFallback: boolean;
   setDemoFallback: (v: boolean) => void;
+  /** WHY identification fell back (banner copy on Confirm) — see analyze.ts */
+  fallbackReason: 'daily_limit' | 'busy' | 'unauthorized' | 'offline' | 'unreadable_photo' | 'failed' | null;
+  setFallbackReason: (r: 'daily_limit' | 'busy' | 'unauthorized' | 'offline' | 'unreadable_photo' | 'failed' | null) => void;
+  /** Community rules accepted on THIS device (Play UGC policy) — the server
+   *  stamps it per account; a fresh device asks once more, one tap. */
+  termsAccepted: boolean;
+  setTermsAccepted: (v: boolean) => void;
   /** One-shot message shown on the Account screen / AuthGate (e.g. "account
    *  deleted", "session expired") — set it BEFORE clearServerAccount(). */
   gateNotice: string | null;
@@ -316,6 +323,7 @@ const sanitizePersisted = (raw: unknown) => {
     parsha: sanitizeParsha(s.parsha),
     dailyThought: sanitizeThought(s.dailyThought),
     onboarded: s.onboarded === true,
+    termsAccepted: s.termsAccepted === true,
   };
 };
 
@@ -348,6 +356,10 @@ export const useBracha = create<BrachaState>()(
       setUnmatched: (unmatched) => set({ unmatched }),
       demoFallback: false,
       setDemoFallback: (demoFallback) => set({ demoFallback }),
+      fallbackReason: null,
+      setFallbackReason: (fallbackReason) => set({ fallbackReason }),
+      termsAccepted: false,
+      setTermsAccepted: (termsAccepted) => set({ termsAccepted }),
       gateNotice: null,
       setGateNotice: (gateNotice) => set({ gateNotice }),
 
@@ -487,18 +499,34 @@ export const useBracha = create<BrachaState>()(
       adoptServerProgress: (sp) =>
         set((s) => {
           const local = s.progress;
-          const localEmpty = !(local.points ?? 0) && local.history.length === 0;
           const serverHasData = !!sp && (!!(sp.points ?? 0) || (sp.history?.length ?? 0) > 0);
-          // only adopt onto a blank device, and only from a non-empty server —
-          // once local has any progress this is a no-op, so it can't clobber
-          if (!localEmpty || !serverHasData) return {};
-          const history = sp!.history ?? [];
+          if (!serverHasData) return {};
+          // The server copy is the max-merge of EVERY device this account ever
+          // synced from (it merged our own push a moment ago), so adopting it
+          // can never lose local work. Adopt whenever it is AHEAD — a blank
+          // reinstall, but also "I said one bracha as a guest on my new phone,
+          // then signed in to my real account" (audit 2026-09-22): before,
+          // that phone kept showing 5 points while the league showed 480.
+          const localPts = local.points ?? 0;
+          const serverPts = sp!.points ?? 0;
+          const localDays = new Set(local.history.map((h) => h.day));
+          const serverHistory = sp!.history ?? [];
+          const serverHasDaysLocalLacks = serverHistory.some((h) => !localDays.has(h.day));
+          const ahead = serverPts > localPts || (sp!.totalBrachos ?? 0) > local.totalBrachos || serverHasDaysLocalLacks;
+          if (!ahead) return {};
+          // union the day history so a day only this device knows survives
+          const byDay = new Map(local.history.map((h) => [h.day, h]));
+          for (const h of serverHistory) {
+            const mine = byDay.get(h.day);
+            byDay.set(h.day, mine ? { ...mine, ...h, brachos: Math.max(mine.brachos, h.brachos), points: Math.max(mine.points ?? 0, h.points ?? 0) } : h);
+          }
+          const history = [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
           return {
             progress: {
               ...local,
-              totalBrachos: sp!.totalBrachos ?? 0,
-              points: sp!.points ?? 0,
-              streakCurrent: sp!.streakCurrent ?? 0,
+              totalBrachos: Math.max(local.totalBrachos, sp!.totalBrachos ?? 0),
+              points: Math.max(localPts, serverPts),
+              streakCurrent: serverPts >= localPts ? (sp!.streakCurrent ?? local.streakCurrent) : Math.max(local.streakCurrent, sp!.streakCurrent ?? 0),
               streakBest: Math.max(local.streakBest, sp!.streakCurrent ?? 0),
               history,
               lastActiveDay: history.length ? history[history.length - 1].day : local.lastActiveDay,
@@ -610,6 +638,7 @@ export const useBracha = create<BrachaState>()(
         parsha: s.parsha,
         dailyThought: s.dailyThought,
         onboarded: s.onboarded,
+        termsAccepted: s.termsAccepted,
       }),
     },
   ),

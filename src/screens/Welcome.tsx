@@ -8,7 +8,7 @@ import { Rimon } from '../components/Rimon';
 import { LeagueNudge } from '../components/LeagueNudge';
 import { ReminderNudge } from '../components/ReminderNudge';
 import { Eyebrow, PillButton, ScreenShell } from '../components/ui';
-import { analyzePhoto, demoMeal, resizeImage } from '../lib/analyze';
+import { analyzePhoto, analyzeReason, demoMeal, resizeImage, type FallbackReason } from '../lib/analyze';
 import { toMealItems } from '../lib/classify';
 
 /** epoch ms → "just now" / "25m ago" / "2h ago" / "yesterday" / "3 days ago" */
@@ -50,24 +50,45 @@ export function Welcome() {
     try {
       let result;
       let fellBack = false;
+      let reason: FallbackReason | null = null;
       if (file) {
-        const { dataUrl, base64, mediaType } = await resizeImage(file);
-        setPhoto(dataUrl);
+        let decoded: Awaited<ReturnType<typeof resizeImage>> | null = null;
         try {
-          result = await analyzePhoto(base64, mediaType);
-          notePhotoFlow(); // Snap & Bless daily
+          decoded = await resizeImage(file);
         } catch {
-          // Identification unreachable/timed out. Hand back an EMPTY plate —
-          // never a substitute meal. Confirm explains and opens manual search,
-          // so the user adds what they are actually eating.
+          // the WebView can't decode this file (HEIF from a gallery on Android,
+          // a corrupt image) — before, this escaped every catch and left the
+          // Identify screen spinning forever with no way out
+          decoded = null;
+        }
+        if (decoded) {
+          setPhoto(decoded.dataUrl);
+          try {
+            result = await analyzePhoto(decoded.base64, decoded.mediaType);
+            notePhotoFlow(); // Snap & Bless daily
+          } catch (e) {
+            // Identification unreachable / refused / timed out. Hand back an
+            // EMPTY plate — never a substitute meal. Confirm explains WHY and
+            // opens manual search, so the user adds what they are eating.
+            result = { items: [], unmatched: [] };
+            fellBack = true;
+            reason = analyzeReason(e);
+          }
+        } else {
+          setPhoto(null);
           result = { items: [], unmatched: [] };
           fellBack = true;
+          reason = 'unreadable_photo';
         }
       } else {
         setPhoto(null);
         result = demoMeal();
       }
+      // the user may have cancelled from Identify meanwhile — never yank them
+      // back to Confirm for a plate they walked away from
+      if (useBracha.getState().screen !== 'identify') return;
       setDemoFallback(fellBack);
+      useBracha.getState().setFallbackReason(fellBack ? reason ?? 'failed' : null);
       setItems(toMealItems(result.items));
       setUnmatched(result.unmatched ?? []);
       setScreen('confirm');
@@ -177,7 +198,6 @@ export function Welcome() {
             ref={fileRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={(e) => {
               const f = e.target.files?.[0];

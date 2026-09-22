@@ -1,5 +1,5 @@
 /** Journey tab — streak, points, daily + lifetime challenges, badges, reminders. */
-import { isNative } from '../lib/native';
+import { isAndroid, isNative } from '../lib/native';
 import { dailyChallenges, EMPTY_DAY } from '../lib/dailyChallenges';
 import { badges, CHALLENGES, streakAlive, todayStamp } from '../lib/progress';
 import { useReminders } from '../lib/useReminders';
@@ -219,7 +219,7 @@ export function Journey() {
           {notifState === 'denied' && (
             <p className="mt-3 text-[10.5px] text-rimon">
               {isNative()
-                ? 'Notifications are off for this app — enable them in Settings → Brachas with Rimon.'
+                ? `Notifications are off for this app — enable them in ${isAndroid() ? 'Settings → Apps → Brachas with Rimon → Notifications' : 'Settings → Brachas with Rimon'}.`
                 : 'Notifications are blocked in your browser settings — enable them for this site to get nudges.'}
             </p>
           )}

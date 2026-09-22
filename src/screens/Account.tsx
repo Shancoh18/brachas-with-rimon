@@ -15,7 +15,7 @@
  */
 import { useEffect, useState } from 'react';
 import { apiBlockedUsers, apiDeleteAccount, apiMe, apiPushNative, apiSetPassword, apiUnblockUser, apiUpdateAccount } from '../lib/api';
-import { isNative } from '../lib/native';
+import { isNative, platform } from '../lib/native';
 import { appleAvailable, googleAvailable } from '../lib/socialAuth';
 import { useBracha } from '../store';
 import { AuthPanel } from '../components/AuthPanel';
@@ -116,9 +116,14 @@ export function Account() {
     'your email and password',
     ...(appleAvailable() ? ['Apple'] : []),
     ...(googleAvailable() ? ['Google'] : []),
-    'your friend code',
+    // the friend code unlocks ONLY a legacy row (no password, no provider) —
+    // promising it to everyone sent people down a dead end
+    ...(hasPassword === false && providers.length === 0 ? ['your friend code'] : []),
   ];
-  const signInWaysCopy = `${signInWays.slice(0, -1).join(', ')}, or ${signInWays[signInWays.length - 1]}`;
+  const signInWaysCopy =
+    signInWays.length === 1
+      ? signInWays[0]
+      : `${signInWays.slice(0, -1).join(', ')}, or ${signInWays[signInWays.length - 1]}`;
 
   const savePassword = async () => {
     if (!serverToken) return;
@@ -280,7 +285,9 @@ export function Account() {
               <p className={label}>{hasPassword ? 'Change password' : 'Set a password'}</p>
               {hasPassword === false && (
                 <p className="mt-1 text-[10.5px] leading-snug text-mocha">
-                  Add a password so email + password signs you in on any device.
+                  {providers.includes('apple')
+                    ? 'Sign in with Apple only exists on iPhone. Set a password so this same account — streaks, friends, boards — signs in on Android or the web with your email.'
+                    : 'Add a password so email + password signs you in on any device — iPhone, Android or the web.'}
                 </p>
               )}
               {hasPassword && (
@@ -446,7 +453,7 @@ export function Account() {
               <button
                 onClick={() => {
                   // stop server pushes chasing a signed-out device (best-effort)
-                  if (isNative() && serverToken) void apiPushNative(serverToken, null).catch(() => undefined);
+                  if (isNative() && serverToken) void apiPushNative(serverToken, null, platform()).catch(() => undefined);
                   clearServerAccount();
                   setNotice(null);
                 }}

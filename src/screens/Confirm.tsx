@@ -41,6 +41,9 @@ const BRACHA_TINT: Record<string, string> = {
 
 export function Confirm() {
   const { items, updateItem, removeItem, addItem, unmatched, setScreen, reset, photo, demoFallback } = useBracha();
+  const fallbackReason = useBracha((s) => s.fallbackReason);
+  const isGuest = useBracha((s) => s.isGuest);
+  const setTab = useBracha((s) => s.setTab);
   const [query, setQuery] = useState('');
   // which item's gluten-free flour dropdown is open; 'unsure:<id>' shows the
   // check-the-package guidance instead of a ruling
@@ -95,10 +98,33 @@ export function Confirm() {
       </p>
 
       {demoFallback && (
-        <div className="rise-in rise-in-1 mb-5 rounded-[1.25rem] bg-rimon/8 p-4 text-[12px] leading-relaxed text-espresso ring-1 ring-rimon/20">
-          <strong className="text-rimon">Heads up:</strong> Rimon couldn’t identify your photo just
-          now. Nothing has been added — search below and add what’s on your plate, and every
-          blessing will still be exactly right.
+        <div
+          data-fallback-reason={fallbackReason ?? 'failed'}
+          className="rise-in rise-in-1 mb-5 rounded-[1.25rem] bg-rimon/8 p-4 text-[12px] leading-relaxed text-espresso ring-1 ring-rimon/20"
+        >
+          <strong className="text-rimon">Heads up:</strong>{' '}
+          {fallbackReason === 'daily_limit' && isGuest ? (
+            <>
+              You’ve used today’s 10 free photo identifications. A free account gets 30 a day — or
+              search below and add what’s on your plate; every blessing will still be exactly right.
+              <button
+                onClick={() => setTab('account')}
+                className="mt-2 block rounded-full bg-espresso px-4 py-2 text-[12px] font-semibold text-cream"
+              >
+                Create a free account →
+              </button>
+            </>
+          ) : fallbackReason === 'daily_limit' ? (
+            <>You’ve reached today’s 30 photo identifications. Search below and add what’s on your plate — every blessing will still be exactly right.</>
+          ) : fallbackReason === 'busy' ? (
+            <>Rimon is busy right now — try the photo again in a minute, or search below and add what’s on your plate.</>
+          ) : fallbackReason === 'offline' ? (
+            <>Couldn’t reach Rimon — check your connection, or search below and add what’s on your plate.</>
+          ) : fallbackReason === 'unreadable_photo' ? (
+            <>Couldn’t read that photo. Try another one, or search below and add what’s on your plate.</>
+          ) : (
+            <>Rimon couldn’t identify your photo just now. Nothing has been added — search below and add what’s on your plate, and every blessing will still be exactly right.</>
+          )}
         </div>
       )}
 

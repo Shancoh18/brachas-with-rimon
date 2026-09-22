@@ -696,3 +696,14 @@ i.tk-confetti,
   .tk-embers i, .tk-sparks i, .tk-confetti i, i.tk-confetti { display: none; }
   * { transition-duration: 0.01ms !important; }
 }
+
+/* ---------------------------------------------------------------- Android
+   Capacitor 8 draws the Android WebView edge-to-edge (targetSdk 35+) and,
+   with viewport-fit=cover, hands the system-bar insets to CSS. The bottom
+   is already handled everywhere (tab bar, sheets, takeovers use
+   env(safe-area-inset-bottom)); the TOP needs padding only here — iOS insets
+   the WebView natively (contentInset: automatic), so this must never apply
+   there. <html data-platform> is stamped in src/main.tsx. */
+html[data-platform='android'] body {
+  padding-top: env(safe-area-inset-top, 0px);
+}

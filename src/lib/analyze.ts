@@ -34,6 +34,16 @@ export async function resizeImage(file: File | Blob): Promise<{ dataUrl: string;
   return { dataUrl, base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' };
 }
 
+/** Why a photo could not be identified — Confirm turns each into plain
+ *  words (a guest's 11th photo of the day is NOT "Rimon is broken"). */
+export type FallbackReason = 'daily_limit' | 'busy' | 'unauthorized' | 'offline' | 'unreadable_photo' | 'failed';
+export interface AnalyzeError extends Error {
+  status: number;
+  code?: string;
+  reason: FallbackReason;
+}
+export const analyzeReason = (e: unknown): FallbackReason => (e as Partial<AnalyzeError> | null)?.reason ?? 'failed';
+
 export interface AnalyzeResult {
   items: IdentifiedItem[];
   unmatched: string[];
@@ -48,17 +58,32 @@ export async function analyzePhoto(base64: string, mediaType: string): Promise<A
   // start can beat the mint, so wait for it (never throws; a failed mint
   // simply sends the request token-less and the server answers 401).
   const serverToken = await (await import('./guestSession')).waitForSession();
-  const res = await fetch(`${API_BASE}/api/analyze`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(serverToken ? { Authorization: `Bearer ${serverToken}` } : {}),
-    },
-    body: JSON.stringify({ image: base64, media_type: mediaType }),
-    // vision + inline research can legitimately take ~30s; fail crisply after 45
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!res.ok) throw new Error(`analyze failed: ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/api/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(serverToken ? { Authorization: `Bearer ${serverToken}` } : {}),
+      },
+      body: JSON.stringify({ image: base64, media_type: mediaType }),
+      // vision + inline research can legitimately take ~30s; fail crisply after 45
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (e) {
+    throw Object.assign(new Error('analyze offline'), { status: 0, reason: 'offline' as FallbackReason, cause: e });
+  }
+  if (!res.ok) {
+    let body: { error?: string } = {};
+    try { body = await res.json(); } catch { /* non-JSON */ }
+    const code = body.error;
+    const reason: FallbackReason =
+      res.status === 429 && code === 'daily_limit' ? 'daily_limit'
+      : res.status === 429 || res.status === 503 ? 'busy'
+      : res.status === 401 ? 'unauthorized'
+      : 'failed';
+    throw Object.assign(new Error(`analyze failed: ${res.status}`), { status: res.status, code, reason });
+  }
   const result = (await res.json()) as AnalyzeResult;
   // Merge freshly learned foods before anything tries to look them up.
   registerLearnedFoods(result.learned_entries);

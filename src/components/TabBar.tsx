@@ -6,6 +6,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { donateAvailable } from '../lib/donate';
+import { isAndroid } from '../lib/native';
 import { useBracha, type Tab } from '../store';
 
 const stroke = {
@@ -79,10 +80,27 @@ export function TabBar() {
   const [keyboardUp, setKeyboardUp] = useState(false);
   useEffect(() => {
     const vv = window.visualViewport;
-    if (!vv) return;
-    const onChange = () => setKeyboardUp(window.innerHeight - vv.height > 100);
-    vv.addEventListener('resize', onChange);
-    return () => vv.removeEventListener('resize', onChange);
+    const onChange = () => setKeyboardUp(window.innerHeight - (vv?.height ?? window.innerHeight) > 100);
+    vv?.addEventListener('resize', onChange);
+    // Android (adjustResize): the WHOLE viewport shrinks with the keyboard, so
+    // the innerHeight/visualViewport gap never opens and the bar would ride
+    // right above the keyboard over the sign-in form — key off editable focus
+    const editable = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      t.matches('input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=file]), textarea, [contenteditable="true"]');
+    const onFocusIn = (e: FocusEvent) => {
+      if (isAndroid() && editable(e.target)) setKeyboardUp(true);
+    };
+    const onFocusOut = () => {
+      if (isAndroid()) setKeyboardUp(false);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
+    return () => {
+      vv?.removeEventListener('resize', onChange);
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+    };
   }, []);
   if (keyboardUp) return null;
   return (

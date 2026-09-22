@@ -3,13 +3,15 @@
  *
  * The plugin covers all platforms: on iOS Apple uses the native
  * ASAuthorization sheet (no client id needed) and Google uses the iOS SDK;
- * on the web Google uses Google Identity Services with the web client id.
- * Apple on the web needs an Apple Service ID + verified domain, which we
- * don't have — so the Apple button is native-only.
+ * on Android Google uses Credential Manager with the WEB client id; on the
+ * web Google uses Google Identity Services with the web client id. Apple on
+ * the web / Android needs an Apple Service ID + a redirect backend, which we
+ * don't run — so the Apple button is iOS-only. An Apple-linked account still
+ * works on Android: set a password in Account and sign in with email.
  *
  * The buttons only render where the flow can actually succeed:
  *   Apple  → native iOS always.
- *   Google → whenever the matching client id env var is present.
+ *   Google → iOS with the iOS client id; Android / web with the web client id.
  * The server does the real verification (/api/oauth) — the client only
  * forwards the provider's identity token. For Apple it also forwards the
  * one-shot AUTHORIZATION CODE so the server can exchange it for a refresh
@@ -18,13 +20,13 @@
  * must never happen on the device.
  */
 import { SocialLogin } from '@capgo/capacitor-social-login';
-import { isNative } from './native';
+import { isIOS, platform } from './native';
 
 const GOOGLE_IOS_CLIENT_ID = import.meta.env.VITE_GOOGLE_IOS_CLIENT_ID as string | undefined;
 const GOOGLE_WEB_CLIENT_ID = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID as string | undefined;
 
-export const appleAvailable = () => isNative();
-export const googleAvailable = () => (isNative() ? !!GOOGLE_IOS_CLIENT_ID : !!GOOGLE_WEB_CLIENT_ID);
+export const appleAvailable = () => isIOS();
+export const googleAvailable = () => (platform() === 'ios' ? !!GOOGLE_IOS_CLIENT_ID : !!GOOGLE_WEB_CLIENT_ID);
 
 let initialized = false;
 async function init() {
@@ -35,7 +37,10 @@ async function init() {
     // accessToken.token). On iOS the plugin only exchanges a code itself
     // when a `redirectUrl` backend is configured — we set none — so the
     // code reaches us untouched and idToken handling is unchanged.
-    apple: { useProperTokenExchange: true },
+    // Apple ONLY where its native sheet exists: on Android the plugin REJECTS
+    // initialize() without an apple.android.redirectUrl, which would take
+    // Google down with it (audit 2026-09-22).
+    ...(appleAvailable() ? { apple: { useProperTokenExchange: true } } : {}),
     ...(googleAvailable()
       ? { google: { iOSClientId: GOOGLE_IOS_CLIENT_ID, webClientId: GOOGLE_WEB_CLIENT_ID } }
       : {}),

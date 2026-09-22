@@ -726,7 +726,7 @@ check('starring pins a lesson', t.includes('starred'));
     // markup and, on blocked days, the model's note about not reaching the site
     const digest = String(dt.thought.digest ?? '');
     check('daily-thought digest carries no markup (<)', !digest.includes('<'), digest.match(/<[^>]{0,40}/)?.[0] ?? '');
-    check('daily-thought digest is not a model refusal', !/could not|unable to/i.test(digest), digest.match(/.{0,30}(could not|unable to).{0,30}/i)?.[0] ?? '');
+    check('daily-thought digest is not a model refusal', !/\b(?:couldn.t|cannot|can.t|could not|unable to)\s+(?:access|reach|retrieve|open|find|locate|load|fetch|verify|view|read|browse|obtain)\s+(?:the|this|that|today|any|a)\b/i.test(digest), digest.match(/.{0,30}(could not|unable to).{0,30}/i)?.[0] ?? '');
     check('daily-thought url is a chabad.org Daily Wisdom page', /chabad\.org/.test(dt.thought.url ?? '') && /dailywisdom/i.test(dt.thought.url ?? ''), dt.thought.url);
     // whole LOCAL calendar days between the thought's dateKey and today — the
     // same arithmetic the Learn card uses for its stale rule (browser and
@@ -894,6 +894,16 @@ const friendReg = await fetch(`${API}/api/register`, {
   body: JSON.stringify({ name: 'Test Friend', password: `e2e-friend-${Date.now()}` }),
 }).then((r) => r.json());
 check('minted a friend account via API for the code-add test', /^RIMON-[A-Z2-9]{4}$/.test(friendReg.code || ''), friendReg.code);
+// the friend posts in board chat later — accept the community rules for it
+// (Play UGC policy: POST /api/boards/message is 403 terms_required until then)
+if (friendReg.token) {
+  const terms = await fetch(`${API}/api/account/terms`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${friendReg.token}`, Origin: 'https://shancoh18.github.io' },
+    body: '{}',
+  }).then((r) => r.json()).catch(() => null);
+  check('friend account accepts the community rules via API', terms?.terms_accepted === true, JSON.stringify(terms));
+}
 // first-run nudge (2026-08-13): while the league is just you, an invite line shows…
 check(
   'league first-run nudge shows while it’s just you',
@@ -1014,6 +1024,11 @@ try {
 await clickText('💬 Chat', 1800);
 t = await text();
 check('group chat opens scoped to the board', (await page.evaluate(() => !!document.querySelector('[data-board-chat]'))) && t.includes('e2e chevra'));
+// community-rules gate (Play UGC policy): the composer is replaced by an
+// "I agree" panel until this device has accepted — one tap, stamped per account
+check('chat asks to accept the community rules before the first message', await page.evaluate(() => !!document.querySelector('[data-chat-terms]')));
+await clickText('I agree', 1500);
+check('agreeing opens the composer', await page.evaluate(() => !document.querySelector('[data-chat-terms]') && !!document.querySelector('input[placeholder*="Message"]')));
 await page.type('input[placeholder*="Message"]', 'Shalom from e2e! 🍎');
 await clickText('Send', 2000);
 t = await text();

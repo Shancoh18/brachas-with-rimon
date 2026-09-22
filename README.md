@@ -1,8 +1,12 @@
 # Brachas with Rimon
 
-Mobile-first PWA + iOS app (Capacitor) that photographs a meal, identifies the
-foods, and teaches the correct brachos. Project rules, architecture and
-invariants live in `CLAUDE.md`; App Store shipping in `APPSTORE.md`.
+Mobile-first PWA + iOS and Android apps (Capacitor) that photographs a meal,
+identifies the foods, and teaches the correct brachos. Project rules,
+architecture and invariants live in `CLAUDE.md`; App Store shipping in
+`APPSTORE.md`, Google Play shipping in `PLAYSTORE.md`. One backend serves
+every platform: an iPhone user and an Android user share accounts, friend
+codes, leaderboards and board chat (pushes go out over APNs and FCM per
+device).
 
 ## Monitoring & automations
 

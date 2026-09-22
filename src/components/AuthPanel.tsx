@@ -103,12 +103,24 @@ export function AuthPanel({
     } catch (e) {
       const { status, code } = e as { status?: number; code?: string };
       if (status === 403 && code === 'use_provider') {
-        // account is linked to Apple/Google — the code can't unlock it. Name
-        // Google only where its button actually renders (App Review 4.8 /
-        // owner: never advertise a sign-in the build can't offer).
+        // account is linked to Apple/Google (server names which). Point at the
+        // button only where it actually renders (App Review 4.8 / owner: never
+        // advertise a sign-in the build can't offer) — off iOS an Apple-only
+        // account has exactly one road: set a password on the iPhone first.
+        const provs = (e as { providers?: string[] }).providers ?? ['apple'];
+        const offered = provs.filter((p) => (p === 'apple' ? appleAvailable() : googleAvailable()));
+        const names = (l: string[]) => l.map((p) => (p === 'apple' ? 'Apple' : 'Google')).join(' or ');
         setNotice(
-          `This account signs in with ${googleAvailable() ? 'Apple or Google' : 'Apple'}. Use that button above, or set a password in Account after signing in.`,
+          offered.length
+            ? `This account signs in with ${names(offered)}. Use that button above, or set a password in Account after signing in.`
+            : provs.includes('apple')
+              ? 'This account was created with Sign in with Apple on an iPhone. On that iPhone open Account → Set a password, then sign in here with your email + password.'
+              : `This account was created with ${names(provs)} sign-in. Set a password from Account on a device where that sign-in works, then use email + password here.`,
         );
+      } else if (status === 403 && code === 'use_password') {
+        // they picked the friend-code path but the account HAS a password
+        setNotice('This account has a password — sign in with your email + password.');
+        setUseCode(false);
       } else if (status === 403) {
         // genuinely legacy (no password) — offer the friend-code path
         setNotice('This account has no password yet — sign in with your RIMON friend code below, then set a password in Account.');

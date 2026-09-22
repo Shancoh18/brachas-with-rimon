@@ -120,7 +120,11 @@ export async function fetchDailyParsha(): Promise<ParshaReading> {
   if (holiday) {
     try {
       const ahead = await leyning(dayKey(addDays(satDate, 1)), dayKey(addDays(satDate, 21)));
-      takeawayParsha = ahead.find((i) => i.type === 'shabbat')?.name?.en;
+      // Simchat Torah reads Vezot Haberakhah but Hebcal files it as a holiday
+      // item, so the scan used to skip straight to Bereishit for the whole of
+      // Sukkot while the Daily Thought card (server pin) said Vezot Haberakhah
+      const nxt = ahead.find((i) => i.type === 'shabbat' || /simchat torah/i.test(i.name?.en ?? ''));
+      takeawayParsha = /simchat torah/i.test(nxt?.name?.en ?? '') ? 'Vezot Haberakhah' : nxt?.name?.en;
     } catch {
       /* the takeaway simply falls back to the reading's own name */
     }

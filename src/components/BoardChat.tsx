@@ -12,14 +12,19 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import {
+  apiAcceptTerms,
   apiBlockUser,
   apiBoardMessages,
   apiReportMessage,
   apiSendBoardMessage,
+  isTermsRequired,
   isTimeout,
   type BoardMessage,
   type ReportReason,
 } from '../lib/api';
+import { useBracha } from '../store';
+
+const TERMS_URL = 'https://shancoh18.github.io/brachas-with-rimon/terms.html';
 
 const REASONS: { id: ReportReason; label: string }[] = [
   { id: 'spam', label: 'Spam' },
@@ -46,6 +51,24 @@ export function BoardChat({
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Community rules (Google Play UGC policy): the composer is replaced by an
+  // "I agree" panel until this device has accepted; the server stamps the
+  // account and refuses posts (403 terms_required) until it has.
+  const termsAccepted = useBracha((s) => s.termsAccepted);
+  const setTermsAccepted = useBracha((s) => s.setTermsAccepted);
+  const [agreeing, setAgreeing] = useState(false);
+  const agree = async () => {
+    if (agreeing) return;
+    setAgreeing(true);
+    try {
+      await apiAcceptTerms(token);
+      setTermsAccepted(true);
+      setError(null);
+    } catch (e) {
+      setError(isTimeout(e) ? 'Server is slow — try again.' : 'Couldn’t save that right now — try again.');
+    }
+    setAgreeing(false);
+  };
   // ⋯ menu: which message, and which step of it
   const [menuFor, setMenuFor] = useState<BoardMessage | null>(null);
   const [menuStep, setMenuStep] = useState<'menu' | 'report' | 'block'>('menu');
@@ -105,9 +128,12 @@ export function BoardChat({
       await load(lastRef.current);
     } catch (e) {
       const { status, code: errCode } = e as { status?: number; code?: string };
+      if (isTermsRequired(e)) setTermsAccepted(false); // another device never agreed — ask here
       setError(
         status === 400 && errCode === 'moderated'
           ? 'That message was blocked by the chat filter.'
+          : isTermsRequired(e)
+            ? 'Please accept the community rules first.'
           : status === 429
             ? 'Whoa — a few too many messages at once. Give it a minute.'
             : isTimeout(e)
@@ -226,6 +252,29 @@ export function BoardChat({
           {error && <p className="pt-2 text-center text-[11px] text-rimon">{error}</p>}
         </div>
 
+        {!termsAccepted ? (
+          <div
+            data-chat-terms
+            className="border-t border-espresso/[0.07] px-5 pt-4"
+            style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}
+          >
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">Before you post</p>
+            <p className="mt-1 text-[12.5px] leading-snug text-espresso">
+              Be kind, stay on topic, respect privacy. Messages can be reported and their senders
+              blocked; repeated violations end an account.{' '}
+              <a href={TERMS_URL} target="_blank" rel="noreferrer" className="font-semibold text-rimon underline-offset-2 hover:underline">
+                Read the community rules
+              </a>
+            </p>
+            <button
+              onClick={() => void agree()}
+              disabled={agreeing}
+              className="mt-3 min-h-[44px] w-full rounded-full bg-espresso text-[13px] font-bold text-cream transition-transform duration-150 ease-out active:scale-[0.98] disabled:opacity-50"
+            >
+              {agreeing ? 'One moment…' : 'I agree'}
+            </button>
+          </div>
+        ) : (
         <div
           className="border-t border-espresso/[0.07] px-4 pt-3"
           style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}
@@ -252,6 +301,7 @@ export function BoardChat({
           </div>
           <p className="pt-2 text-center text-[10px] text-mocha/80">Be kind. Report or block anyone who is not.</p>
         </div>
+        )}
 
         {/* ⋯ menu — in-sheet, over the room; absolute within the sheet so it
             never leaves the compositor layer the fixed sheet already owns */}

@@ -6,7 +6,7 @@
  * card becomes a quiet status line that reopens the same sheet to edit.
  */
 import { useEffect, useState } from 'react';
-import { isNative } from '../lib/native';
+import { isAndroid, isNative } from '../lib/native';
 import { useReminders } from '../lib/useReminders';
 import { MEAL_SLOTS, useBracha } from '../store';
 import { Rimon } from './Rimon';
@@ -47,8 +47,13 @@ export function ReminderNudge() {
     setSaving(true);
     try {
       const ok = await enableReminders(draft);
-      // Permission refused? Still keep their times — they can retry from Journey.
-      if (!ok) setReminders({ ...reminders, times: draft, configured: true });
+      // Permission refused? Keep their times AND keep the sheet open — the
+      // "notifications are off, enable them in Settings" hint lives in here,
+      // and closing silently read as "nothing happened" (audit 2026-09-22)
+      if (!ok) {
+        setReminders({ ...reminders, times: draft, configured: true });
+        return;
+      }
       setOpen(false);
     } finally {
       setSaving(false);
@@ -75,7 +80,9 @@ export function ReminderNudge() {
           <span className="mt-1 block text-[13px] font-semibold leading-snug text-espresso">
             {live && configured
               ? draft.slice(0, 3).map(pretty).join(' · ')
-              : 'Never miss a bracha — set your mealtimes'}
+              : configured && notifState === 'denied'
+                ? 'Times saved — notifications are off in Settings'
+                : 'Never miss a bracha — set your mealtimes'}
           </span>
           <span className="mt-0.5 block text-[10.5px] text-mocha">
             {live ? 'tap to edit your times →' : 'breakfast, lunch and dinner →'}
@@ -142,7 +149,7 @@ export function ReminderNudge() {
             {notifState === 'denied' && (
               <p className="mt-3 text-[10.5px] leading-snug text-rimon">
                 {isNative()
-                  ? 'Notifications are off for this app — enable them in Settings → Brachas with Rimon, then tap Turn on again.'
+                  ? `Notifications are off for this app — enable them in ${isAndroid() ? 'Settings → Apps → Brachas with Rimon → Notifications' : 'Settings → Brachas with Rimon'}, then tap Turn on again.`
                   : 'Notifications are blocked in your browser settings — enable them for this site to get nudges. Your times are still saved.'}
               </p>
             )}

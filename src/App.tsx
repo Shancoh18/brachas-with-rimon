@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { isNative, registerNativePush } from './lib/native';
+import { isNative, platform, registerNativePush } from './lib/native';
+import { useAndroidBackButton } from './lib/backButton';
 import { apiSync, apiPushNative, apiBoards, apiBoardRevealSeen, type Board } from './lib/api';
 import { ensureGuestSession } from './lib/guestSession';
 import { PodiumReveal } from './components/PodiumReveal';
@@ -100,6 +101,7 @@ export default function App() {
   const isGuest = useBracha((s) => s.isGuest);
   useReminderTicker();
   useGuestSession();
+  useAndroidBackButton();
   // every screen/tab change starts at the top — without this, opening a
   // screen from a scrolled page leaves the new screen mid-scroll
   useEffect(() => {
@@ -169,9 +171,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverToken, isGuest]);
 
-  // Native iOS: register the APNs device token so server-initiated pushes
-  // (board chat, competitive nudges, broadcasts) reach this phone. Web Push
-  // doesn't exist in the WKWebView — this is the only channel. No-op on web.
+  // Native apps: register the APNs (iOS) / FCM (Android) device token so
+  // server-initiated pushes (board chat, competitive nudges, broadcasts)
+  // reach this phone. Web Push doesn't exist in either WebView — this is the
+  // only channel, and it is what lets an iPhone and an Android in the same
+  // board both hear the chat. No-op on web.
   //
   // TIMING (App Review 5.1.1 / HIG): the permission alert must follow a
   // moment where notifications make sense to the user, never the sign-in
@@ -181,13 +185,16 @@ export default function App() {
   // Guests have nothing that pushes (mealtime reminders are LOCAL
   // notifications) — registration waits for the upgrade.
   const remindersOn = useBracha((s) => s.reminders.enabled);
-  const pushRegistered = useRef(false);
+  // keyed to the SESSION token, not the process: user B signing in on user A's
+  // phone (no relaunch) must register too — the server moves the device token
+  // off A's row, so A's chat previews stop reaching B's hands
+  const pushRegisteredFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!serverToken || isGuest || !isNative() || pushRegistered.current) return;
+    if (!serverToken || isGuest || !isNative() || pushRegisteredFor.current === serverToken) return;
     if (!remindersOn && tab !== 'friends') return;
-    pushRegistered.current = true; // one attempt per session — iOS never re-prompts a decline anyway
+    pushRegisteredFor.current = serverToken; // one attempt per session — iOS never re-prompts a decline anyway
     void registerNativePush().then((t) => {
-      if (t) apiPushNative(serverToken, t).catch(() => undefined); // retried next session
+      if (t) apiPushNative(serverToken, t, platform()).catch(() => undefined); // retried next session
     });
   }, [serverToken, isGuest, remindersOn, tab]);
   // Any progress change syncs up (debounced 3s) — not just meals. Without

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- adaptive-icon backdrop: the app cream, so masked launcher shapes never
+         show a white ring around the Frost Blush pomegranate -->
+    <color name="ic_launcher_background">#FAF7E9</color>
+</resources>

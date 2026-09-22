@@ -69,9 +69,13 @@ const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Pr
   if (!res.ok) {
     // carry the server's error code so callers can branch (e.g. use_provider
     // vs use_password vs no_password on sign-in)
-    let body: { error?: string } = {};
+    let body: { error?: string; providers?: string[] } = {};
     try { body = await res.json(); } catch { /* non-JSON error */ }
-    throw Object.assign(new Error(`api ${res.status}`), { status: res.status, code: body.error });
+    throw Object.assign(new Error(`api ${res.status}`), {
+      status: res.status,
+      code: body.error,
+      ...(Array.isArray(body.providers) ? { providers: body.providers } : {}),
+    });
   }
   return (await res.json()) as T;
 };
@@ -93,6 +97,15 @@ export interface SessionResponse {
  *  /api/register or /api/oauth sent WITH this bearer token upgrades it in
  *  place and the synced progress survives. */
 export const apiGuest = () => call<SessionResponse>('/api/guest', { method: 'POST', body: '{}' });
+
+/** Community-rules acceptance (Google Play UGC policy): stamped once per
+ *  account; POST /api/boards/message answers 403 terms_required until then. */
+export const apiAcceptTerms = (token: string) =>
+  call<{ ok: boolean; terms_accepted: boolean }>('/api/account/terms', { method: 'POST', body: '{}' }, token);
+export const isTermsRequired = (e: unknown): boolean => {
+  const { status, code } = (e as Partial<ApiError> | null) ?? {};
+  return status === 403 && code === 'terms_required';
+};
 
 /** 403 {error:'account_required'} — the server refused an account-only route
  *  (friends, boards, chat) for a guest token. */
@@ -122,6 +135,9 @@ export const apiSync = (token: string, progress: ProgressState, name?: string) =
       method: 'POST',
       body: JSON.stringify({
         name,
+        // the device's UTC offset: "today" for league points and the evening
+        // pushes is the USER's day, and native apps have no other way to say so
+        tzOffsetMinutes: new Date().getTimezoneOffset(),
         progress: {
           totalBrachos: progress.totalBrachos,
           streakCurrent: progress.streakCurrent,
@@ -147,10 +163,16 @@ export const apiPushKey = (token: string) => call<{ key: string }>('/api/push/ke
 
 /** Register (or clear, with null) the native APNs device token — the push
  *  channel for the iOS app, where Web Push doesn't exist. */
-export const apiPushNative = (token: string, deviceToken: string | null) =>
-  call<{ ok: boolean; enabled: boolean; delivery: string }>(
+/** Register (or clear, with null) this device's native push token. `platform`
+ *  tells the server which channel the token belongs to — 'ios' = APNs,
+ *  'android' = FCM; omitted = iOS, which is what pre-Android builds send. */
+export const apiPushNative = (token: string, deviceToken: string | null, platform?: 'ios' | 'android' | 'web') =>
+  call<{ ok: boolean; enabled: boolean; delivery?: string; platform?: string }>(
     '/api/push/native',
-    { method: 'POST', body: JSON.stringify({ token: deviceToken }) },
+    {
+      method: 'POST',
+      body: JSON.stringify({ token: deviceToken, ...(platform && platform !== 'web' ? { platform } : {}) }),
+    },
     token,
   );
 

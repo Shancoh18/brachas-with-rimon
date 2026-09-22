@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 import { createHash, generateKeyPairSync, randomBytes, sign as cryptoSign } from 'crypto';
 import { startMockApns } from './mock-apns.mjs';
 import { startMockApple } from './mock-apple.mjs';
+import { startMockFcm } from './mock-fcm.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER = join(HERE, '..', 'server.mjs');
@@ -45,9 +46,12 @@ const api = async (path, { method = 'GET', token, body, headers = {} } = {}) => 
   try { json = await res.json(); } catch {}
   return { status: res.status, json };
 };
-const register = async (name) => {
+const register = async (name, { terms = true } = {}) => {
   const r = await api('/api/register', { method: 'POST', body: { name, password: 'scenario-pass-1' } });
   if (!r.json?.token) throw new Error(`register failed: ${JSON.stringify(r.json)}`);
+  // every chat scenario below posts messages — accept the community rules
+  // up front (the dedicated terms scenario passes terms:false to test the gate)
+  if (terms) await api('/api/account/terms', { method: 'POST', token: r.json.token });
   return r.json.token;
 };
 const today = () => {
@@ -70,6 +74,10 @@ const p8Siwa = siwaPair.privateKey.export({ type: 'pkcs8', format: 'pem' });
 // with the private half — so /api/oauth runs its REAL verification path.
 const idKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const ID_KID = 'SCENARIO-RSA';
+// Throwaway Firebase service-account key: server/fcm.mjs signs its OAuth
+// assertion with it and the mock token endpoint records the claims.
+const fcmSaKey = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey.export({ type: 'pkcs8', format: 'pem' });
+const FCM_SA_EMAIL = 'fcm-scenarios@rimon-scenarios.iam.gserviceaccount.com';
 const mintAppleIdToken = (sub, email) => {
   const now = Math.floor(Date.now() / 1000);
   const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
@@ -80,6 +88,7 @@ const mintAppleIdToken = (sub, email) => {
 };
 
 const mock = await startMockApns();
+const mockFcm = await startMockFcm();
 const mockApple = await startMockApple({
   jwks: { keys: [{ ...idKeys.publicKey.export({ format: 'jwk' }), kid: ID_KID, use: 'sig', alg: 'RS256' }] },
   secretKeys: { SIWAKEY001: siwaPair.publicKey, SCENARIOKEY: apnsPublicKey },
@@ -99,6 +108,10 @@ const child = spawn(process.execPath, ['--experimental-sqlite', SERVER], {
     APNS_KEY_ID: 'SCENARIOKEY',
     APNS_TEAM_ID: '6WT5WK8MLZ',
     APNS_HOST: `http://127.0.0.1:${mock.port}`,
+    // Android channel (FCM HTTP v1) against the mock — one string, like Railway
+    FCM_SERVICE_ACCOUNT: JSON.stringify({ project_id: 'rimon-scenarios', client_email: FCM_SA_EMAIL, private_key: fcmSaKey }),
+    FCM_HOST: `http://127.0.0.1:${mockFcm.port}`,
+    FCM_TOKEN_URL: `http://127.0.0.1:${mockFcm.port}/token`,
     ...APPLE_ENV,
     // dedicated Sign in with Apple key (5.1.1(v) revocation) — server 2 omits
     // it to prove the APNS_KEY fallback, server 3 has no Apple key at all
@@ -209,6 +222,7 @@ const cleanup = async (code) => {
   child3.kill();
   await mock.close();
   await mockApple.close();
+  await mockFcm.close();
   try { rmSync(dataDir, { recursive: true, force: true }); } catch {} // WAL handles may lag on Windows
   try { rmSync(dataDir2, { recursive: true, force: true }); } catch {}
   try { rmSync(dataDir3, { recursive: true, force: true }); } catch {}
@@ -384,6 +398,122 @@ try {
   check('chat flood hits the 20/5min rate limit (429)', limited);
   r = await api('/api/push/subscribe', { method: 'POST', token: tokB, body: { subscription: { endpoint: 'https://evil.example.com/hook' }, times: [] } });
   check('web-push subscribe rejects non-push-service endpoints', r.status === 400);
+
+  // ------------------------------------- community rules gate (Play UGC policy)
+  const tokNoTerms = await register('No Terms Yet', { terms: false });
+  r = await api('/api/boards/create', { method: 'POST', token: tokNoTerms, body: { title: 'Terms Board' } });
+  const termsBoard = r.json.id ?? r.json.board?.id;
+  r = await api('/api/me', { token: tokNoTerms });
+  check('/api/me reports terms_accepted:false before acceptance', r.status === 200 && r.json.terms_accepted === false, JSON.stringify(r.json));
+  r = await api('/api/boards/message', { method: 'POST', token: tokNoTerms, body: { board: termsBoard, text: 'too early' } });
+  check('posting before accepting the community rules → 403 terms_required', r.status === 403 && r.json.error === 'terms_required', JSON.stringify(r.json));
+  r = await api('/api/account/terms', { method: 'POST', token: tokNoTerms });
+  check('POST /api/account/terms stamps acceptance', r.status === 200 && r.json.terms_accepted === true);
+  r = await api('/api/boards/message', { method: 'POST', token: tokNoTerms, body: { board: termsBoard, text: 'now allowed' } });
+  check('posting after acceptance → 200', r.status === 200, JSON.stringify(r.json));
+  r = await api('/api/me', { token: tokNoTerms });
+  check('/api/me reports terms_accepted:true after acceptance (cross-device)', r.status === 200 && r.json.terms_accepted === true);
+
+  // ------------------------------- second device behind the server (streak)
+  const tokLead = await register('Streak Leader');
+  const day = (n) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+  r = await api('/api/sync', { method: 'POST', token: tokLead, body: { tzOffsetMinutes: 240, progress: { totalBrachos: 200, streakCurrent: 40, points: 480, history: [{ day: day(1), brachos: 3, points: 6 }, { day: day(0), brachos: 2, points: 4 }] } } });
+  check('leading device syncs 480 pts / 40-day streak', r.status === 200 && r.json.progress?.points === 480 && r.json.progress?.streakCurrent === 40, JSON.stringify(r.json.progress));
+  r = await api('/api/sync', { method: 'POST', token: tokLead, body: { progress: { totalBrachos: 1, streakCurrent: 1, points: 5, history: [{ day: day(0), brachos: 1, points: 2 }] } } });
+  check('a second device BEHIND the server cannot clobber the streak (stays 40, points stay 480)', r.status === 200 && r.json.progress?.streakCurrent === 40 && r.json.progress?.points === 480, JSON.stringify(r.json.progress));
+  r = await api('/api/sync', { method: 'POST', token: tokLead, body: { progress: { totalBrachos: 210, streakCurrent: 0, points: 500, history: [{ day: day(0), brachos: 4, points: 8 }] } } });
+  check('the leading device still decides when a streak ended (0 wins when it is ahead)', r.status === 200 && r.json.progress?.streakCurrent === 0 && r.json.progress?.points === 500, JSON.stringify(r.json.progress));
+
+  // ------------------------------------------- Apple-linked, no password
+  r = await api('/api/signin', { method: 'POST', headers: { 'X-Forwarded-For': '198.51.100.66' }, body: { email: 'appleonly-scenario@example.com', password: 'whatever-pass-1' } });
+  check('password sign-in on an unknown email → 404', r.status === 404);
+
+  // ------------------------------------------- operator learned-food delete
+  r = await api('/api/admin/learned/delete', { method: 'POST', headers: { 'X-Forwarded-For': '198.51.100.67' }, body: { secret: 'wrong', key: 'falafel' } });
+  check('learned delete with a wrong secret plays dead (404)', r.status === 404);
+  r = await api('/api/admin/learned/delete', { method: 'POST', headers: { 'X-Forwarded-For': '198.51.100.67' }, body: { secret: 'scenario-broadcast-secret', key: 'no-such-food' } });
+  check('learned delete of an unknown key → 404 {removed:0}', r.status === 404 && r.json.removed === 0, JSON.stringify(r.json));
+
+  // --------------------------------------------- Android (FCM) + mixed boards
+  // Cross-platform: an iPhone (APNs) and an Android (FCM) member of the same
+  // board must each hear the chat on their own channel; the Android token
+  // rules mirror APNs (shape, device-uniqueness, dead-token cleanup, sign-out).
+  const tokAnd1 = await register('Android One');
+  const tokAnd2 = await register('Android Two');
+  const tokAnd3 = await register('Android Three');
+  const FCM1 = 'fcm-one:' + 'x'.repeat(120);
+  const FCM_DEAD = 'dead-android:' + 'y'.repeat(120);
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd1, body: { token: FCM1, platform: 'android' } });
+  check('FCM token registers with delivery=fcm', r.status === 200 && r.json.enabled && r.json.delivery === 'fcm' && r.json.platform === 'android', JSON.stringify(r.json));
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd2, body: { token: 'ab12'.repeat(16), platform: 'android' } });
+  check('hex-shaped token refused on the android channel (that is an APNs token)', r.status === 400 && r.json.error === 'bad_token');
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd2, body: { token: 'has spaces in it', platform: 'android' } });
+  check('malformed FCM token rejected with 400', r.status === 400 && r.json.error === 'bad_token');
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd2, body: { token: FCM_DEAD, platform: 'windows' } });
+  check('unknown platform rejected with 400', r.status === 400 && r.json.error === 'bad_platform');
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd2, body: { token: FCM_DEAD, platform: 'android' } });
+  check('second Android member registers (dead-token fixture)', r.status === 200 && r.json.enabled);
+  r = await api('/api/boards/create', { method: 'POST', token: tokAnd3, body: { title: 'Mixed Board' } });
+  const mixed = r.json.id ?? r.json.board?.id;
+  const mixedCode = r.json.code ?? r.json.board?.code;
+  await api('/api/boards/join', { method: 'POST', token: tokA, body: { code: mixedCode } });
+  await api('/api/boards/join', { method: 'POST', token: tokAnd1, body: { code: mixedCode } });
+  await api('/api/boards/join', { method: 'POST', token: tokAnd2, body: { code: mixedCode } });
+  const apnsBefore = mock.forToken(A_TOKEN).length;
+  await api('/api/boards/message', { method: 'POST', token: tokAnd3, body: { board: mixed, text: 'hello from android' } });
+  const gotFcm = await mockFcm.waitFor((rs) => rs.some((x) => x.token === FCM1));
+  const gotApns = await mock.waitFor((rs) => rs.filter((x) => x.token === A_TOKEN).length > apnsBefore);
+  check('mixed board: the Android member is pushed over FCM', gotFcm);
+  check('mixed board: the iPhone member is pushed over APNs for the same message', gotApns);
+  const f1 = mockFcm.forToken(FCM1)[0];
+  check('FCM push carries the bearer from the service-account exchange', !!f1 && f1.auth === 'Bearer mock-fcm-access' && f1.project === 'rimon-scenarios', f1 ? `${f1.auth} ${f1.project}` : 'no send');
+  check('FCM push is HIGH priority on the rimon channel with the chat text', !!f1 && f1.priority === 'HIGH' && f1.channel === 'rimon' && /hello from android/.test(f1.body), JSON.stringify(f1));
+  const tc = mockFcm.tokenCalls[0];
+  check('service-account JWT carries the messaging scope and the account email', !!tc && tc.grant === 'urn:ietf:params:oauth:grant-type:jwt-bearer' && tc.claims?.scope === 'https://www.googleapis.com/auth/firebase.messaging' && tc.claims?.iss === FCM_SA_EMAIL, JSON.stringify(tc?.claims));
+  check('one token exchange serves the whole burst', mockFcm.tokenCalls.length === 1, String(mockFcm.tokenCalls.length));
+  await mockFcm.waitFor((rs) => rs.some((x) => x.token === FCM_DEAD));
+  check('dead FCM token was attempted once (404 UNREGISTERED)', mockFcm.forToken(FCM_DEAD).length === 1, String(mockFcm.forToken(FCM_DEAD).length));
+  r = await api('/api/boards/create', { method: 'POST', token: tokAnd3, body: { title: 'Mixed Board Two' } });
+  const mixed2 = r.json.id ?? r.json.board?.id;
+  const mixed2Code = r.json.code ?? r.json.board?.code;
+  await api('/api/boards/join', { method: 'POST', token: tokAnd1, body: { code: mixed2Code } });
+  await api('/api/boards/join', { method: 'POST', token: tokAnd2, body: { code: mixed2Code } });
+  await api('/api/boards/message', { method: 'POST', token: tokAnd3, body: { board: mixed2, text: 'second round' } });
+  await mockFcm.waitFor((rs) => rs.some((x) => x.token === FCM1 && /second round/.test(x.body)));
+  await sleep(200);
+  check('dead FCM token is cleared after the 404 — never retried', mockFcm.forToken(FCM_DEAD).length === 1, String(mockFcm.forToken(FCM_DEAD).length));
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd3, body: { token: FCM1, platform: 'android' } });
+  check('re-registering a device token on another account moves it', r.status === 200 && r.json.enabled);
+  r = await api('/api/boards/create', { method: 'POST', token: tokA, body: { title: 'Mixed Board Three' } });
+  const mixed3 = r.json.id ?? r.json.board?.id;
+  const mixed3Code = r.json.code ?? r.json.board?.code;
+  await api('/api/boards/join', { method: 'POST', token: tokAnd1, body: { code: mixed3Code } });
+  await api('/api/boards/join', { method: 'POST', token: tokAnd3, body: { code: mixed3Code } });
+  const moveBefore = mockFcm.forToken(FCM1).length;
+  await api('/api/boards/message', { method: 'POST', token: tokA, body: { board: mixed3, text: 'third round' } });
+  await mockFcm.waitFor((rs) => rs.filter((x) => x.token === FCM1).length > moveBefore);
+  await sleep(250);
+  check('a moved FCM token is pushed exactly once (one handset, one account)', mockFcm.forToken(FCM1).length === moveBefore + 1, String(mockFcm.forToken(FCM1).length - moveBefore));
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd3, body: { token: null, platform: 'android' } });
+  check('Android sign-out clears the FCM token', r.status === 200 && r.json.enabled === false && r.json.platform === 'android', JSON.stringify(r.json));
+  r = await api('/api/boards/create', { method: 'POST', token: tokA, body: { title: 'Mixed Board Four' } });
+  const mixed4 = r.json.id ?? r.json.board?.id;
+  const mixed4Code = r.json.code ?? r.json.board?.code;
+  await api('/api/boards/join', { method: 'POST', token: tokAnd3, body: { code: mixed4Code } });
+  const outBefore = mockFcm.forToken(FCM1).length;
+  await api('/api/boards/message', { method: 'POST', token: tokA, body: { board: mixed4, text: 'fourth round' } });
+  await sleep(500);
+  check('no FCM push after the Android sign-out', mockFcm.forToken(FCM1).length === outBefore, String(mockFcm.forToken(FCM1).length - outBefore));
+  r = await api('/api/push/native', { method: 'POST', token: tokAnd3, body: { token: FCM1, platform: 'android' } });
+  const bcBefore = mockFcm.forToken(FCM1).length;
+  // from a fresh client IP — the admin routes share the 30/10min per-IP throttle the suite has been spending
+  r = await api('/api/admin/broadcast', { method: 'POST', headers: { 'X-Forwarded-For': '198.51.100.77' }, body: { secret: 'scenario-broadcast-secret', title: 'Rimon', body: 'cross-platform hello' } });
+  check('owner broadcast counts the Android device as sent', r.status === 200 && r.json.sent >= 1, JSON.stringify(r.json));
+  await mockFcm.waitFor((rs) => rs.filter((x) => x.token === FCM1).length > bcBefore);
+  check('owner broadcast reaches the Android device over FCM', mockFcm.forToken(FCM1).length === bcBefore + 1 && /cross-platform hello/.test(mockFcm.forToken(FCM1).at(-1)?.body ?? ''), String(mockFcm.forToken(FCM1).length - bcBefore));
+  const statusKeyFcm = createHash('sha256').update('status:scenario-broadcast-secret').digest('hex').slice(0, 24);
+  r = await api(`/api/status?key=${statusKeyFcm}`);
+  check('/api/status counts Android devices and raises no FCM alert', r.status === 200 && r.json.users?.fcm_devices >= 1 && !r.json.alerts.some((a) => /fcm/.test(a.code)), JSON.stringify({ fcm: r.json.users?.fcm_devices, alerts: r.json.alerts }));
 
   // ----------------------------------------------------------- sign-out clear
   r = await api('/api/push/native', { method: 'POST', token: tokB, body: { token: null } });

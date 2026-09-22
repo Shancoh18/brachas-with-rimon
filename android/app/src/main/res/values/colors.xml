@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand (Editorial Luxury): gold accent, espresso ink, rimon crimson.
+         colorPrimary also tints the FCM status-bar glyph (AndroidManifest). -->
+    <color name="colorPrimary">#B8892B</color>
+    <color name="colorPrimaryDark">#2B1D16</color>
+    <color name="colorAccent">#A8322D</color>
+    <!-- app cream — window + splash background -->
+    <color name="cream">#FAF7E9</color>
+</resources>

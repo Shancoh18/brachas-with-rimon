@@ -4,6 +4,22 @@ import './index.css'
 import App from './App.tsx'
 import { useBracha } from './store'
 import { applyTheme, watchSystemTheme } from './lib/theme'
+import { platform } from './lib/native'
+
+// Stamp the shell we run in ('ios' | 'android' | 'web') so CSS can special-case
+// a platform — today only Android's edge-to-edge top inset (src/index.css).
+document.documentElement.dataset.platform = platform()
+
+// AbortSignal.timeout is Safari 16+ / Chrome 103+; the iOS build still installs
+// on iOS 15 and an old Android WebView can lag — without this every API call
+// threw before fetch and the app looked dead (audit 2026-09-22)
+if (typeof AbortSignal !== 'undefined' && !('timeout' in AbortSignal)) {
+  ;(AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout = (ms: number) => {
+    const c = new AbortController()
+    setTimeout(() => c.abort(new DOMException('timeout', 'TimeoutError')), ms)
+    return c.signal
+  }
+}
 
 // Appearance is explicit (default LIGHT) — stamp <html data-theme> before the
 // first paint, re-stamp on preference change, and follow the OS only when the

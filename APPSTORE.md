@@ -22,6 +22,15 @@ Review history:
   (friends, leaderboards, board chat) ask for an account, through an inline
   panel inside the Friends tab — never a full-screen wall. Creating an account
   upgrades the guest session in place, so nothing earned as a guest is lost.
+- **Build 36** — 2026-09-22, the cross-platform release that also ships the
+  Android app (see `PLAYSTORE.md`): FCM/APNs per-device pushes, Android back
+  button, community-rules acceptance before board chat (`terms.html`),
+  progress adoption on sign-in from a guest session, Apple-only-account
+  guidance, photo-limit copy, falafel ruling fix. It reaches TestFlight from
+  the master sync. If App Review approves 35 first, release 35, then create
+  version **1.0.1** in App Store Connect and attach 36 (a released version
+  cannot swap builds). If 35 is still waiting, replace its build with 36 and
+  re-submit — same review notes apply.
 
 What remains needs your Apple account. Two paths — pick one.
 

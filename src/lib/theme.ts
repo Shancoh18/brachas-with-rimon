@@ -8,7 +8,17 @@
  * theme is stamped on <html data-theme> — every dark style in index.css keys
  * off that attribute, so the OS report alone can never flip the app again.
  */
+import { registerPlugin } from '@capacitor/core';
+import { isAndroid } from './native';
+
 export type Appearance = 'light' | 'dark' | 'system';
+
+// Capacitor 8's built-in SystemBars (Android): LIGHT = light bars with dark
+// icons (the cream canvas), DARK = light icons for the dark chrome. iOS keys
+// the status-bar text off the theme automatically; the web has no bars.
+const SystemBars = registerPlugin<{
+  setStyle(opts: { style: 'LIGHT' | 'DARK' | 'DEFAULT'; bar?: 'StatusBar' | 'NavigationBar' }): Promise<void>;
+}>('SystemBars');
 
 const media = () =>
   typeof window !== 'undefined' && 'matchMedia' in window
@@ -27,6 +37,7 @@ export function applyTheme(pref: Appearance) {
     m.removeAttribute('media'); // one explicit color — never media-forked again
     m.setAttribute('content', color);
   });
+  if (isAndroid()) void SystemBars.setStyle({ style: theme === 'dark' ? 'DARK' : 'LIGHT' }).catch(() => undefined);
 }
 
 /** React to OS theme changes ONLY while the preference is 'system'. */

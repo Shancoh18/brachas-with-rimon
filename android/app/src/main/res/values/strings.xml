@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Brachas with Rimon</string>
+    <string name="title_activity_main">Brachas with Rimon</string>
+    <string name="package_name">com.shancoh.brachaswithrimon</string>
+    <string name="custom_url_scheme">com.shancoh.brachaswithrimon</string>
+</resources>

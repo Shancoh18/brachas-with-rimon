@@ -21,6 +21,7 @@ import { promisify } from 'util';
 import { join } from 'path';
 import webpush from 'web-push';
 import { apnsReady, sendApns } from './apns.mjs';
+import { fcmReady, sendFcm } from './fcm.mjs';
 import { siwaReady, exchangeCode, revokeRefreshToken, jwtClaim } from './apple-siwa.mjs';
 import { backupReady, runBackup } from './backup.mjs';
 import { buildStatus, statusKey, mark, fail } from './status.mjs';
@@ -313,9 +314,12 @@ const pushAllowed = (kind, userId, key, gapMs) => {
   pushStamp.set(k, now); // aged out by the 5-min sweep, never cleared wholesale
   return true;
 };
-/** True if we can reach this user on ANY push channel. The native iOS app has
- *  no Web Push (WKWebView) — it registers an APNs device token instead. */
-const hasPushChannel = (user) => !!(user?.push?.subscription || (user?.apns && apnsReady()));
+/** True if we can reach this user on ANY push channel. The native apps have
+ *  no Web Push (WKWebView / Capacitor's Android WebView) — iOS registers an
+ *  APNs device token, Android an FCM registration token. A mixed board is
+ *  reached channel by channel; nobody is skipped for their phone. */
+const hasPushChannel = (user) =>
+  !!(user?.push?.subscription || (user?.apns && apnsReady()) || (user?.fcm && fcmReady()));
 const sendPush = (user, title, body) => {
   const sub = user?.push?.subscription;
   if (sub)
@@ -328,6 +332,12 @@ const sendPush = (user, title, body) => {
     sendApns(user.apns, title, body)
       .then((r) => {
         if (r.gone) store.setApns(user.id, null); // device unregistered
+      })
+      .catch(() => undefined);
+  if (user?.fcm && fcmReady())
+    sendFcm(user.fcm, title, body)
+      .then((r) => {
+        if (r.gone) store.setFcm(user.id, null); // app uninstalled / token rotated
       })
       .catch(() => undefined);
 };
@@ -542,7 +552,15 @@ const mergeProgress = (cur, incoming) => {
     totalBrachos: Math.max(num(cur.totalBrachos), num(incoming.totalBrachos)),
     points: Math.max(num(cur.points), num(incoming.points)),
     // a fresh/empty device must not reset an established streak
-    streakCurrent: incFresh && num(cur.points) > 0 ? num(cur.streakCurrent) : num(incoming.streakCurrent),
+    // ...and a device that is BEHIND (fewer points than the server already
+    // holds — a second phone, a reinstall mid-merge) can only raise it: the
+    // leading device decides when a streak really ended
+    streakCurrent:
+      incFresh && num(cur.points) > 0
+        ? num(cur.streakCurrent)
+        : num(incoming.points) >= num(cur.points)
+          ? num(incoming.streakCurrent)
+          : Math.max(num(cur.streakCurrent), num(incoming.streakCurrent)),
     history: mergeByDay(cur.history, incoming.history),
   };
 };
@@ -551,7 +569,7 @@ const dayTotal = (u, field = 'points') => {
   // against the user's local "today", not the server's. The offset rides push
   // prefs (Date.getTimezoneOffset, same convention the reminder scheduler uses);
   // users without reminders fall back to UTC as before — no regression.
-  const off = u.push?.tzOffsetMinutes ?? 0;
+  const off = u.tz ?? u.push?.tzOffsetMinutes ?? 0;
   const today = new Date(Date.now() - off * 60_000).toISOString().slice(0, 10);
   const hist = Array.isArray(u.progress?.history) ? u.progress.history : [];
   return hist.filter((h) => h && h.day === today).reduce((s, h) => s + (Number.isFinite(h[field]) ? h[field] : 0), 0);
@@ -773,15 +791,32 @@ which category a food belongs to, report found:false rather than guess.`,
   // breadcrumbs AND matzah meal. A per-food/category ruling page is fine
   // (ravioli→/brachos/pasta/); a general ARTICLE that never names the food is
   // not. Reject those: better an honest "unknown" than a mis-sourced ruling.
-  if (/\/(blog|articles|news)\//.test(String(e.sourceUrl))) {
-    const slug = String(e.sourceUrl).toLowerCase();
-    const foodWords = [key, ...(Array.isArray(e.names) ? e.names : []), description]
-      .join(' ').toLowerCase().split(/[^a-z]+/)
-      .filter((w) => w.length >= 4)
-      .map((w) => w.replace(/(ies|es|s)$/, ''));
-    if (!foodWords.some((w) => slug.includes(w))) {
-      console.log(`research rejected (essay citation, food not named): ${description} -> ${e.sourceUrl}`);
-      return null;
+  const citedSlug = String(e.sourceUrl).toLowerCase();
+  const foodWords = [key, ...(Array.isArray(e.names) ? e.names : []), description]
+    .join(' ').toLowerCase().split(/[^a-z]+/)
+    .filter((w) => w.length >= 4)
+    .map((w) => w.replace(/(ies|es|s)$/, ''));
+  const slugNamesFood = foodWords.some((w) => citedSlug.includes(w));
+  if (/\/(blog|articles|news)\//.test(String(e.sourceUrl)) && !slugNamesFood) {
+    console.log(`research rejected (essay citation, food not named): ${description} -> ${e.sourceUrl}`);
+    return null;
+  }
+  // NEIGHBOUR-PAGE GUARD (2026-09-22, the falafel incident): brachos.org has
+  // one page per food. When the model cites a page that does not name this
+  // food (falafel -> /chickpeas/, ruled Ha'adama) while a dedicated page for
+  // the food itself exists (/falafel/, ruled Shehakol), the citation is the
+  // wrong page and the ruling is not trusted. A category page for a food
+  // that has no page of its own (ravioli -> /pasta/) still passes.
+  if (host === 'brachos.org' && !slugNamesFood) {
+    const own = `https://www.brachos.org/brachos/${key.replace(/_/g, '-')}/`;
+    try {
+      const probe = await fetch(own, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(6000) });
+      if (probe.ok) {
+        console.log(`research rejected (neighbour page cited, ${own} exists): ${description} -> ${e.sourceUrl}`);
+        return null;
+      }
+    } catch {
+      /* unreachable — fall through, the cited page itself was already verified */
     }
   }
   // Reader-facing strings go through the content guard: names lose any tag or
@@ -1005,7 +1040,7 @@ setInterval(async () => {
 const ROUND_SWEEP_MS = Number(process.env.ROUND_SWEEP_MS ?? 60_000);
 const EVENING_HOUR = Number(process.env.EVENING_HOUR ?? 18);
 const MORNING_HOUR = Number(process.env.MORNING_HOUR ?? 8);
-const localHour = (u) => new Date(Date.now() - (u.push?.tzOffsetMinutes ?? 0) * 60_000).getUTCHours();
+const localHour = (u) => new Date(Date.now() - (u.tz ?? u.push?.tzOffsetMinutes ?? 0) * 60_000).getUTCHours();
 
 const finalizeEndedRounds = () => {
   for (const b of store.unfinalizedBoards()) {
@@ -1456,6 +1491,7 @@ const server = createServer(async (req, res) => {
           thought: thoughtProbe,
           backupEnabled: backupReady,
           apnsEnabled: () => !!(process.env.APNS_KEY && process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID),
+          fcmEnabled: fcmReady,
           visionKey: () => !!process.env.ANTHROPIC_API_KEY,
           learnedMax: LEARNED_MAX,
         },
@@ -1553,7 +1589,13 @@ const server = createServer(async (req, res) => {
         if (emailThrottled(mail)) return json(res, 429, { error: 'slow_down' });
         const u = store.userByEmail(mail);
         if (!u) { noteFail(mail); return json(res, 404, { error: 'no_match' }); }
-        if (!u.pass) return json(res, 403, { error: 'no_password' }); // account predates passwords
+        // No password: an Apple/Google-linked account says so (the client
+        // points to that button, or — off iOS — to setting a password on the
+        // iPhone); only a genuinely legacy row is offered the friend-code path.
+        if (!u.pass) {
+          const providers = [...(u.apple ? ['apple'] : []), ...(u.google ? ['google'] : [])];
+          return json(res, 403, providers.length ? { error: 'use_provider', providers } : { error: 'no_password' });
+        }
         if (!(await checkPassword(password, u.pass))) { noteFail(mail); return json(res, 404, { error: 'no_match' }); }
         pwFails.delete(mail); // success clears the counter
         return json(res, 200, { token: store.issueToken(u.id), code: u.code, name: u.name, email: u.email });
@@ -1711,7 +1753,7 @@ const server = createServer(async (req, res) => {
       const cleanTitle = String(title || 'Rimon here 🍎').slice(0, 60);
       const cleanBody = String(body || '').trim().slice(0, 180);
       if (!cleanBody) return json(res, 400, { error: 'body_required' });
-      // Both channels: Web Push subscribers AND native APNs devices.
+      // Every channel: Web Push subscribers, native APNs (iOS) and FCM (Android) devices.
       const subs = store.pushAudience();
       let sent = 0, expired = 0, failed = 0;
       await Promise.allSettled(
@@ -1739,6 +1781,16 @@ const server = createServer(async (req, res) => {
                 } else failed++;
               }),
             );
+          if (u.fcm && fcmReady())
+            jobs.push(
+              sendFcm(u.fcm, cleanTitle, cleanBody).then((r) => {
+                if (r.ok) sent++;
+                else if (r.gone) {
+                  store.setFcm(u.id, null);
+                  expired++;
+                } else failed++;
+              }),
+            );
           return jobs;
         }),
       );
@@ -1747,6 +1799,20 @@ const server = createServer(async (req, res) => {
 
     // Operator review of chat reports (App Review 1.2) and the test-account
     // prune — same secret and play-dead semantics as /api/admin/broadcast.
+    // Operator data correction: drop a learned-food row whose ruling turned
+    // out wrong (2026-09-22: 'falafel' had been learned as Ha'adama off the
+    // chickpeas page while brachos.org's own falafel page rules Shehakol).
+    // The vetted static DB is the fix; this just removes the bad row.
+    if (url.pathname === '/api/admin/learned/delete' && req.method === 'POST') {
+      const { secret, key } = await readBody(req);
+      if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
+      const k = String(key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+      if (!k) return json(res, 400, { error: 'key_required' });
+      const removed = store.deleteLearned(k);
+      if (removed) console.log(`learned-food row removed by operator: ${k}`);
+      return json(res, removed ? 200 : 404, { ok: !!removed, key: k, removed });
+    }
+
     if (url.pathname === '/api/admin/reports' && req.method === 'POST') {
       if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
       const { secret } = await readBody(req);
@@ -1832,7 +1898,12 @@ const server = createServer(async (req, res) => {
     if (a.user.guest && accountRequired(url.pathname)) return json(res, 403, { error: 'account_required', guest: true });
 
     if (url.pathname === '/api/sync' && req.method === 'POST') {
-      const { progress, name } = await readBody(req);
+      const { progress, name, tzOffsetMinutes } = await readBody(req);
+      // the device's UTC offset drives "today" for league points and the
+      // evening pushes (dayTotal / localHour) — native apps never subscribe
+      // to Web Push, so this is the only place they can say where they are
+      if (Number.isFinite(+tzOffsetMinutes) && Math.abs(+tzOffsetMinutes) <= 14 * 60 && +tzOffsetMinutes !== (a.user.tz ?? null))
+        store.setTz(a.user.id, Math.trunc(+tzOffsetMinutes));
       const oldPts = a.user.progress?.points ?? 0;
       if (progress) store.setProgress(a.user.id, mergeProgress(a.user.progress, progress));
       if (name) store.setName(a.user.id, String(name).trim().slice(0, 20));
@@ -1854,6 +1925,7 @@ const server = createServer(async (req, res) => {
         hasPassword: !!a.user.pass,
         providers: ['apple', 'google'].filter((p) => !!a.user[p]),
         guest: a.user.guest,
+        terms_accepted: !!a.user.termsAcceptedAt,
       });
     }
 
@@ -2072,7 +2144,16 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { messages, now: Date.now() });
     }
 
+    // Community-rules acceptance (Google Play UGC policy): stamped once per
+    // account, the chat composer asks on first use and this route enforces it
+    if (url.pathname === '/api/account/terms' && req.method === 'POST') {
+      if (a.user.guest) return json(res, 403, { error: 'account_required' });
+      store.setTermsAccepted(a.user.id);
+      return json(res, 200, { ok: true, terms_accepted: true });
+    }
+
     if (url.pathname === '/api/boards/message' && req.method === 'POST') {
+      if (!a.user.termsAcceptedAt) return json(res, 403, { error: 'terms_required' });
       const { board: boardId, code, text } = await readBody(req);
       const board = resolveBoard(boardId, code);
       if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
@@ -2129,13 +2210,36 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/push/key') return json(res, 200, { key: vapid.publicKey });
 
-    // Native iOS registers its APNs device token here (WKWebView has no Web
-    // Push). {token:null} clears it — called on sign-out.
+    // The native apps register their push device token here — neither
+    // WKWebView (iOS) nor Capacitor's Android WebView has Web Push. `platform`
+    // picks the channel: 'ios' (the default — pre-Android clients send none)
+    // = APNs hex token, 'android' = FCM registration token. {token:null}
+    // clears that platform's token (sign-out); with NO platform it clears
+    // both, so an older client's sign-out can never leave a token behind.
     if (url.pathname === '/api/push/native' && req.method === 'POST') {
-      const { token } = await readBody(req);
-      if (token != null && !/^[0-9a-f]{16,200}$/i.test(String(token))) return json(res, 400, { error: 'bad_token' });
-      store.setApns(a.user.id, token ? String(token).toLowerCase() : null);
-      return json(res, 200, { ok: true, enabled: !!token, delivery: apnsReady() ? 'apns' : 'awaiting_server_key' });
+      const { token, platform } = await readBody(req);
+      const plat = platform == null ? 'ios' : String(platform);
+      if (plat !== 'ios' && plat !== 'android') return json(res, 400, { error: 'bad_platform' });
+      if (token == null) {
+        if (platform == null || plat === 'ios') store.setApns(a.user.id, null);
+        if (platform == null || plat === 'android') store.setFcm(a.user.id, null);
+        return json(res, 200, { ok: true, enabled: false, platform: plat });
+      }
+      const t = String(token);
+      // a native token means this device schedules mealtime reminders locally
+      // and hears chat over APNs/FCM — retire any Web Push subscription the
+      // same account left behind on the PWA, or every nudge arrives twice
+      store.setPush(a.user.id, null);
+      if (plat === 'android') {
+        // FCM registration tokens: base64url-ish plus ':' — never hex-shaped,
+        // so an Android token can never land in the APNs column (or vice versa)
+        if (!/^[A-Za-z0-9_:.-]{20,600}$/.test(t) || /^[0-9a-f]+$/i.test(t)) return json(res, 400, { error: 'bad_token' });
+        store.setFcm(a.user.id, t);
+        return json(res, 200, { ok: true, enabled: true, platform: plat, delivery: fcmReady() ? 'fcm' : 'awaiting_server_key' });
+      }
+      if (!/^[0-9a-f]{16,200}$/i.test(t)) return json(res, 400, { error: 'bad_token' });
+      store.setApns(a.user.id, t.toLowerCase());
+      return json(res, 200, { ok: true, enabled: true, platform: plat, delivery: apnsReady() ? 'apns' : 'awaiting_server_key' });
     }
 
     if (url.pathname === '/api/push/subscribe' && req.method === 'POST') {

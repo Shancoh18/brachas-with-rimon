@@ -75,7 +75,7 @@ const hours = (ms) => Math.round((ms / 3_600_000) * 10) / 10;
  * Build the status document.
  *  db        — node:sqlite handle (COUNT queries only)
  *  dataDir   — the volume path
- *  probes    — { analyze(), thought(), backupEnabled(), apnsEnabled(), learnedMax }
+ *  probes    — { analyze(), thought(), backupEnabled(), apnsEnabled(), fcmEnabled(), learnedMax }
  */
 export function buildStatus({ db, dataDir, probes }) {
   const now = Date.now();
@@ -90,6 +90,7 @@ export function buildStatus({ db, dataDir, probes }) {
   const testAccounts = q("SELECT COUNT(*) n FROM users WHERE email LIKE 'e2e-%@example.com' OR email LIKE 'store-demo-%@example.com' OR email LIKE 'scenario-%'").n;
   const webPush = q('SELECT COUNT(*) n FROM users WHERE push IS NOT NULL').n;
   const apns = q('SELECT COUNT(*) n FROM users WHERE apns IS NOT NULL').n;
+  const fcm = q('SELECT COUNT(*) n FROM users WHERE fcm IS NOT NULL').n;
   const boards = q('SELECT COUNT(*) n FROM boards').n;
   const messages = q('SELECT COUNT(*) n FROM board_messages').n;
   const learned = q('SELECT COUNT(*) n FROM learned_foods').n;
@@ -165,6 +166,12 @@ export function buildStatus({ db, dataDir, probes }) {
   const apnsMark = marks.get('apns') || null;
   if (apns > 0 && !probes.apnsEnabled()) add('warn', 'apns_key_missing', `${apns} native devices registered but APNS_KEY/APNS_KEY_ID/APNS_TEAM_ID unset — no native pushes are delivered`);
   if (apnsMark && !apnsMark.ok && apnsMark.consecutiveFailures >= 5) add('warn', 'apns_failing', `${apnsMark.consecutiveFailures} consecutive APNs failures (last ${apnsMark.lastError?.status})`, apnsMark.lastError || {});
+  // Android (FCM) — same shape; an auth/token-exchange failure is OUR service
+  // account, so it is flagged on the first failure, not the fifth
+  const fcmMark = marks.get('fcm') || null;
+  if (fcm > 0 && !(probes.fcmEnabled && probes.fcmEnabled())) add('warn', 'fcm_key_missing', `${fcm} Android devices registered but FCM_SERVICE_ACCOUNT unset — no Android pushes are delivered`);
+  if (fcmMark && !fcmMark.ok && (fcmMark.lastError?.where === 'auth' || fcmMark.lastError?.where === 'token')) add('warn', 'fcm_auth', `FCM rejected our service account (${fcmMark.lastError?.status || 'token exchange'}) — Android pushes are failing`, fcmMark.lastError || {});
+  else if (fcmMark && !fcmMark.ok && fcmMark.consecutiveFailures >= 5) add('warn', 'fcm_failing', `${fcmMark.consecutiveFailures} consecutive FCM failures (last ${fcmMark.lastError?.status})`, fcmMark.lastError || {});
   for (const dep of ['hebcal', 'sefaria', 'webpush']) {
     const m = marks.get(dep);
     if (m && !m.ok && m.consecutiveFailures >= 5) add('warn', `${dep}_failing`, `${m.consecutiveFailures} consecutive ${dep} failures`, m.lastError || {});
@@ -177,7 +184,7 @@ export function buildStatus({ db, dataDir, probes }) {
     generated_at: new Date(now).toISOString(),
     uptime_hours: hours(now - STARTED_AT),
     node: process.version,
-    users: { total: users, real_estimate: Math.max(0, users - testAccounts), test_accounts: testAccounts, new_24h: users24h, new_7d: users7d, web_push: webPush, apns_devices: apns },
+    users: { total: users, real_estimate: Math.max(0, users - testAccounts), test_accounts: testAccounts, new_24h: users24h, new_7d: users7d, web_push: webPush, apns_devices: apns, fcm_devices: fcm },
     social: { boards, messages, learned_foods: learned, learned_max: learnedMax },
     storage: { db_mb: mb(dbBytes), volume },
     process: { rss_mb: rssMb, heap_used_mb: mb(mem.heapUsed), event_loop_p99_ms: loopP99Ms, event_loop_max_ms: loopMaxMs, analyze_in_flight: analyze.inFlight },

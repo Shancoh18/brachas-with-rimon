@@ -46,7 +46,10 @@ const dailyPick = (pool: Lesson[], count: number): Set<string> => {
 // note about not reaching chabad.org. The server now guards its own output
 // (server/content-guard.mjs); this is the client's belt to that suspender —
 // a thought that fails here is never stored, and the last good one stands.
-const REFUSAL_RE = /<cite\b|<\/?[a-z]|could not|unable to (access|reach|find|retrieve)|cannot (access|reach)|as an ai|i don.t know what/i;
+// The refusal arm mirrors server/content-guard.mjs exactly: a bare "could not"
+// used to reject legitimate Torah prose ("Moses could not enter the land") and
+// froze the card on yesterday's thought (audit 2026-09-22).
+const REFUSAL_RE = /<cite\b|<\/?[a-z]|\b(?:couldn.t|cannot|can.t|could not|unable to)\s+(?:access|reach|retrieve|open|find|locate|load|fetch|verify|view|read|browse|obtain)\s+(?:the|this|that|today|any|a)\b|as an ai|i don.t know what/i;
 
 const isDailyThought = (x: unknown): x is DailyThought => {
   if (!x || typeof x !== 'object') return false;
