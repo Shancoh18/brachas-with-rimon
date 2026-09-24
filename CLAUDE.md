@@ -30,6 +30,11 @@ correct order (kedima), and the correct after-blessing(s).
   `api/analyze.ts` is the serverless-host variant of the same proxy. Local dev
   without a key falls back to a clearly-labeled demo meal.
 
+## Q&A sessions
+Sessions opened just to ask questions (the "Brachas Q&A" cloud environment, or `/ask`)
+follow `.claude/skills/ask/SKILL.md`: read-only, answer with `path:line` evidence, and
+never commit, push, deploy, sync-master or call admin routes.
+
 ## Stack
 Vite + React 18 + TypeScript + Tailwind v4 (`@tailwindcss/vite`, theme in
 `src/index.css` `@theme`) + zustand (persists preferences AND progress,
