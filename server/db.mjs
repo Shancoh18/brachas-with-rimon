@@ -125,6 +125,15 @@ export function openDb(dataDir) {
   // rules (public/terms.html) before posting board chat — stamped once,
   // enforced by POST /api/boards/message, so it holds across devices
   if (!userCols.includes('terms_accepted_at')) db.exec('ALTER TABLE users ADD COLUMN terms_accepted_at INTEGER');
+  // Grandfather (hotfix 2026-09-22): the gate reached Railway at 17:39Z with no
+  // backfill, so every account that already existed — all of them on iOS build
+  // 35, which has no "I agree" panel and shows "Couldn't send that" on any 403
+  // — was locked out of board chat. Accounts created before the gate went live
+  // are stamped once, at that moment; anything created after it stays gated
+  // (Android / Play reviewers must still agree). Runs every boot, changes
+  // nothing the second time, never overwrites a real acceptance.
+  const TERMS_GATE_LIVE = Date.parse('2026-09-22T17:40:00Z');
+  db.prepare('UPDATE users SET terms_accepted_at = ? WHERE terms_accepted_at IS NULL AND created < ?').run(TERMS_GATE_LIVE, TERMS_GATE_LIVE);
   // the user's UTC offset (minutes, Date.getTimezoneOffset) from the last
   // /api/sync — "today" for league points and evening pushes used to come
   // only from Web-Push prefs, so every native user was scored on UTC days

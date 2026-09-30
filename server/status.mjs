@@ -60,7 +60,7 @@ export const THRESHOLDS = {
   rssCritMb: num(process.env.STATUS_RSS_CRIT_MB, 1800),
   loopWarnMs: num(process.env.STATUS_LOOP_WARN_MS, 200),
   loopCritMs: num(process.env.STATUS_LOOP_CRIT_MS, 1000),
-  analyzeWarnPct: num(process.env.STATUS_ANALYZE_WARN_PCT, 80),
+  analyzeWarnPct: num(process.env.STATUS_ANALYZE_WARN_PCT, 50), // 50 (was 80): leave time to raise the cap before it runs out
   thoughtWarnDays: num(process.env.STATUS_THOUGHT_WARN_DAYS, 2),
   thoughtCritDays: num(process.env.STATUS_THOUGHT_CRIT_DAYS, 4),
   backupCritHours: num(process.env.STATUS_BACKUP_CRIT_HOURS, 36),

@@ -4,8 +4,11 @@ The repo is App Store-ready: the `ios/` Xcode project is committed (iPhone-only,
 portrait-only), reminders use native iOS local notifications, in-app account
 deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
-generated. Current submission: **version 1.0, build 35** (`MARKETING_VERSION`
-and `CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`).
+generated. Version 1.0 (build 35) is LIVE on the App Store since 2026-09-12.
+Next submission: **version 1.0.1, build 37** (`MARKETING_VERSION` and
+`CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`; a
+released version cannot take new builds, so every build from here goes to a
+new version — create 1.0.1 in App Store Connect and attach 37).
 
 Review history:
 
@@ -26,11 +29,32 @@ Review history:
   Android app (see `PLAYSTORE.md`): FCM/APNs per-device pushes, Android back
   button, community-rules acceptance before board chat (`terms.html`),
   progress adoption on sign-in from a guest session, Apple-only-account
-  guidance, photo-limit copy, falafel ruling fix. It reaches TestFlight from
-  the master sync. If App Review approves 35 first, release 35, then create
-  version **1.0.1** in App Store Connect and attach 36 (a released version
-  cannot swap builds). If 35 is still waiting, replace its build with 36 and
-  re-submit — same review notes apply.
+  guidance, photo-limit copy, falafel ruling fix. It was NEVER BUILT:
+  its `codemagic.yaml` was invalid (one anchor on the whole `web_tests` list,
+  aliased as `- *web_tests`, nests a list inside `scripts:`), so Codemagic
+  silently ignored the release-36 master push — its newest build stayed #43 =
+  build 35 (2026-09-10), checked in Codemagic on 2026-09-29. There is no 36 on
+  TestFlight; everything listed here ships inside 37 below.
+- **Build 37** — 2026-09-22, **version 1.0.1**: the 2026-09-15 fix package
+  merged onto 36 (it never reached master before the release-36 push).
+  Liturgy: Me'ein Shalosh names EVERY category eaten in the opening and both
+  closing lines (grain → wine → fruit) via one shared `assembleMeein()`, the
+  Nusach Ari body follows chabad.org, the Land-of-Israel wording is a note
+  beside the text, a learned Al Ha'etz / Al Hagefen food is never silently
+  dropped, wine's Hagafen covers the other drinks, and the 7 Me'ein Shalosh
+  audio files were regenerated; Me'ein Shalosh now also carries the Shabbat /
+  Rosh Chodesh / Rosh Hashanah / festival lines (a "Today is…" picker on the
+  after-blessings screen, each nusach's own wording — Sukkot 5787 begins on
+  Shabbat, 2026-09-25). Nusach rides the account (a reinstall or a
+  new phone gets it back). Photo capacity: dropped uploads no longer leak
+  vision slots, failed photos are refunded, junk uploads are rejected before
+  counting, the app-wide cap answers `global_limit`, one retry on 429/529,
+  per-route rate-limit buckets, client IP from Railway's `X-Real-IP`; the
+  app explains every failure (with the reset time in the user's own clock)
+  and network timeouts no longer call `AbortSignal.timeout`/`any` directly
+  (`src/lib/timeoutSignal.ts` wraps them for iOS 15/16). Build 36 was
+  never built (see above), so 37 is the first build Codemagic runs since 35.
+  Bump to 38 before the next sync-master.
 
 What remains needs your Apple account. Two paths — pick one.
 

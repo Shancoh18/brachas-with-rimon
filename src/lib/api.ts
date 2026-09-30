@@ -4,6 +4,7 @@
  */
 import type { Lesson } from '../data/learn';
 import type { ProgressState } from './progress';
+import { anySignal, timeoutSignal } from './timeoutSignal';
 
 export const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ??
@@ -43,9 +44,10 @@ export interface ApiError extends Error {
 export const isTimeout = (e: unknown): boolean => (e as ApiError | null)?.code === 'timeout';
 
 const call = async <T>(path: string, opts: RequestInit = {}, token?: string): Promise<T> => {
-  const timeout = AbortSignal.timeout(CALL_TIMEOUT_MS);
+  // helpers, not the AbortSignal statics — iOS 15 WebKit lacks both
+  const timeout = timeoutSignal(CALL_TIMEOUT_MS);
   // honour a caller-supplied signal too — whichever fires first aborts
-  const signal = opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout;
+  const signal = opts.signal ? anySignal([opts.signal, timeout]) : timeout;
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
@@ -127,8 +129,13 @@ export const apiRegister = (name: string, email: string, password?: string, gues
     guestToken,
   );
 
-export type ServerProgress = Pick<ProgressState, 'totalBrachos' | 'streakCurrent' | 'points' | 'history'>;
-export const apiSync = (token: string, progress: ProgressState, name?: string) =>
+export type ServerProgress = Pick<ProgressState, 'totalBrachos' | 'streakCurrent' | 'points' | 'history'> & {
+  /** the account's chosen nusach (rides the progress row) */
+  nusach?: string;
+};
+/** `nusach` only for a local choice not yet on the account (store
+ *  `nusachPending`) — never a device default or a value adopted from it */
+export const apiSync = (token: string, progress: ProgressState, name?: string, nusach?: string) =>
   call<{ league: LeagueRow[]; code: string; progress: ServerProgress | null }>(
     '/api/sync',
     {
@@ -143,6 +150,7 @@ export const apiSync = (token: string, progress: ProgressState, name?: string) =
           streakCurrent: progress.streakCurrent,
           points: progress.points ?? 0, // lifetime points — the league ranks on these
           history: progress.history.slice(-30),
+          ...(nusach ? { nusach } : {}),
         },
       }),
     },
@@ -227,6 +235,17 @@ export const apiMe = (token: string) =>
     providers: string[];
     /** true for an anonymous guest row (absent on a pre-guest server) */
     guest?: boolean;
+    /** community rules stamped on the ACCOUNT (absent on a pre-36 server) —
+     *  the device flag is seeded from it so phones inherit the stamp */
+    terms_accepted?: boolean;
+    /** a Web Push subscription (PWA reminders) is STORED for the account — not
+     *  whether it fires: a registered phone app suppresses the web reminders */
+    web_push?: boolean;
+    /** which channel carries the account's mealtime reminders: 'native' when a
+     *  phone app (APNs/FCM) is registered (it schedules them locally and the
+     *  Web Push ones are suppressed), 'web' when only a Web Push subscription
+     *  exists, null with neither (absent on a pre-37 server) */
+    reminders_via?: 'native' | 'web' | null;
   }>('/api/me', {}, token);
 
 export const apiUpdateAccount = (token: string, patch: { name?: string; email?: string }) =>

@@ -82,6 +82,8 @@ in `codemagic.yaml` refers to that name. Back the .p12 up somewhere private
 the real app-signing key and can reset an upload key if this one is lost).
 
 ### 4. First build
+Needs release 37 (or later) on master: release 36's `codemagic.yaml` was
+invalid, so no workflow could start and no Android build has ever run.
 codemagic.io → brachas-with-rimon → Start new build → branch `master` →
 workflow **Android Play build (signed AAB)** → download
 `app-release.aab` from the artifacts. (Before the keystore exists, the
@@ -96,13 +98,26 @@ Credentials → Create OAuth client ID:
   `VITE_GOOGLE_WEB_CLIENT_ID=<id>` (Codemagic env group `google_oauth`, and
   in `bracha-app/.env` for local builds) AND Railway `GOOGLE_CLIENT_IDS=<id>`
   (the id-token audience the server verifies).
+  **Codemagic only injects a group into workflows that LIST it**: every
+  workflow in `codemagic.yaml` carries a commented `groups: - google_oauth`
+  block under `environment:`. Order matters — first create the env group
+  `google_oauth` in Codemagic (Teams → Environment variables; it may stay
+  empty until the ids exist), THEN uncomment those lines, because a workflow
+  that names a missing group fails to start (and `ios-app-store` auto-runs on
+  every master push). The "Build web app" step prints whether
+  `VITE_GOOGLE_WEB_CLIENT_ID` / `VITE_GOOGLE_IOS_CLIENT_ID` were set; without
+  them "Continue with Google" is silently compiled out.
 - **Android** → package `com.shancoh.brachaswithrimon`, SHA-1 = the upload
   key above. After the first Play upload, add a SECOND Android client with the
   **app signing key's SHA-1** from Play Console → Setup → App signing
   (Play re-signs the bundle with that key; Credential Manager checks the
   installed APK's signer).
 - iOS later: an **iOS** client → `VITE_GOOGLE_IOS_CLIENT_ID` (+ add it to
-  `GOOGLE_CLIENT_IDS`, comma-separated).
+  `GOOGLE_CLIENT_IDS`, comma-separated). **NOT YET** (review 2026-09-29):
+  `ios/App/App/Info.plist` has no reversed-client-id URL scheme, so once the iOS
+  id is injected the Google button appears on iOS and tapping it crashes the
+  app. Add the URL type in the SAME build that first sets the iOS id, and test
+  it on TestFlight; until then put only the WEB id in `google_oauth`.
 Also fill the OAuth consent screen (app name, support email, privacy URL).
 No code changes: `src/lib/socialAuth.ts` shows the Google button wherever the
 matching id exists.
@@ -115,6 +130,13 @@ Free. Then Dashboard → "Set up your app":
   account `review@brachaswithrimon.app` / password from
   `group-app-ad/.env` (`BRACHA_REVIEW_PASSWORD`) with the note that the app
   works without sign-in and the credentials are only for Friends/boards/chat.
+- **Advertising ID declaration** (App content → Advertising ID): **No** — the
+  bundle carries no `com.google.android.gms.permission.AD_ID`: the unused
+  Facebook Login SDK is compiled out (`capacitor.config.ts`
+  `SocialLogin.providers.facebook: false`) and the manifest removes the
+  permission with `tools:node="remove"`. Verify in the Codemagic build log's
+  merged manifest; a bundle that still declared AD_ID would make this "No"
+  a release-page error.
 - **Ads**: No. **Content rating**: questionnaire — Education/Reference;
   user-to-user communication: YES, but restricted to people who share a board
   code, with report + block + filter; no user location sharing; no purchases.
@@ -138,12 +160,16 @@ shared with third parties, NOT used for advertising:
 | Personal info → User IDs (account id / friend code, Apple/Google subject) | Yes | Required (guest id is anonymous) | App functionality |
 | Photos → Photos | Yes, processed ephemerally (not stored) | Optional | App functionality |
 | Messages → Other in-app messages (board chat) | Yes | Optional | App functionality |
-| App activity → Other user-generated content (progress, points, streaks) | Yes | Required | App functionality |
+| App activity → App interactions (last-use timestamp, timezone offset, per-day practice history, chat read position; plus points and streaks) | Yes | Required | App functionality |
+| App activity → Other user-generated content (board titles, display names) | Yes | Optional (only with an account) | App functionality |
 | Device or other IDs (FCM token) | Yes | Optional | App functionality (notifications) |
 | Location, Financial, Health, Contacts, Calendar, Files, Audio, Web browsing, Installed apps, Crash logs, Diagnostics | Not collected | — | — |
 
 Independent security review: No. Data handling: the app uses the developer's
-own server; no third-party SDKs except Firebase Messaging (token only).
+own server; no third-party SDKs except Firebase Messaging (token only) — the
+social-login plugin's Facebook provider is compiled out
+(`SocialLogin.providers.facebook: false`), so the bundle ships no Facebook
+code and no advertising-ID permission.
 
 ### 8. Testing tracks → production
 1. **Internal testing** (up to 100 emails, instant): upload the AAB from
@@ -162,13 +188,26 @@ own server; no third-party SDKs except Firebase Messaging (token only).
    days.
 
 Every upload needs a NEW `versionCode` in `android/app/build.gradle` — keep
-it equal to the iOS `CURRENT_PROJECT_VERSION` (both are 36 now) and bump both
-before `scripts/sync-master.mjs`.
+it equal to the iOS `CURRENT_PROJECT_VERSION` (both are 37 now — version
+1.0.1, the 2026-09-22 merge of the Sep-15 fixes onto release 36; `versionName`
+tracks `MARKETING_VERSION`) and bump all THREE places before
+`scripts/sync-master.mjs`: `versionCode`, `CURRENT_PROJECT_VERSION` (both
+pbxproj configs) and `appendUserAgent: 'BrachasRimon/<build>'` in
+`capacitor.config.ts` — the server's `legacyNativeClient()` keys its
+legacy-client rule on that marker (CLAUDE.md build-number rule).
 
 ### 9. First-device checklist (internal testing)
 - Onboarding → home without any sign-in; `/api/me` says guest.
-- Photo: camera opens from "Photograph my meal" (CAMERA permission prompt),
-  gallery works, a result appears, demo-fallback banner is NOT shown.
+- Photo: "Photograph my meal" opens the phone's CAMERA APP — not the file
+  picker (on Android 11+ that needs the manifest's <queries> IMAGE_CAPTURE
+  entry) — after the CAMERA permission prompt the first time; "or choose a
+  photo from your gallery" opens the gallery; both give a result, the
+  demo-fallback banner is NOT shown. Deny the permission once: the next tap
+  asks again. Deny it twice (Android 11+ then stops asking): the button does
+  nothing, the gallery link still works, and Settings → Apps → Brachas with
+  Rimon → Permissions → Camera restores it. Known limitation: if Android kills
+  the app while the camera is open (Developer options → "Don't keep
+  activities"), that photo is discarded without a crash — take it again.
 - Status bar: header not under the clock; tab bar above the gesture bar;
   keyboard: tab bar hides, input stays visible.
 - BACK: from guide → confirm; from any tab → Bless; from home → app minimises
@@ -223,7 +262,24 @@ before `scripts/sync-master.mjs`.
 - `android/app/src/main/AndroidManifest.xml`: portrait-only, `adjustResize`,
   CAMERA (optional feature) for the file-input camera, FCM default icon
   (`ic_stat_rimon`, built by `scripts/android-stat-icon.mjs`) / colour /
-  channel `rimon`.
+  channel `rimon`. Since the 2026-09-22 review: `android:allowBackup="false"`
+  (the persisted store holds the bearer token — never to Google Drive),
+  `AD_ID` removed with `tools:node="remove"`, and the
+  `PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY` activity property that
+  keeps the portrait lock on Android 16 tablets/foldables (expires at
+  targetSdk 37 — a landscape rule for `.tk-cover` is the real fix).
+- `capacitor.config.ts`: `SocialLogin.providers` = google + apple only
+  (Facebook compiled out — see step 6) and `appendUserAgent:
+  'BrachasRimon/<build>'`, the marker the server's `legacyNativeClient()`
+  uses to tell iOS build 35 (no community-rules panel, keeps the pre-gate chat
+  behaviour) from every later native build — bump it with the build number.
+- `codemagic.yaml`: both Android workflows run on **Java 21** (Capacitor 8
+  compiles at VERSION_21; Java 17 stops at "invalid source release: 21") and
+  print `java -version` before Gradle; the shared `web_tests` steps mirror
+  `scripts/preflight.mjs` suite for suite — each step has its own anchor and
+  every workflow lists each alias on its own line. Never alias the whole list
+  (`- *web_tests`): Codemagic rejects the entire file and ignores every push
+  (why release 36 never built — see CLAUDE.md, Android build hardening).
 - Icons + splash: `npx @capacitor/assets generate --android` from
   `assets/icon-only.png` + `assets/icon-foreground.png` +
   `assets/icon-background.png` + `assets/splash.png`.
@@ -238,4 +294,5 @@ before `scripts/sync-master.mjs`.
   + the "Android (FCM) + mixed boards" block in `server/test/scenarios.mjs`
   prove the fan-out.
 - Build number: `versionCode` in `android/app/build.gradle` mirrors the iOS
-  build number; bump both.
+  build number; bump both — plus the `appendUserAgent: 'BrachasRimon/<build>'`
+  marker above (THREE places, CLAUDE.md build-number rule).

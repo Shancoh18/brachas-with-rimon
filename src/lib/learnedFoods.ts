@@ -9,6 +9,7 @@
  */
 import { FOOD_BY_KEY, FOODS, type FoodEntry } from '../data/foods';
 import { API_BASE } from './api';
+import { timeoutSignal } from './timeoutSignal';
 
 export type LearnedFoodEntry = FoodEntry & {
   learned: true;
@@ -60,14 +61,18 @@ export function registerLearnedFoods(entries: LearnedFoodEntry[] | undefined) {
   }
 }
 
+/** give up on the learned-foods list after this long — analyzePhoto awaits it
+ *  mid-flow, so a stalled request must not strand the user on "identifying" */
+const LEARNED_TIMEOUT_MS = 8_000;
+
 /** Boot-time sync so previously learned foods work offline of any analyze call. */
 export async function fetchLearnedFoods(): Promise<void> {
   try {
-    const r = await fetch(`${API_BASE}/api/foods/learned`);
+    const r = await fetch(`${API_BASE}/api/foods/learned`, { signal: timeoutSignal(LEARNED_TIMEOUT_MS) });
     if (!r.ok) return;
     const { entries } = (await r.json()) as { entries: LearnedFoodEntry[] };
     registerLearnedFoods(entries);
   } catch {
-    /* offline is fine — the static DB still works */
+    /* offline / timed out is fine — the static DB still works */
   }
 }

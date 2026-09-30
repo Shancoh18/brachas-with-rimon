@@ -3,15 +3,31 @@ import { persist } from 'zustand/middleware';
 import type { MealItem } from './lib/classify';
 import type { AfterBracha } from './data/foods';
 import { NUSACHIM, type NusachId } from './data/texts';
+import { MEEIN_OCCASIONS, type MeeinDay } from './data/texts/meein';
+import type { MeeinOccasion } from './data/texts/types';
 import { addPoints, badges, EMPTY_PROGRESS, recordAfterBrachos, recordMeal, todayStamp, type ProgressState } from './lib/progress';
 import { AFTER_BRACHA_KEYS, EMPTY_DAY, POINTS_PER_AFTER_BRACHA, POINTS_PER_BRACHA, settleChallenges, type DayStats } from './lib/dailyChallenges';
 import type { LeagueRow } from './lib/api';
+import type { PhotoFailReason } from './lib/analyze';
 import type { Lesson } from './data/learn';
 import type { ParshaReading } from './lib/parsha';
 
 export type Screen = 'welcome' | 'identify' | 'confirm' | 'guide' | 'after' | 'reference' | 'benching';
 export type Tab = 'bless' | 'learn' | 'journey' | 'friends' | 'donate' | 'account';
 export type TextMode = 'hebrew' | 'translit' | 'english';
+
+/** Me'ein Shalosh day insertions picked on the After screen ("Today is…" —
+ *  Shabbat / Rosh Chodesh / festival, Yom Tov vs Chol Hamoed). Valid for the
+ *  LOCAL calendar day they were picked on: one tap covers every meal of a
+ *  Chol Hamoed day, and tomorrow starts clean so a pick never outlives the
+ *  festival. Never auto-detected — the Jewish day starts at sunset and the
+ *  app has no location. */
+export interface MeeinDayChoice extends MeeinDay {
+  day: string;
+  occasions: MeeinOccasion[];
+  yomTov: boolean;
+}
+export const emptyMeeinDay = (): MeeinDayChoice => ({ day: '', occasions: [], yomTov: false });
 
 export interface Celebration {
   kind: 'meal' | 'lesson';
@@ -67,9 +83,22 @@ export const MEAL_SLOTS = [
 
 interface BrachaState {
   nusach: NusachId;
+  /** true while a LOCAL nusach choice has not reached the account yet. Only a
+   *  pending choice is sent to the server — a device default ('ari') or a
+   *  value adopted from the account never is — and while nothing is pending
+   *  the device follows the account's latest value on every boot, so a
+   *  change made on another phone arrives here too */
+  nusachPending: boolean;
   setNusach: (n: NusachId) => void;
+  /** adopt the account's nusach unless a local choice is still pending */
+  adoptServerNusach: (n: unknown) => void;
+  /** a sync carrying `sent` succeeded — clears pending unless the user has
+   *  picked something else since that request left */
+  markNusachSynced: (sent: NusachId) => void;
   textMode: TextMode;
   setTextMode: (m: TextMode) => void;
+  meeinDay: MeeinDayChoice;
+  setMeeinDay: (d: MeeinDayChoice) => void;
   /** Appearance is explicit — LIGHT by default; dark/system are opt-in from
    *  Account (owner ruling 2026-08-10 after a device auto-forced dark). */
   appearance: import('./lib/theme').Appearance;
@@ -95,12 +124,18 @@ interface BrachaState {
    *  and Confirm opens manual search — we never substitute a made-up meal,
    *  because a user who taps past a banner would bless food they aren't eating. */
   demoFallback: boolean;
-  setDemoFallback: (v: boolean) => void;
-  /** WHY identification fell back (banner copy on Confirm) — see analyze.ts */
-  fallbackReason: 'daily_limit' | 'busy' | 'unauthorized' | 'offline' | 'unreadable_photo' | 'failed' | null;
-  setFallbackReason: (r: 'daily_limit' | 'busy' | 'unauthorized' | 'offline' | 'unreadable_photo' | 'failed' | null) => void;
-  /** Community rules accepted on THIS device (Play UGC policy) — the server
-   *  stamps it per account; a fresh device asks once more, one tap. */
+  /** WHY it failed (daily allowance, app-wide limit, busy, rate-limited,
+   *  unreadable photo, offline…) so Confirm can say so — null whenever
+   *  demoFallback is false. Not persisted. See PhotoFailReason in analyze.ts. */
+  photoFailReason: PhotoFailReason | null;
+  /** sets both: `reason` defaults to 'generic' on a failure, cleared otherwise */
+  setDemoFallback: (v: boolean, reason?: PhotoFailReason) => void;
+  /** Community rules accepted for the CURRENT account (Play UGC policy). The
+   *  server stamps it per account; this flag is reset whenever the account
+   *  changes (setServerAccount with another friend code, clearServerAccount)
+   *  so a shared phone asks user B, and seeded from /api/me `terms_accepted`
+   *  (Account screen) so a device inherits the account's stamp; otherwise the
+   *  chat composer asks once, one tap. (review 2026-09-22) */
   termsAccepted: boolean;
   setTermsAccepted: (v: boolean) => void;
   /** One-shot message shown on the Account screen / AuthGate (e.g. "account
@@ -297,6 +332,15 @@ const sanitizeLessons = (x: unknown): Lesson[] =>
     ? x.filter((l): l is Lesson => isObj(l) && typeof l.id === 'string' && typeof l.title === 'string' && Array.isArray(l.body))
     : [];
 
+const sanitizeMeeinDay = (x: unknown): MeeinDayChoice =>
+  isObj(x)
+    ? {
+        day: str(x.day),
+        occasions: strArr(x.occasions).filter((k): k is MeeinOccasion => (MEEIN_OCCASIONS as readonly string[]).includes(k)),
+        yomTov: x.yomTov === true,
+      }
+    : emptyMeeinDay();
+
 const oneOf = <T extends string>(x: unknown, allowed: readonly T[], d: T): T =>
   typeof x === 'string' && (allowed as readonly string[]).includes(x) ? (x as T) : d;
 
@@ -306,7 +350,19 @@ const sanitizePersisted = (raw: unknown) => {
   const s = isObj(raw) ? raw : {};
   return {
     nusach: oneOf(s.nusach, Object.keys(NUSACHIM), 'ari') as NusachId,
+    // Older stores carry no nusachPending. Build 35 and earlier (no nusach
+    // flag at all) never sent a nusach, so a non-default one there was picked
+    // on this device and uploads once. A store with the interim `nusachChosen`
+    // flag already sent its choice on every boot sync — and that flag was also
+    // set by ADOPTING the account's value, which must not be pushed back over
+    // a newer choice from another device — so it starts not pending.
+    nusachPending:
+      s.nusachPending === true ||
+      (s.nusachPending === undefined &&
+        s.nusachChosen === undefined &&
+        oneOf(s.nusach, Object.keys(NUSACHIM), 'ari') !== 'ari'),
     textMode: oneOf<TextMode>(s.textMode, ['hebrew', 'translit', 'english'], 'hebrew'),
+    meeinDay: sanitizeMeeinDay(s.meeinDay),
     appearance: oneOf<import('./lib/theme').Appearance>(s.appearance, ['light', 'dark', 'system'], 'light'),
     progress: sanitizeProgress(s.progress),
     dayStats: sanitizeDayStats(s.dayStats),
@@ -331,11 +387,19 @@ export const useBracha = create<BrachaState>()(
   persist(
     (set) => ({
       nusach: 'ari',
-      setNusach: (nusach) => set({ nusach }),
+      nusachPending: false,
+      setNusach: (nusach) => set({ nusach, nusachPending: true }),
+      adoptServerNusach: (n) =>
+        set((s) =>
+          s.nusachPending || typeof n !== 'string' || !Object.keys(NUSACHIM).includes(n) ? {} : { nusach: n as NusachId },
+        ),
+      markNusachSynced: (sent) => set((s) => (s.nusach === sent ? { nusachPending: false } : {})),
       appearance: 'light',
       setAppearance: (appearance) => set({ appearance }),
       textMode: 'hebrew',
       setTextMode: (textMode) => set({ textMode }),
+      meeinDay: emptyMeeinDay(),
+      setMeeinDay: (meeinDay) => set({ meeinDay }),
 
       tab: 'bless',
       setTab: (tab) => set({ tab }),
@@ -355,9 +419,9 @@ export const useBracha = create<BrachaState>()(
       unmatched: [],
       setUnmatched: (unmatched) => set({ unmatched }),
       demoFallback: false,
-      setDemoFallback: (demoFallback) => set({ demoFallback }),
-      fallbackReason: null,
-      setFallbackReason: (fallbackReason) => set({ fallbackReason }),
+      photoFailReason: null,
+      setDemoFallback: (demoFallback, reason) =>
+        set({ demoFallback, photoFailReason: demoFallback ? (reason ?? 'generic') : null }),
       termsAccepted: false,
       setTermsAccepted: (termsAccepted) => set({ termsAccepted }),
       gateNotice: null,
@@ -590,11 +654,25 @@ export const useBracha = create<BrachaState>()(
       setUserEmail: (userEmail) => set({ userEmail }),
       isGuest: false,
       setGuest: (isGuest) => set({ isGuest }),
+      // a brand-new guest row stores no nusach, so the device's non-default
+      // one is by definition not on it yet — mark it pending to seed the row
       setGuestSession: (serverToken, friendCode) =>
-        set({ serverToken, friendCode, userEmail: null, isGuest: true }),
+        set((s) => ({ serverToken, friendCode, userEmail: null, isGuest: true, nusachPending: s.nusach !== 'ari' })),
+      // a DIFFERENT account (sign-in, or a provider identity that already owns
+      // one) drops the pending local choice so that account's stored nusach is
+      // adopted, and drops the previous account's community-rules acceptance
+      // (it belongs to the account, not the phone); the in-place guest upgrade
+      // keeps its friend code and both flags
       setServerAccount: (serverToken, friendCode) =>
-        set({ serverToken, friendCode, gateNotice: null, isGuest: false }),
-      clearServerAccount: () => set({ serverToken: null, friendCode: null, userEmail: null, isGuest: false }),
+        set((s) => ({
+          serverToken,
+          friendCode,
+          gateNotice: null,
+          isGuest: false,
+          ...(s.friendCode !== friendCode ? { nusachPending: false, termsAccepted: false } : {}),
+        })),
+      clearServerAccount: () =>
+        set({ serverToken: null, friendCode: null, userEmail: null, isGuest: false, nusachPending: false, termsAccepted: false }),
 
       reset: () =>
         set({
@@ -622,7 +700,9 @@ export const useBracha = create<BrachaState>()(
       },
       partialize: (s) => ({
         nusach: s.nusach,
+        nusachPending: s.nusachPending,
         textMode: s.textMode,
+        meeinDay: s.meeinDay,
         appearance: s.appearance,
         progress: s.progress,
         dayStats: s.dayStats,

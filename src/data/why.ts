@@ -67,7 +67,7 @@ export const WHY_BRACHA: Record<Bracha, WhyEntry> = {
       },
       {
         label: 'Why this order',
-        text: 'Hagafen stands right after grain foods and before the fruits — honored above the general fruit blessing because wine was singled out for its role in ritual and joy. Once said, it also covers your other drinks.',
+        text: 'Hagafen stands right after grain foods and before the fruits — honored above the general fruit blessing because wine was singled out for its role in ritual and joy. Once said, it also covers the other drinks in front of you, or that you plan to drink, at that moment — a drink you decide on later needs its own Shehakol.',
       },
     ],
     sourceTitle: 'Borei Pri Hagafen: The Blessing on Wine — chabad.org',
@@ -142,6 +142,10 @@ export const WHY_AFTER: Record<'birkatHamazon' | 'meeinShalosh' | 'boreiNefashos
       {
         label: 'Why combined',
         text: 'However many of the three categories you ate, the inserts join into a single Me\'ein Shalosh — one blessing, never several. That is why the app assembles it for you as one text.',
+      },
+      {
+        label: 'On Shabbat and festivals',
+        text: 'Like Birkat Hamazon, Me\'ein Shalosh mentions the day: one short line before "For You, L-rd, are good" — on Shabbat "may it please You to strengthen us", on Rosh Chodesh and Rosh Hashanah "remember us for good", on Pesach, Shavuot, Sukkot and Shemini Atzeret "grant us joy". Tap the day under "Today is…" and the app adds it in your nusach (Shulchan Aruch, Orach Chaim 208:12).',
       },
     ],
     sourceTitle: 'Al Hamichyah: The After-Blessing on Special Foods — chabad.org',

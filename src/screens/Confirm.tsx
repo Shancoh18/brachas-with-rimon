@@ -5,6 +5,7 @@
  */
 import { useMemo, useState } from 'react';
 import { BRACHA_LABEL, FOODS } from '../data/foods';
+import type { PhotoFailReason } from '../lib/analyze';
 import { mealItemFromKey, setItemEntry, setItemState, type MealItem, type FoodState } from '../lib/classify';
 import { searchFoods } from '../lib/foodSearch';
 import { useBracha } from '../store';
@@ -30,6 +31,45 @@ const GF_KEYS = new Set(GF_FLOURS.map((x) => x.key));
  *  the flour can be corrected. */
 const showsGlutenFree = (item: MealItem) => item.entry.category === 'Bread';
 
+/** Both photo-check allowances (the user's own and the app-wide one) reset
+ *  at 00:00 UTC on the server — shown in the user's OWN clock (8:00 PM in
+ *  New York, 3:00 AM in Jerusalem), never one fixed city's. */
+const photoCheckResetTime = (now = new Date()): string =>
+  new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+/** Why the photo check failed → what Rimon says. ONE line per
+ *  PhotoFailReason (src/lib/analyze.ts maps every server code to one). Every
+ *  line keeps the search-below path open and none of them blames the user;
+ *  5xx stays on the generic line. The tab bar is hidden on this screen, so no
+ *  line may send the user to a tab — the guest door below resets the flow
+ *  first. The 10 / 30 numbers are the server's ANALYZE_GUEST_MAX_PER_DAY /
+ *  ANALYZE_MAX_PER_DAY (server.mjs). */
+const photoFailCopy = (reason: PhotoFailReason | null, isGuest: boolean): string => {
+  switch (reason) {
+    case 'daily_limit':
+      return isGuest
+        ? `You’ve used today’s 10 free photo checks (they refresh at ${photoCheckResetTime()}). A free account gets 30 a day — or search below and add what’s on your plate; every blessing will still be exactly right.`
+        : `You’ve used today’s 30 photo checks — they refresh at ${photoCheckResetTime()}. Search below and add what’s on your plate; every blessing will still be exactly right.`;
+    case 'global_limit':
+      return `So many people are using Rimon today that photo checks are paused until ${photoCheckResetTime()}. Add your foods by searching below — everything else works.`;
+    case 'busy':
+      return 'Rimon is very busy right now — try the photo again in a minute, or search below and add what’s on your plate.';
+    case 'rate_limited':
+      return 'Lots of photo checks are coming from your network right now — try again in a few minutes, or search below.';
+    case 'unauthorized':
+      return 'Rimon couldn’t verify this session just now — try the photo again in a moment, or search below and add what’s on your plate.';
+    case 'offline':
+      return 'Couldn’t reach Rimon — check your connection and try again, or search below and add what’s on your plate.';
+    case 'bad_image':
+      return 'Couldn’t read that photo — try another one, or search below and add what’s on your plate.';
+    default:
+      return 'Rimon couldn’t identify your photo just now. Nothing has been added — search below and add what’s on your plate, and every blessing will still be exactly right.';
+  }
+};
+
 const BRACHA_TINT: Record<string, string> = {
   Hamotzi: 'bg-gold/15 text-gold',
   Mezonos: 'bg-gold/10 text-gold',
@@ -40,10 +80,8 @@ const BRACHA_TINT: Record<string, string> = {
 };
 
 export function Confirm() {
-  const { items, updateItem, removeItem, addItem, unmatched, setScreen, reset, photo, demoFallback } = useBracha();
-  const fallbackReason = useBracha((s) => s.fallbackReason);
-  const isGuest = useBracha((s) => s.isGuest);
-  const setTab = useBracha((s) => s.setTab);
+  const { items, updateItem, removeItem, addItem, unmatched, setScreen, setTab, reset, photo, demoFallback, photoFailReason, isGuest } =
+    useBracha();
   const [query, setQuery] = useState('');
   // which item's gluten-free flour dropdown is open; 'unsure:<id>' shows the
   // check-the-package guidance instead of a ruling
@@ -99,31 +137,24 @@ export function Confirm() {
 
       {demoFallback && (
         <div
-          data-fallback-reason={fallbackReason ?? 'failed'}
+          data-photo-fail={photoFailReason ?? 'generic'}
           className="rise-in rise-in-1 mb-5 rounded-[1.25rem] bg-rimon/8 p-4 text-[12px] leading-relaxed text-espresso ring-1 ring-rimon/20"
         >
-          <strong className="text-rimon">Heads up:</strong>{' '}
-          {fallbackReason === 'daily_limit' && isGuest ? (
-            <>
-              You’ve used today’s 10 free photo identifications. A free account gets 30 a day — or
-              search below and add what’s on your plate; every blessing will still be exactly right.
-              <button
-                onClick={() => setTab('account')}
-                className="mt-2 block rounded-full bg-espresso px-4 py-2 text-[12px] font-semibold text-cream"
-              >
-                Create a free account →
-              </button>
-            </>
-          ) : fallbackReason === 'daily_limit' ? (
-            <>You’ve reached today’s 30 photo identifications. Search below and add what’s on your plate — every blessing will still be exactly right.</>
-          ) : fallbackReason === 'busy' ? (
-            <>Rimon is busy right now — try the photo again in a minute, or search below and add what’s on your plate.</>
-          ) : fallbackReason === 'offline' ? (
-            <>Couldn’t reach Rimon — check your connection, or search below and add what’s on your plate.</>
-          ) : fallbackReason === 'unreadable_photo' ? (
-            <>Couldn’t read that photo. Try another one, or search below and add what’s on your plate.</>
-          ) : (
-            <>Rimon couldn’t identify your photo just now. Nothing has been added — search below and add what’s on your plate, and every blessing will still be exactly right.</>
+          <strong className="text-rimon">Heads up:</strong> {photoFailCopy(photoFailReason, isGuest)}
+          {/* a guest out of photo checks gets a door to Account (its AuthPanel
+              upgrades this guest in place) — only while the plate is empty:
+              leaving the flow resets it, so the door never costs added foods */}
+          {photoFailReason === 'daily_limit' && isGuest && items.length === 0 && (
+            <button
+              data-photo-fail-account
+              onClick={() => {
+                reset();
+                setTab('account');
+              }}
+              className="mt-2 block rounded-full bg-espresso px-4 py-2 text-[12px] font-semibold text-cream"
+            >
+              Create a free account →
+            </button>
           )}
         </div>
       )}

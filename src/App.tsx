@@ -123,13 +123,23 @@ export default function App() {
   // pushes and fills the catch-up nudge. Guests sync too — that is what makes
   // an upgrade keep everything. A guest token the server no longer knows
   // (401) is dropped so the guest hook mints a fresh one.
+  // Nusach: a pending local choice goes up; otherwise the device follows the
+  // account's stored value (a reinstall, a new phone, or a change made on
+  // another device all land here).
   useEffect(() => {
     if (!serverToken) return;
-    const { progress, setLeagueSnapshot, adoptServerProgress } = useBracha.getState();
-    apiSync(serverToken, progress)
+    const { progress, nusach, nusachPending } = useBracha.getState();
+    const sent = nusachPending ? nusach : undefined;
+    apiSync(serverToken, progress, undefined, sent)
       .then((r) => {
-        adoptServerProgress(r.progress); // no-op unless this device is blank
-        setLeagueSnapshot(r.league);
+        const s = useBracha.getState();
+        // signed in / out while this was in flight — the answer is another session's
+        if (s.serverToken !== serverToken) return;
+        if (sent) s.markNusachSynced(sent);
+        s.adoptServerProgress(r.progress); // adopts whenever the server copy is AHEAD (a blank reinstall, or a guest that signed in)
+        // a pill tap mid-flight already synced its own choice — don't revert it
+        if (s.nusach === nusach) s.adoptServerNusach(r.progress?.nusach);
+        s.setLeagueSnapshot(r.league);
       })
       .catch((e) => {
         const s = useBracha.getState(); // live flag, never a stale closure

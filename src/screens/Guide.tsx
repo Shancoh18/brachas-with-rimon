@@ -55,6 +55,9 @@ export function Guide() {
           shivaKey: i.entry.shivaKey,
           whole: i.whole,
           chaviv: i.chaviv,
+          // wine's Hagafen covers the other drinks (kedima.ts) — same flag the
+          // after-blessing snapshot below carries
+          isDrink: i.entry.isDrink,
           label: i.label,
         })),
       ),
@@ -73,13 +76,17 @@ export function Guide() {
   const rep = group.representative as (typeof group.representative) & { label: string };
   const covered = group.covered as ((typeof group.covered)[number] & { label: string })[];
   const others = covered.filter((c) => c.id !== rep.id);
+  // other drinks folded into wine's Hagafen (the kedima.ts isDrink rule)
+  const coversDrinks = group.bracha === 'Hagafen' && others.some((c) => c.bracha !== 'Hagafen');
 
   const sayLine =
     group.bracha === 'Hamotzi'
       ? 'Bread first — wash your hands, then this one blessing covers almost the whole meal.'
-      : others.length
-        ? `Say it over the ${rep.label.toLowerCase()} — it covers the rest of this group too.`
-        : `This one is for your ${rep.label.toLowerCase()}.`;
+      : coversDrinks
+        ? `Say it over the ${rep.label.toLowerCase()} — it covers your other drinks too.`
+        : others.length
+          ? `Say it over the ${rep.label.toLowerCase()} — it covers the rest of this group too.`
+          : `This one is for your ${rep.label.toLowerCase()}.`;
 
   return (
     <ScreenShell>
@@ -170,6 +177,14 @@ export function Guide() {
       {group.bracha === 'Hagafen' && (
         <p className="rise-in rise-in-3 pt-2 text-center text-[11px] text-mocha">
           wine keeps its own blessing even during a bread meal — and it covers your other drinks.
+        </p>
+      )}
+      {/* the drinks it covers are the ones present or intended at the time
+          (Shulchan Aruch OC 174:2; chabad.org "Blessings on Combination") */}
+      {coversDrinks && (
+        <p data-hagafen-drinks-caveat className="rise-in rise-in-3 pt-1.5 text-center text-[11px] leading-relaxed text-mocha">
+          This covers drinks in front of you, or that you plan to drink, when you say it. A drink you
+          decide on later needs its own Shehakol.
         </p>
       )}
 

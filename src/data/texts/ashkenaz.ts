@@ -81,27 +81,56 @@ export const ASHKENAZ: NusachPack = {
     },
     body: {
       hebrew:
-        'וְעַל תְּנוּבַת הַשָּׂדֶה וְעַל אֶרֶץ חֶמְדָּה טוֹבָה וּרְחָבָה שֶׁרָצִיתָ וְהִנְחַלְתָּ לַאֲבוֹתֵינוּ לֶאֱכוֹל מִפִּרְיָהּ וְלִשְׂבּוֹעַ מִטּוּבָהּ. רַחֵם נָא יְיָ אֱלֹהֵינוּ עַל יִשְׂרָאֵל עַמֶּךָ וְעַל יְרוּשָׁלַיִם עִירֶךָ וְעַל צִיּוֹן מִשְׁכַּן כְּבוֹדֶךָ, וְעַל מִזְבְּחֶךָ, וְעַל הֵיכָלֶךָ. וּבְנֵה יְרוּשָׁלַיִם עִיר הַקֹּדֶשׁ בִּמְהֵרָה בְיָמֵינוּ. וְהַעֲלֵנוּ לְתוֹכָהּ וְשַׂמְּחֵנוּ בְּבִנְיָנָהּ, וְנֹאכַל מִפִּרְיָהּ וְנִשְׂבַּע מִטּוּבָהּ וּנְבָרֶכְךָ עָלֶיהָ בִּקְדֻשָּׁה וּבְטָהֳרָה. כִּי אַתָּה יְיָ טוֹב וּמֵטִיב לַכֹּל וְנוֹדֶה לְּךָ עַל הָאָרֶץ',
+        'וְעַל תְּנוּבַת הַשָּׂדֶה וְעַל אֶרֶץ חֶמְדָּה טוֹבָה וּרְחָבָה שֶׁרָצִיתָ וְהִנְחַלְתָּ לַאֲבוֹתֵינוּ לֶאֱכוֹל מִפִּרְיָהּ וְלִשְׂבּוֹעַ מִטּוּבָהּ. רַחֵם נָא יְיָ אֱלֹהֵינוּ עַל יִשְׂרָאֵל עַמֶּךָ וְעַל יְרוּשָׁלַיִם עִירֶךָ וְעַל צִיּוֹן מִשְׁכַּן כְּבוֹדֶךָ, וְעַל מִזְבְּחֶךָ, וְעַל הֵיכָלֶךָ. וּבְנֵה יְרוּשָׁלַיִם עִיר הַקֹּדֶשׁ בִּמְהֵרָה בְיָמֵינוּ. וְהַעֲלֵנוּ לְתוֹכָהּ וְשַׂמְּחֵנוּ בְּבִנְיָנָהּ, וְנֹאכַל מִפִּרְיָהּ וְנִשְׂבַּע מִטּוּבָהּ וּנְבָרֶכְךָ עָלֶיהָ בִּקְדֻשָּׁה וּבְטָהֳרָה.',
       translit:
-        "v'al t'nu-vat ha-sa-deh v'al e-retz chem-dah to-vah ur-cha-vah she-ra-tzi-ta v'hin-chal-ta la-a-vo-tei-nu le-e-chol mi-pir-yah v'lis-bo-a mi-tu-vah. Ra-cheim na A-do-nai E-lo-hei-nu al Yis-ra-eil a-me-cha v'al Y'ru-sha-la-yim i-re-cha v'al Tzi-yon mish-kan k'vo-de-cha, v'al miz-b'che-cha, v'al hei-cha-le-cha. Uv-nei Y'ru-sha-la-yim ir ha-ko-desh bim-hei-rah v'ya-mei-nu. V'ha-a-lei-nu l'to-chah v'sam-chei-nu b'vin-ya-nah, v'no-chal mi-pir-yah v'nis-ba mi-tu-vah un-va-rech-cha a-le-ha bik-du-shah uv-ta-ho-rah. Ki a-tah A-do-nai tov u-mei-tiv la-kol v'no-deh l'cha al ha-a-retz",
+        "v'al t'nu-vat ha-sa-deh v'al e-retz chem-dah to-vah ur-cha-vah she-ra-tzi-ta v'hin-chal-ta la-a-vo-tei-nu le-e-chol mi-pir-yah v'lis-bo-a mi-tu-vah. Ra-cheim na A-do-nai E-lo-hei-nu al Yis-ra-eil a-me-cha v'al Y'ru-sha-la-yim i-re-cha v'al Tzi-yon mish-kan k'vo-de-cha, v'al miz-b'che-cha, v'al hei-cha-le-cha. Uv-nei Y'ru-sha-la-yim ir ha-ko-desh bim-hei-rah v'ya-mei-nu. V'ha-a-lei-nu l'to-chah v'sam-chei-nu b'vin-ya-nah, v'no-chal mi-pir-yah v'nis-ba mi-tu-vah un-va-rech-cha a-le-ha bik-du-shah uv-ta-ho-rah.",
       english:
-        'and for the produce of the field, and for the precious, good and spacious land which You favored and gave as a heritage to our fathers, to eat of its fruit and be satiated with its goodness. Have mercy, L-rd our G-d, on Israel Your people, on Jerusalem Your city, on Zion the abode of Your glory, on Your altar and on Your Temple. Rebuild Jerusalem, the holy city, speedily in our days; bring us up to it and gladden us in its rebuilding; may we eat of its fruit and be satiated with its goodness, and bless You upon it in holiness and purity. For You, L-rd, are good and do good to all, and we thank You for the land',
+        'and for the produce of the field, and for the precious, good and spacious land which You favored and gave as a heritage to our fathers, to eat of its fruit and be satiated with its goodness. Have mercy, L-rd our G-d, on Israel Your people, on Jerusalem Your city, on Zion the abode of Your glory, on Your altar and on Your Temple. Rebuild Jerusalem, the holy city, speedily in our days; bring us up to it and gladden us in its rebuilding; may we eat of its fruit and be satiated with its goodness, and bless You upon it in holiness and purity.',
     },
-    seals: {
-      AlHamichya: {
-        hebrew: 'וְעַל הַמִּחְיָה. בָּרוּךְ אַתָּה יְיָ, עַל הָאָרֶץ וְעַל הַמִּחְיָה.',
-        translit: "v'al ha-mich-yah. Ba-ruch a-tah A-do-nai, al ha-a-retz v'al ha-mich-yah.",
-        english: 'and for the sustenance. Blessed are You, L-rd, for the land and for the sustenance.',
+    // Day insertions — verbatim from the Daat Siddur Ashkenaz (Sefaria, the
+    // same public-domain edition as the body): Rosh Chodesh WITH the article
+    // ("רֹאשׁ הַחֹדֶשׁ"), and every festival line ends "בְּיוֹם (טוֹב) מִקְרָא
+    // קֹדֶשׁ הַזֶּה" — Daat brackets the טוֹב: said on the festival days, dropped
+    // on Chol Hamoed, so Pesach and Sukkot carry a Yom Tov variant below
+    // (Shavuot and Shemini Atzeret have no Chol Hamoed).
+    occasions: {
+      shabbat: { hebrew: 'וּרְצֵה וְהַחֲלִיצֵנוּ בְּיוֹם הַשַּׁבָּת הַזֶּה', translit: "Ur-tzei v'ha-cha-li-tzei-nu b'yom ha-Sha-bat ha-zeh", english: 'May it please You to strengthen us on this Shabbat day' },
+      roshChodesh: { hebrew: 'וְזָכְרֵנוּ לְטוֹבָה בְּיוֹם רֹאשׁ הַחֹדֶשׁ הַזֶּה', translit: "V'zoch-rei-nu l'to-vah b'yom Rosh ha-Cho-desh ha-zeh", english: 'Remember us for good on this day of Rosh Chodesh' },
+      roshHashanah: { hebrew: 'וְזָכְרֵנוּ לְטוֹבָה בְּיוֹם הַזִּכָּרוֹן הַזֶּה', translit: "V'zoch-rei-nu l'to-vah b'yom ha-Zi-ka-ron ha-zeh", english: 'Remember us for good on this Day of Remembrance' },
+      pesach: { hebrew: 'וְשַׂמְּחֵנוּ בְּיוֹם חַג הַמַּצּוֹת הַזֶּה, בְּיוֹם מִקְרָא קֹדֶשׁ הַזֶּה', translit: "V'sam-chei-nu b'yom Chag ha-Ma-tzot ha-zeh, b'yom mik-ra ko-desh ha-zeh", english: 'Grant us joy on this day of the Festival of Matzot, on this day of holy convocation' },
+      shavuot: { hebrew: 'וְשַׂמְּחֵנוּ בְּיוֹם חַג הַשָּׁבוּעוֹת הַזֶּה, בְּיוֹם טוֹב מִקְרָא קֹדֶשׁ הַזֶּה', translit: "V'sam-chei-nu b'yom Chag ha-Sha-vu-ot ha-zeh, b'yom tov mik-ra ko-desh ha-zeh", english: 'Grant us joy on this day of the Festival of Shavuot, on this festival day of holy convocation' },
+      sukkot: { hebrew: 'וְשַׂמְּחֵנוּ בְּיוֹם חַג הַסֻּכּוֹת הַזֶּה, בְּיוֹם מִקְרָא קֹדֶשׁ הַזֶּה', translit: "V'sam-chei-nu b'yom Chag ha-Su-kot ha-zeh, b'yom mik-ra ko-desh ha-zeh", english: 'Grant us joy on this day of the Festival of Sukkot, on this day of holy convocation' },
+      shminiAtzeret: { hebrew: 'וְשַׂמְּחֵנוּ בְּיוֹם שְׁמִינִי, חַג עֲצֶרֶת הַזֶּה, בְּיוֹם טוֹב מִקְרָא קֹדֶשׁ הַזֶּה', translit: "V'sam-chei-nu b'yom Sh'mi-ni, Chag A-tze-ret ha-zeh, b'yom tov mik-ra ko-desh ha-zeh", english: 'Grant us joy on this eighth day, the Festival of Atzeret, on this festival day of holy convocation' },
+    },
+    // the festival DAYS of Pesach / Sukkot (not Chol Hamoed): "בְּיוֹם טוֹב"
+    occasionsYomTov: {
+      pesach: { hebrew: 'וְשַׂמְּחֵנוּ בְּיוֹם חַג הַמַּצּוֹת הַזֶּה, בְּיוֹם טוֹב מִקְרָא קֹדֶשׁ הַזֶּה', translit: "V'sam-chei-nu b'yom Chag ha-Ma-tzot ha-zeh, b'yom tov mik-ra ko-desh ha-zeh", english: 'Grant us joy on this day of the Festival of Matzot, on this festival day of holy convocation' },
+      sukkot: { hebrew: 'וְשַׂמְּחֵנוּ בְּיוֹם חַג הַסֻּכּוֹת הַזֶּה, בְּיוֹם טוֹב מִקְרָא קֹדֶשׁ הַזֶּה', translit: "V'sam-chei-nu b'yom Chag ha-Su-kot ha-zeh, b'yom tov mik-ra ko-desh ha-zeh", english: 'Grant us joy on this day of the Festival of Sukkot, on this festival day of holy convocation' },
+    },
+    kiAtah: {
+      hebrew: 'כִּי אַתָּה יְיָ טוֹב וּמֵטִיב לַכֹּל וְנוֹדֶה לְּךָ עַל הָאָרֶץ',
+      translit: "Ki a-tah A-do-nai tov u-mei-tiv la-kol v'no-deh l'cha al ha-a-retz",
+      english: 'For You, L-rd, are good and do good to all, and we thank You for the land',
+    },
+    // Combined closing names every category in both lines, in Shulchan Aruch
+    // OC 208:12's wording: "…ועל המחיה ועל פרי הגפן ועל הפירות".
+    closing: {
+      thanks: {
+        AlHamichya: { hebrew: 'וְעַל הַמִּחְיָה', translit: "v'al ha-mich-yah", english: 'and for the sustenance' },
+        AlHagefen: { hebrew: 'וְעַל פְּרִי הַגָּפֶן', translit: "v'al pri ha-ga-fen", english: 'and for the fruit of the vine' },
+        AlHaetz: { hebrew: 'וְעַל הַפֵּרוֹת', translit: "v'al ha-pei-rot", english: 'and for the fruits' },
       },
-      AlHagefen: {
-        hebrew: 'וְעַל פְּרִי הַגָּפֶן. בָּרוּךְ אַתָּה יְיָ, עַל הָאָרֶץ וְעַל פְּרִי הַגָּפֶן. (בארץ ישראל: וְעַל פְּרִי גַפְנָהּ)',
-        translit: "v'al pri ha-ga-fen. Ba-ruch a-tah A-do-nai, al ha-a-retz v'al pri ha-ga-fen. (In Israel: v'al pri gaf-nah)",
-        english: 'and for the fruit of the vine. Blessed are You, L-rd, for the land and for the fruit of the vine. (In Israel: “for the fruit of its vine.”)',
+      baruch: { hebrew: 'בָּרוּךְ אַתָּה יְיָ, עַל הָאָרֶץ', translit: 'Ba-ruch a-tah A-do-nai, al ha-a-retz', english: 'Blessed are You, L-rd, for the land' },
+      seal: {
+        AlHamichya: { hebrew: 'וְעַל הַמִּחְיָה', translit: "v'al ha-mich-yah", english: 'and for the sustenance' },
+        AlHagefen: { hebrew: 'וְעַל פְּרִי הַגָּפֶן', translit: "v'al pri ha-ga-fen", english: 'and for the fruit of the vine' },
+        AlHaetz: { hebrew: 'וְעַל הַפֵּרוֹת', translit: "v'al ha-pei-rot", english: 'and for the fruits' },
       },
-      AlHaetz: {
-        hebrew: 'וְעַל הַפֵּרוֹת. בָּרוּךְ אַתָּה יְיָ, עַל הָאָרֶץ וְעַל הַפֵּרוֹת. (בארץ ישראל: וְעַל פֵּרוֹתֶיהָ)',
-        translit: "v'al ha-pei-rot. Ba-ruch a-tah A-do-nai, al ha-a-retz v'al ha-pei-rot. (In Israel: v'al pei-ro-te-ha)",
-        english: 'and for the fruits. Blessed are You, L-rd, for the land and for the fruits. (In Israel: “for its fruits.”)',
+      // the Land-of-Israel wording follows where the produce GREW, not where
+      // you are when you bless (Shulchan Aruch OC 208:10)
+      israelNote: {
+        AlHagefen: { hebrew: 'לְיַיִן מֵעַנְבֵי אֶרֶץ יִשְׂרָאֵל: וְעַל פְּרִי גַפְנָהּ', translit: "For produce of Eretz Yisrael: v'al pri gaf-nah", english: 'For wine from grapes grown in Eretz Yisrael: “for the fruit of its vine.”' },
+        AlHaetz: { hebrew: 'לְפֵרוֹת אֶרֶץ יִשְׂרָאֵל: וְעַל פֵּרוֹתֶיהָ', translit: "For produce of Eretz Yisrael: v'al pei-ro-te-ha", english: 'For fruit grown in Eretz Yisrael: “for its fruits.”' },
       },
     },
   },

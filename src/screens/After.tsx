@@ -1,15 +1,18 @@
 /**
  * Screen 5 — after-brachos. Shiur confirmation (kezayis / revi'is is
  * user-supplied — a photo can't measure it), then the resolver output:
- * Birkat Hamazon / ONE combined Me'ein Shalosh / Borei Nefashos.
+ * Birkat Hamazon / ONE combined Me'ein Shalosh (with the day's insertion on
+ * Shabbat, Rosh Chodesh and festivals — "Today is…") / Borei Nefashos.
  * Rimon celebrates (gen-AI video loop).
  */
 import { useMemo, useState } from 'react';
 import { AFTER_LABEL } from '../data/foods';
 import { NUSACHIM } from '../data/texts';
+import { assembleMeein, MEEIN_YOMTOV_VARIANT, toggleMeeinOccasion, type MeeinDay } from '../data/texts/meein';
+import type { MeeinOccasion } from '../data/texts/types';
 import { apiSync } from '../lib/api';
 import { resolveAfterBrachos } from '../lib/afterBracha';
-import { streakAlive } from '../lib/progress';
+import { streakAlive, todayStamp } from '../lib/progress';
 import { useBracha, type PendingAfterItem, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
@@ -17,6 +20,22 @@ import { Bezel, Eyebrow, PillButton, ScreenShell, WhyDropdown } from '../compone
 import { WHY_AFTER } from '../data/why';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
+
+/** the "Today is…" chips, calendar order — Shabbat toggles on its own, the
+ *  rest are one-of (Rosh Chodesh and the festivals never share a day) */
+const OCCASIONS: { key: MeeinOccasion; label: string }[] = [
+  { key: 'shabbat', label: 'Shabbat' },
+  { key: 'roshChodesh', label: 'Rosh Chodesh' },
+  { key: 'roshHashanah', label: 'Rosh Hashanah' },
+  { key: 'sukkot', label: 'Sukkot' },
+  { key: 'shminiAtzeret', label: 'Shemini Atzeret' },
+  { key: 'pesach', label: 'Pesach' },
+  { key: 'shavuot', label: 'Shavuot' },
+];
+const CHIP =
+  'rounded-full px-3 py-1.5 text-[11px] font-semibold ring-1 transition-[background-color,color,transform] duration-150 ease-out active:scale-[0.97]';
+const chip = (on: boolean) =>
+  `${CHIP} ${on ? 'bg-espresso text-cream ring-espresso' : 'bg-white/60 text-espresso-soft ring-espresso/[0.12] hover:ring-espresso/30'}`;
 
 export function After() {
   const {
@@ -33,8 +52,22 @@ export function After() {
     updatePendingItem,
     clearPendingAfter,
     completeAfter,
+    meeinDay,
+    setMeeinDay,
   } = useBracha();
   const pack = NUSACHIM[nusach];
+  // "Today is…" — the day insertion of Me'ein Shalosh (OC 208:12). The pick is
+  // kept for the local calendar day it was made on (see MeeinDayChoice).
+  const today = todayStamp();
+  const day: MeeinDay = meeinDay.day === today ? meeinDay : { occasions: [], yomTov: false };
+  const toggleOccasion = (k: MeeinOccasion) =>
+    setMeeinDay({ day: today, occasions: toggleMeeinOccasion(day.occasions, k), yomTov: !!day.yomTov });
+  const setYomTov = (yomTov: boolean) => setMeeinDay({ day: today, occasions: [...day.occasions], yomTov });
+  // Pesach / Sukkot under a nusach whose festival line differs on the festival
+  // day itself (Ashkenaz / Edot "בְּיוֹם טוֹב מִקְרָא קֹדֶשׁ") → offer the choice
+  const yomTovChoice = day.occasions.some(
+    (k) => MEEIN_YOMTOV_VARIANT.includes(k) && !!pack.meeinShalosh.occasionsYomTov?.[k as 'pesach' | 'sukkot'],
+  );
   // Resumed from the home widget (no live meal in flight) → the meal is long
   // over, skip the "enjoy your meal" pause and go straight to the shiur check.
   const resumed = items.length === 0;
@@ -182,6 +215,7 @@ export function After() {
     result.meeinInserts.length > 0
       ? `Me’ein Shalosh — ${result.meeinInserts.map((k) => AFTER_LABEL[k]).join(' + ')}`
       : '';
+  const meein = result.meeinInserts.length > 0 ? assembleMeein(pack, result.meeinInserts, day) : null;
 
   return (
     <ScreenShell wide>
@@ -271,34 +305,83 @@ export function After() {
             <p className="pb-4 text-[11.5px] leading-snug text-mocha">
               One combined blessing — the inserts join, they are never said separately.
             </p>
-            {textMode === 'hebrew' && (
-              <p dir="rtl" lang="he" className="hebrew text-[22px] text-espresso">
-                {pack.meeinShalosh.opening.hebrew}{' '}
-                {result.meeinInserts.map((k) => pack.meeinShalosh.inserts[k].hebrew).join(' וְ')}{' '}
-                {pack.meeinShalosh.body.hebrew}{' '}
-                {pack.meeinShalosh.seals[result.meeinInserts[0]].hebrew}
+            {/* day insertion: Shabbat first, then the one day line, before "כִּי אַתָּה" */}
+            <div
+              className="mb-4 rounded-[1rem] bg-espresso/[0.04] px-3.5 py-3 ring-1 ring-espresso/[0.06]"
+              data-meein-day={day.occasions.join('+') || 'weekday'}
+            >
+              <p className="pb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-mocha">Today is…</p>
+              <div className="flex flex-wrap gap-1.5">
+                {OCCASIONS.map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={day.occasions.includes(key)}
+                    onClick={() => toggleOccasion(key)}
+                    className={chip(day.occasions.includes(key))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {yomTovChoice && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5" data-meein-yomtov={day.yomTov ? 'yomtov' : 'cholhamoed'}>
+                  <button type="button" aria-pressed={!day.yomTov} onClick={() => setYomTov(false)} className={chip(!day.yomTov)}>
+                    Chol Hamoed
+                  </button>
+                  <button type="button" aria-pressed={!!day.yomTov} onClick={() => setYomTov(true)} className={chip(!!day.yomTov)}>
+                    Yom Tov itself
+                  </button>
+                </div>
+              )}
+              <p className="pt-2 text-[10.5px] leading-snug text-mocha">
+                {day.occasions.length
+                  ? `Today’s line is added before “כִּי אַתָּה”${day.occasions.includes('shminiAtzeret') ? ' — Simchat Torah says it too' : ''}.`
+                  : 'On Shabbat, Rosh Chodesh or a festival, tap the day and its line joins the blessing.'}
+              </p>
+            </div>
+            {meein && textMode === 'hebrew' && (
+              <p dir="rtl" lang="he" className="hebrew text-[22px] text-espresso" data-meein-text>
+                {meein.hebrew}
               </p>
             )}
-            {textMode === 'translit' && (
-              <p className="font-display text-[15px] italic leading-relaxed text-espresso">
-                {pack.meeinShalosh.opening.translit}{' '}
-                {result.meeinInserts.map((k) => pack.meeinShalosh.inserts[k].translit).join(' v\'')}{' '}
-                {pack.meeinShalosh.body.translit} {pack.meeinShalosh.seals[result.meeinInserts[0]].translit}
+            {meein && textMode === 'translit' && (
+              <p className="font-display text-[15px] italic leading-relaxed text-espresso" data-meein-text>
+                {meein.translit}
               </p>
             )}
-            {textMode === 'english' && (
-              <p className="text-[14px] leading-relaxed text-espresso">
-                {pack.meeinShalosh.opening.english}{' '}
-                {result.meeinInserts.map((k) => pack.meeinShalosh.inserts[k].english).join(', and ')}
-                , {pack.meeinShalosh.body.english}{' '}
-                {pack.meeinShalosh.seals[result.meeinInserts[0]].english}
+            {meein && textMode === 'english' && (
+              <p className="text-[14px] leading-relaxed text-espresso" data-meein-text>
+                {meein.english}
               </p>
             )}
+            {meein?.israelNotes.map((n) => (
+              <p
+                key={n.english}
+                dir={textMode === 'hebrew' ? 'rtl' : undefined}
+                lang={textMode === 'hebrew' ? 'he' : undefined}
+                className={`pt-2 text-mocha ${textMode === 'hebrew' ? 'hebrew text-[15px]' : 'text-[11.5px] leading-snug'}`}
+              >
+                ({n[textMode]})
+              </p>
+            ))}
             <div className="mt-5 border-t border-espresso/[0.07] pt-4">
-              {/* file name mirrors the resolver's canonical insert order (michya → gefen → etz) */}
-              <HearIt
-                src={`${import.meta.env.BASE_URL}audio/meein-${result.meeinInserts.map((k) => k.toLowerCase()).join('-')}.mp3`}
-              />
+              {/* recordings are Nusach Ari wording — never play them under another nusach's text */}
+              {nusach === 'ari' && day.occasions.length === 0 ? (
+                // file name mirrors the resolver's canonical insert order (michya → gefen → etz)
+                <HearIt
+                  src={`${import.meta.env.BASE_URL}audio/meein-${result.meeinInserts.map((k) => k.toLowerCase()).join('-')}.mp3`}
+                />
+              ) : nusach === 'ari' ? (
+                // the recordings speak the weekday text — never play them under a day line
+                <p className="text-[11px] leading-snug text-mocha" data-meein-audio="weekday-only">
+                  The recording is the weekday text — with today’s line added, read it from the text above.
+                </p>
+              ) : (
+                <p className="text-[11px] leading-snug text-mocha">
+                  Audio for this blessing is recorded in Nusach Ari wording only, so it isn’t offered for {pack.label}.
+                </p>
+              )}
             </div>
             <WhyDropdown className="mt-5" entry={WHY_AFTER.meeinShalosh} />
           </Bezel>
@@ -327,6 +410,17 @@ export function After() {
               <HearIt src={`${import.meta.env.BASE_URL}audio/borei-nefashos.mp3`} />
             </div>
             <WhyDropdown className="mt-5" entry={WHY_AFTER.boreiNefashos} />
+          </Bezel>
+        )}
+
+        {/* items no after-blessing could be placed for — never silently dropped */}
+        {result.unresolved.length > 0 && (
+          <Bezel className="rise-in rise-in-3" innerClassName="px-6 py-5">
+            <p className="text-[12.5px] leading-relaxed text-espresso-soft" data-after-unresolved>
+              <strong className="text-espresso">Ask a rabbi:</strong> the app couldn’t place{' '}
+              <span className="capitalize">{result.unresolved.join(' · ').toLowerCase()}</span> in an
+              after-blessing, so it isn’t shown above. Please check with a qualified rabbi.
+            </p>
           </Bezel>
         )}
 

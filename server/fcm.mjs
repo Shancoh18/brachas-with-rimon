@@ -56,6 +56,15 @@ export const fcmReady = () => !!creds;
 export const fcmProjectId = () => creds?.projectId ?? null;
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
+/** Retry-After → ms for the one 429/503 retry: seconds or an HTTP-date, 1 s
+ *  when absent or unparseable, never more than 5 s (a push is time-sensitive). */
+const retryAfterMs = (header) => {
+  const h = String(header ?? '').trim();
+  let ms = 1000;
+  if (/^\d+$/.test(h)) ms = Number(h) * 1000;
+  else if (h && !Number.isNaN(Date.parse(h))) ms = Date.parse(h) - Date.now();
+  return Math.min(5000, Math.max(0, ms));
+};
 
 // Google access tokens live 60 min; refresh at 50 to stay well inside. One
 // in-flight exchange at a time — a burst of pushes must not fan out into a
@@ -120,18 +129,45 @@ export const sendFcm = async (deviceToken, title, body) => {
   };
   let res;
   let data = {};
-  try {
-    res = await fetch(`${HOST}/v1/projects/${encodeURIComponent(creds.projectId)}/messages:send`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' },
-      body: JSON.stringify(message),
-      signal: AbortSignal.timeout(6000),
-    });
-    data = await res.json().catch(() => ({}));
-  } catch (e) {
-    const timeout = /timeout|abort/i.test(String(e.name || e.message));
-    fail('fcm', 0, 'send', timeout ? 'timeout' : String(e.message).slice(0, 120));
-    return { ok: false, status: 0, reason: timeout ? 'timeout' : 'network', gone: false };
+  // Retry ONCE per class (review 2026-09-22), mirroring apns.mjs: a 401/403
+  // means our cached bearer went stale — drop it, exchange again, resend; a
+  // 429/503 is Google asking us to wait — min(Retry-After, 5 s), resend. At
+  // most two sends per call, still never rejects; a retried-then-delivered
+  // push leaves no failure mark for /api/status.
+  let reauthed = false;
+  let waited = false;
+  for (;;) {
+    try {
+      res = await fetch(`${HOST}/v1/projects/${encodeURIComponent(creds.projectId)}/messages:send`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${bearer}`, 'content-type': 'application/json' },
+        body: JSON.stringify(message),
+        signal: AbortSignal.timeout(6000),
+      });
+      data = await res.json().catch(() => ({}));
+    } catch (e) {
+      const timeout = /timeout|abort/i.test(String(e.name || e.message));
+      fail('fcm', 0, 'send', timeout ? 'timeout' : String(e.message).slice(0, 120));
+      return { ok: false, status: 0, reason: timeout ? 'timeout' : 'network', gone: false };
+    }
+    if ((res.status === 401 || res.status === 403) && !reauthed) {
+      reauthed = true;
+      access = { token: '', expires: 0 }; // stale bearer — never reuse it
+      try {
+        bearer = await accessToken();
+      } catch (e) {
+        fail('fcm', e.status ?? 0, 'token', String(e.message).slice(0, 160));
+        return { ok: false, status: e.status ?? 0, reason: 'token_exchange', gone: false };
+      }
+      console.log(`fcm: ${res.status} on send — bearer re-exchanged, resending once`);
+      continue;
+    }
+    if ((res.status === 429 || res.status === 503) && !waited) {
+      waited = true;
+      await new Promise((r) => setTimeout(r, retryAfterMs(res.headers.get('retry-after'))));
+      continue;
+    }
+    break;
   }
   const status = res.status;
   const err = data?.error || {};

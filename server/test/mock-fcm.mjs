@@ -9,6 +9,11 @@
  *   token starting "dead"  → 404 NOT_FOUND / UNREGISTERED   (device gone)
  *   token starting "bad0"  → 400 INVALID_ARGUMENT           (bad token)
  *   token starting "f500"  → 500 INTERNAL                   (transient)
+ *   token starting "auth1" → 401 UNAUTHENTICATED on its FIRST send only (stale bearer)
+ *   token starting "r429"  → 429 RESOURCE_EXHAUSTED + Retry-After: 1, FIRST send only
+ *   token starting "s503"  → 503 UNAVAILABLE + Retry-After: 1, FIRST send only
+ *                            (those three answer 200 from the second send on —
+ *                            the sender must retry exactly once)
  *   anything else          → 200 { name: projects/.../messages/<n> }
  *
  * POST /token answers every well-formed JWT-bearer grant with the access
@@ -22,6 +27,7 @@ import { createServer } from 'http';
 export function startMockFcm(port = 0) {
   const requests = [];
   const tokenCalls = [];
+  const failedOnce = new Set(); // once-only tokens that already had their failure
   const server = createServer((req, res) => {
     let data = '';
     req.on('data', (c) => (data += c));
@@ -55,11 +61,16 @@ export function startMockFcm(port = 0) {
         priority: msg.android?.priority ?? '',
         at: Date.now(),
       });
-      const fcmErr = (code, status, errorCode, message) => {
-        res.writeHead(code, { 'content-type': 'application/json' });
+      const fcmErr = (code, status, errorCode, message, extraHeaders = {}) => {
+        res.writeHead(code, { 'content-type': 'application/json', ...extraHeaders });
         res.end(JSON.stringify({ error: { code, status, message, details: [{ '@type': 'type.googleapis.com/google.firebase.fcm.v1.FcmError', errorCode }] } }));
       };
+      const retryable = /^(auth1|r429|s503)/.test(token) && !failedOnce.has(token);
+      if (retryable) failedOnce.add(token);
       if (token.startsWith('dead')) fcmErr(404, 'NOT_FOUND', 'UNREGISTERED', 'Requested entity was not found.');
+      else if (retryable && token.startsWith('auth1')) fcmErr(401, 'UNAUTHENTICATED', 'UNAUTHENTICATED', 'Request had invalid authentication credentials.');
+      else if (retryable && token.startsWith('r429')) fcmErr(429, 'RESOURCE_EXHAUSTED', 'QUOTA_EXCEEDED', 'Quota exceeded.', { 'retry-after': '1' });
+      else if (retryable && token.startsWith('s503')) fcmErr(503, 'UNAVAILABLE', 'UNAVAILABLE', 'Service unavailable.', { 'retry-after': '1' });
       else if (token.startsWith('bad0')) fcmErr(400, 'INVALID_ARGUMENT', 'INVALID_ARGUMENT', 'The registration token is not a valid FCM registration token');
       else if (token.startsWith('f500')) fcmErr(500, 'INTERNAL', 'INTERNAL', 'Internal error encountered.');
       else {

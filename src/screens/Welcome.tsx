@@ -1,5 +1,5 @@
 /** Screen 1 — nusach selector + camera. Rimon greets. */
-import { useRef, useState } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 import { NUSACHIM, type NusachId } from '../data/texts';
 import { useBracha } from '../store';
 import { LESSONS } from '../data/learn';
@@ -8,8 +8,10 @@ import { Rimon } from '../components/Rimon';
 import { LeagueNudge } from '../components/LeagueNudge';
 import { ReminderNudge } from '../components/ReminderNudge';
 import { Eyebrow, PillButton, ScreenShell } from '../components/ui';
-import { analyzePhoto, analyzeReason, demoMeal, resizeImage, type FallbackReason } from '../lib/analyze';
+import { analyzePhoto, demoMeal, photoFailReason, resizeImage, type AnalyzeResult, type PhotoFailReason } from '../lib/analyze';
+import { apiSync } from '../lib/api';
 import { toMealItems } from '../lib/classify';
+import { isAndroid } from '../lib/native';
 
 /** epoch ms → "just now" / "25m ago" / "2h ago" / "yesterday" / "3 days ago" */
 function savedAgo(ts: number): string {
@@ -26,6 +28,21 @@ export function Welcome() {
   const { nusach, setNusach, setScreen, setPhoto, setItems, setUnmatched, setDemoFallback, notePhotoFlow, progress, dayStats, setTab, pendingAfter } =
     useBracha();
   const fileRef = useRef<HTMLInputElement>(null);
+  // Android's WebView opens the CAMERA only for an <input capture> (Capacitor's
+  // BridgeWebChromeClient: capture + image/* → camera, after the CAMERA
+  // permission prompt); a plain image input goes straight to the gallery /
+  // file picker. iOS shows its own Take Photo / Photo Library sheet for the
+  // plain input, and the web has no native shell — so the camera input and
+  // the gallery link below exist on Android only.
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const android = isAndroid();
+  // both inputs: analyse the picked photo, then clear the input so the same
+  // photo can be picked again
+  const onPhotoPicked = (e: ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) void runAnalysis(f);
+    e.target.value = '';
+  };
   const [busy, setBusy] = useState(false);
 
   const alive = streakAlive(progress);
@@ -48,37 +65,27 @@ export function Welcome() {
     setBusy(true);
     setScreen('identify');
     try {
-      let result;
-      let fellBack = false;
-      let reason: FallbackReason | null = null;
+      // a failed photo hands back an EMPTY plate — never a substitute meal
+      let result: AnalyzeResult = { items: [], unmatched: [] };
+      let failReason: PhotoFailReason | null = null;
       if (file) {
-        let decoded: Awaited<ReturnType<typeof resizeImage>> | null = null;
-        try {
-          decoded = await resizeImage(file);
-        } catch {
-          // the WebView can't decode this file (HEIF from a gallery on Android,
-          // a corrupt image) — before, this escaped every catch and left the
-          // Identify screen spinning forever with no way out
-          decoded = null;
-        }
-        if (decoded) {
-          setPhoto(decoded.dataUrl);
+        // an undecodable photo (HEIF from a gallery on Android, an unusual
+        // HEIC, a corrupt file) used to throw straight out of here and strand
+        // the user on "identifying your meal" with the tab bar hidden
+        const resized = await resizeImage(file).catch(() => null);
+        setPhoto(resized?.dataUrl ?? null);
+        if (!resized) {
+          failReason = 'bad_image';
+        } else {
           try {
-            result = await analyzePhoto(decoded.base64, decoded.mediaType);
+            result = await analyzePhoto(resized.base64, resized.mediaType);
             notePhotoFlow(); // Snap & Bless daily
           } catch (e) {
-            // Identification unreachable / refused / timed out. Hand back an
-            // EMPTY plate — never a substitute meal. Confirm explains WHY and
-            // opens manual search, so the user adds what they are eating.
-            result = { items: [], unmatched: [] };
-            fellBack = true;
-            reason = analyzeReason(e);
+            // Identification failed (limit, busy, bad photo, offline…). Keep
+            // the plate empty; Confirm says WHY and opens manual search, so
+            // the user adds what they are actually eating.
+            failReason = photoFailReason(e);
           }
-        } else {
-          setPhoto(null);
-          result = { items: [], unmatched: [] };
-          fellBack = true;
-          reason = 'unreadable_photo';
         }
       } else {
         setPhoto(null);
@@ -87,8 +94,7 @@ export function Welcome() {
       // the user may have cancelled from Identify meanwhile — never yank them
       // back to Confirm for a plate they walked away from
       if (useBracha.getState().screen !== 'identify') return;
-      setDemoFallback(fellBack);
-      useBracha.getState().setFallbackReason(fellBack ? reason ?? 'failed' : null);
+      setDemoFallback(failReason != null, failReason ?? undefined);
       setItems(toMealItems(result.items));
       setUnmatched(result.unmatched ?? []);
       setScreen('confirm');
@@ -155,7 +161,17 @@ export function Welcome() {
           {(Object.keys(NUSACHIM) as NusachId[]).map((id) => (
             <button
               key={id}
-              onClick={() => setNusach(id)}
+              onClick={() => {
+                setNusach(id);
+                // save the choice on the account now, so another device / a
+                // reinstall picks it up. It stays pending until the server has
+                // it (offline: the next boot sync sends it)
+                const { serverToken, progress: p, markNusachSynced } = useBracha.getState();
+                if (serverToken)
+                  void apiSync(serverToken, p, undefined, id)
+                    .then(() => markNusachSynced(id))
+                    .catch(() => undefined);
+              }}
               className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
                 nusach === id ? 'bg-espresso text-cream shadow-sm' : 'text-espresso-soft'
               }`}
@@ -172,9 +188,21 @@ export function Welcome() {
         )}
 
         <div className="rise-in rise-in-3 flex flex-col items-center gap-3">
-          <PillButton variant="rimon" icon="📷" onClick={() => fileRef.current?.click()} disabled={busy}>
+          <PillButton variant="rimon" icon="📷" onClick={() => (android ? cameraRef : fileRef).current?.click()} disabled={busy}>
             Photograph my meal
           </PillButton>
+          {android && (
+            // the camera input can't reach the gallery, and a denied camera
+            // permission leaves it doing nothing — this is the way in for both
+            <button
+              data-gallery-pick
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className="-my-2 inline-flex min-h-[48px] items-center rounded-full px-4 text-[12.5px] font-medium text-mocha underline decoration-mocha/30 underline-offset-4 transition-colors duration-150 hover:text-espresso disabled:opacity-40"
+            >
+              or choose a photo from your gallery
+            </button>
+          )}
           <PillButton
             icon="🔎"
             onClick={() => {
@@ -199,12 +227,19 @@ export function Welcome() {
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void runAnalysis(f);
-              e.target.value = '';
-            }}
+            onChange={onPhotoPicked}
           />
+          {android && (
+            <input
+              ref={cameraRef}
+              data-camera-input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={onPhotoPicked}
+            />
+          )}
         </div>
 
         {/* after-blessings saved for later — the reminder-style home widget.

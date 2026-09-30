@@ -120,7 +120,9 @@ export function Benching() {
         </div>
 
         {/* the COMPLETE text lives on chabad.org — the in-app version is a
-            study outline, so hand the full davening text over prominently */}
+            study outline, so hand the full davening text over prominently.
+            That page is the CHABAD (Nusach Ari) wording, so under Ashkenaz /
+            Edot it is offered for reading only — never as the text to recite */}
         <a
           href="https://www.chabad.org/library/article_cdo/aid/135366/jewish/Grace-After-Meals.htm"
           target="_blank"
@@ -128,14 +130,24 @@ export function Benching() {
           className="rise-in mt-5 block rounded-[1.25rem] border border-gold/30 bg-gold/[0.08] px-5 py-4"
           data-full-text-link
         >
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">The complete text</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">
+            {pack.id === 'ari' ? 'The complete text' : 'Learn more'}
+          </p>
           <p className="mt-1 text-[13.5px] font-semibold leading-snug text-espresso">
-            Read the FULL Birkat Hamazon — every word, Hebrew &amp; English, with the weekday and
-            special-day intros and zimmun — on chabad.org →
+            {pack.id === 'ari' ? (
+              <>
+                Read the FULL Birkat Hamazon — every word, Hebrew &amp; English, with the weekday and
+                special-day intros and zimmun — on chabad.org →
+              </>
+            ) : (
+              <>Read about Birkat Hamazon on chabad.org (Chabad text) →</>
+            )}
           </p>
           <p className="mt-1.5 text-[10.5px] leading-snug text-mocha">
-            AI makes mistakes, to learn more information please read the article. This page is a
-            study outline; recite the full text from the link, a siddur, or a bentcher.
+            AI makes mistakes, to learn more information please read the article.{' '}
+            {pack.id === 'ari'
+              ? 'This page is a study outline; recite the full text from the link, a siddur, or a bentcher.'
+              : `This page is a study outline; recite the full ${pack.label} wording from your own siddur or bentcher.`}
           </p>
         </a>
 
@@ -147,7 +159,9 @@ export function Benching() {
             </p>
           ))}
           <p className="mt-2 border-t border-gold/15 pt-2 text-[10.5px] leading-snug text-mocha">
-            Text: the {pack.label} tradition, per chabad.org.
+            {pack.id === 'ari'
+              ? `Text: the ${pack.label} tradition, per chabad.org.`
+              : `Outline of the ${pack.label} text — recite the full wording from your own siddur or bentcher.`}
           </p>
         </div>
 

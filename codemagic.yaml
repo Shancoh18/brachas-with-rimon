@@ -23,23 +23,89 @@
 #      by hand in Play Console regardless (Google's rule).
 
 definitions:
-  web_tests: &web_tests
-    - name: Install dependencies
+  # Mirrors scripts/preflight.mjs EXACTLY — same suites, same flags, same
+  # order (preflight's step 1, the `tsc -b --force` type-check, runs inside
+  # `npm run build` = `tsc -b && vite build` at the end of this block). Keep
+  # the two lists in lockstep: a suite that gates the Pages / master upload
+  # gates every store upload too.
+  # Each step carries its OWN anchor and every workflow lists the aliases one
+  # per line (docs.codemagic.io/yaml-basic-configuration/yaml-getting-started/,
+  # section "Reusing sections"). A step defined here but not aliased in a
+  # workflow never runs — add every new step's alias to ALL THREE workflows.
+  # Do NOT put one anchor on the whole list and alias THAT as a script step: it
+  # nests a list inside `scripts:`, Codemagic rejects the ENTIRE file ("error
+  # in the first script step") and silently ignores every push — which is
+  # what happened from release 36 (2026-09-22) until this fix.
+  web_tests:
+    - &install_deps
+      name: Install dependencies
       script: npm ci
-    - name: Server scenario tests (push + chat mocks — APNs, FCM, Apple)
+    - &server_scenarios
+      name: Server scenario tests (push + chat mocks — APNs, FCM, Apple)
       # Boots the real API against mock APNs / FCM / Apple servers and asserts
       # every push scenario (see the suite). A red suite blocks any upload.
       script: |
         cd server && npm ci && cd ..
         node server/test/scenarios.mjs
-    - name: Content guard (model-written text)
+    - &terms_backfill
+      name: Terms-gate backfill (pre-gate accounts grandfathered)
+      # hotfix 2026-09-22: accounts that predate the community-rules gate are
+      # stamped once at boot (iOS build 35 has no "I agree" panel and showed
+      # "Couldn't send that" on every chat message); later accounts stay gated;
+      # a real acceptance is never overwritten; re-running changes nothing.
+      script: node --experimental-sqlite server/test/terms-backfill.mjs
+    - &vision_capacity
+      name: Vision capacity (photo slots, quotas, rate limits)
+      # Real server against a MOCK Anthropic: 17 dropped uploads must not take
+      # photo ID down, failures are refunded, the app-wide cap answers
+      # global_limit, and one network's guest mints don't block its photos.
+      script: node server/test/vision-capacity.mjs
+    - &food_search
+      name: Food search + aliases
+      # alias keys must resolve and Hebrew / typo lookups must land on the
+      # RIGHT entry — a mis-aimed alias would show a user the wrong bracha
+      script: node --experimental-strip-types server/test/search.mjs
+    - &content_guard
+      name: Content guard (model-written text)
       # Dependency-free unit test of server/content-guard.mjs: cite-tag /
       # markup stripping + refusal-text detection for every reading surface
       # (daily thought, learned-food notes). A reader must never see tool
       # artefacts or the model talking about itself.
       script: node server/test/content-guard.mjs
-    - name: Build web app
-      script: npm run build
+    - &daily_thought
+      name: Daily thought (Daily Wisdom lookup + page checks)
+      # v4 2026-09-29: the server fetches chabad.org's dated lesson page with
+      # web_fetch and verifies the PAGE (canonical lesson, today's date line,
+      # the report's URL) — the web_search lookup went stale ~1 day in 3 and
+      # once served the wrong week's lesson. Mock Anthropic, never spends.
+      script: node server/test/daily-thought.mjs
+    - &progress_rules
+      name: Streak + progress rules
+      # streak rules incl. the Shabbat grace (Fri → Sun keeps the streak)
+      script: node --experimental-strip-types server/test/progress.mjs
+    - &after_blessings
+      name: After-blessings (Me'ein Shalosh text + resolver)
+      # Combined closing names every category, Ari body = chabad.org, and a
+      # learned after-bracha is never silently dropped. A red suite blocks
+      # every store upload — this is liturgy users recite.
+      script: node --experimental-strip-types server/test/after-blessings.mjs
+    - &before_blessings
+      name: Before-blessings (kedima order + exemptions)
+      # Recitation order, the Hamotzi exemption, and wine's Hagafen covering
+      # the other drinks (no separate Shehakol on the water). A red suite
+      # blocks every store upload — this is the order users recite in.
+      script: node --experimental-strip-types server/test/brachos.mjs
+    - &build_web
+      name: Build web app
+      # Vite inlines the Google OAuth client ids at build time: without them
+      # "Continue with Google" is compiled out (googleAvailable() → false) with
+      # no error anywhere, so say loudly whether they were injected (they come
+      # from the `google_oauth` env group — see the commented `groups:` lines
+      # in each workflow and PLAYSTORE.md step 5). Values are never printed.
+      script: |
+        [ -n "$VITE_GOOGLE_WEB_CLIENT_ID" ] && echo "VITE_GOOGLE_WEB_CLIENT_ID: set" || echo "VITE_GOOGLE_WEB_CLIENT_ID: NOT set — Continue with Google stays hidden on Android/web in this build"
+        [ -n "$VITE_GOOGLE_IOS_CLIENT_ID" ] && echo "VITE_GOOGLE_IOS_CLIENT_ID: set" || echo "VITE_GOOGLE_IOS_CLIENT_ID: NOT set — Continue with Google stays hidden on iOS in this build"
+        npm run build
 
 workflows:
   ios-app-store:
@@ -57,13 +123,34 @@ workflows:
     integrations:
       app_store_connect: rimon # must match the integration name you create
     environment:
+      # groups:
+      #   - google_oauth # VITE_GOOGLE_WEB_CLIENT_ID only for now (PLAYSTORE.md step 5)
+      # ! do NOT add VITE_GOOGLE_IOS_CLIENT_ID to that group until Info.plist carries the
+      #   reversed-client-id URL scheme — with the id set and no scheme, tapping Google crashes iOS
+      # ^ uncomment after creating the (possibly empty) env group google_oauth in Codemagic — a missing group fails the build
       node: 22
-      xcode: latest
+      # Pinned, not `latest`: Codemagic moves `latest` to Xcode 27 (iOS 27 SDK)
+      # after an announcement, and Apple TN3187 says an app built with the SDK
+      # after iOS 26 WITHOUT the UIScene life cycle won't launch. This app has no
+      # SceneDelegate / UIApplicationSceneManifest yet: adopt UIScene and test it
+      # on TestFlight before moving this pin to 27.x. (26.6 = Codemagic's current
+      # default and satisfies Apple's iOS 26 SDK upload rule.)
+      xcode: 26.6
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.shancoh.brachaswithrimon
     scripts:
-      - *web_tests
+      - *install_deps
+      - *server_scenarios
+      - *terms_backfill
+      - *vision_capacity
+      - *food_search
+      - *content_guard
+      - *daily_thought
+      - *progress_rules
+      - *after_blessings
+      - *before_blessings
+      - *build_web
       - name: Sync Capacitor iOS
         script: npx cap sync ios
       - name: Build signed IPA
@@ -89,12 +176,30 @@ workflows:
     # master → this workflow) once the keystore is in Codemagic. versionCode in
     # android/app/build.gradle must be bumped before every upload to Play.
     environment:
+      # groups:
+      #   - google_oauth # VITE_GOOGLE_WEB_CLIENT_ID (PLAYSTORE.md step 5)
+      # ^ uncomment after creating the (possibly empty) env group google_oauth in Codemagic — a missing group fails the build
       node: 22
-      java: 17
+      # Capacitor 8 compiles at Java 21: every @capacitor/* Android module and
+      # the generated android/app/capacitor.build.gradle set source/target
+      # compatibility VERSION_21 with no Gradle toolchain, so javac 17 stops at
+      # "invalid source release: 21" and no bundle is ever produced (review
+      # 2026-09-22). Codemagic's Mac mini M2 image ships zulu-21.
+      java: 21
       android_signing:
         - brachas_upload # reference name of the uploaded keystore (see header)
     scripts:
-      - *web_tests
+      - *install_deps
+      - *server_scenarios
+      - *terms_backfill
+      - *vision_capacity
+      - *food_search
+      - *content_guard
+      - *daily_thought
+      - *progress_rules
+      - *after_blessings
+      - *before_blessings
+      - *build_web
       - name: Sync Capacitor Android
         script: npx cap sync android
       - name: Build signed App Bundle
@@ -104,7 +209,9 @@ workflows:
         script: |
           cd android
           chmod +x gradlew
-          ./gradlew bundleRelease --no-daemon
+          echo "--- JDK running this build (must be 21) ---"
+          java -version
+          ./gradlew bundleRelease --no-daemon || exit 1
           echo "--- signer of the bundle ---"
           keytool -printcert -jarfile app/build/outputs/bundle/release/app-release.aab | head -20 || true
     artifacts:
@@ -121,16 +228,31 @@ workflows:
     max_build_duration: 45
     instance_type: mac_mini_m2
     environment:
+      # groups:
+      #   - google_oauth # VITE_GOOGLE_WEB_CLIENT_ID (PLAYSTORE.md step 5)
+      # ^ uncomment after creating the (possibly empty) env group google_oauth in Codemagic — a missing group fails the build
       node: 22
-      java: 17
+      java: 21 # Capacitor 8 = Java 21 (see android-play)
     scripts:
-      - *web_tests
+      - *install_deps
+      - *server_scenarios
+      - *terms_backfill
+      - *vision_capacity
+      - *food_search
+      - *content_guard
+      - *daily_thought
+      - *progress_rules
+      - *after_blessings
+      - *before_blessings
+      - *build_web
       - name: Sync Capacitor Android
         script: npx cap sync android
       - name: Build debug APK
         script: |
           cd android
           chmod +x gradlew
+          echo "--- JDK running this build (must be 21) ---"
+          java -version
           ./gradlew assembleDebug --no-daemon
     artifacts:
       - android/app/build/outputs/apk/debug/*.apk

@@ -251,32 +251,42 @@ export function Reference() {
                   (cake/pasta → Al Hamichya; wine/grape juice → Al Hagefen; the Seven-Species fruits
                   → Al Ha’etz). When several apply, they combine into a single blessing.
                 </p>
-                {(['AlHamichya', 'AlHagefen', 'AlHaetz'] as const).map((k) => (
+                {(['AlHamichya', 'AlHagefen', 'AlHaetz'] as const).map((k) => {
+                  const c = pack.meeinShalosh.closing;
+                  const sealLine = (f: 'hebrew' | 'translit' | 'english') =>
+                    `${c.thanks[k][f]}. ${c.baruch[f]} ${c.seal[k][f]}.${c.israelNote?.[k] ? ` (${c.israelNote[k]![f]})` : ''}`;
+                  return (
                   <div key={k} className="border-t border-espresso/[0.06] py-2.5">
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gold">
                       {k === 'AlHamichya' ? 'Al Hamichya — grain' : k === 'AlHagefen' ? 'Al Hagefen — wine' : 'Al Ha’etz — special fruit'}
                     </p>
                     {textMode === 'hebrew' ? (
                       <p dir="rtl" lang="he" className="hebrew mt-1 text-[17px] text-espresso">
-                        {pack.meeinShalosh.inserts[k].hebrew} … {pack.meeinShalosh.seals[k].hebrew}
+                        {pack.meeinShalosh.inserts[k].hebrew} … {sealLine('hebrew')}
                       </p>
                     ) : textMode === 'translit' ? (
                       <p className="mt-1 font-display text-[13.5px] italic leading-relaxed text-espresso">
-                        {pack.meeinShalosh.inserts[k].translit} … {pack.meeinShalosh.seals[k].translit}
+                        {pack.meeinShalosh.inserts[k].translit} … {sealLine('translit')}
                       </p>
                     ) : (
                       <p className="mt-1 text-[12.5px] leading-relaxed text-espresso">
-                        {pack.meeinShalosh.inserts[k].english} … {pack.meeinShalosh.seals[k].english}
+                        {pack.meeinShalosh.inserts[k].english} … {sealLine('english')}
                       </p>
                     )}
-                    <div className="mt-2">
-                      <HearIt src={`${BASE}audio/meein-${k.toLowerCase()}.mp3`} />
-                    </div>
+                    {/* Nusach Ari recordings only — see After.tsx */}
+                    {nusach === 'ari' && (
+                      <div className="mt-2">
+                        <HearIt src={`${BASE}audio/meein-${k.toLowerCase()}.mp3`} />
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
                 <p className="pt-2 text-[10.5px] leading-snug text-mocha">
-                  Shown here as opening + seal; the app assembles the full text for you after every
-                  meal on the after-blessings screen.
+                  Shown here as opening + closing. When you ate from more than one group, every group
+                  is named in both closing lines (grain, then wine, then fruit) — the after-blessings
+                  screen assembles the full combined text for you after every meal, and adds the
+                  Shabbat, Rosh Chodesh or festival line when you tap the day there.
                 </p>
               </div>
             )}

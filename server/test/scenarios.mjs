@@ -399,12 +399,60 @@ try {
   r = await api('/api/push/subscribe', { method: 'POST', token: tokB, body: { subscription: { endpoint: 'https://evil.example.com/hook' }, times: [] } });
   check('web-push subscribe rejects non-push-service endpoints', r.status === 400);
 
+  // ------------------------------ Web Push row survives a native registration
+  // One account on a desktop PWA (Web Push reminders + the tz offset that build
+  // 35 sends nowhere else) AND the iPhone app: registering the phone used to
+  // wipe the Web Push row (desktop reminders off, "today" fell back to UTC).
+  // The row stays now; pushSubscribers() — the mealtime scheduler's list —
+  // still skips the account (the phone schedules its own), so no double
+  // reminder; pushAudience() (owner broadcast) lists it once. (review 2026-09-22)
+  const tokDual = await register('Desktop And Phone');
+  const tokDesk = await register('Desktop Only');
+  const WEB_SUB = { endpoint: 'https://fcm.googleapis.com/fcm/send/scenario-dual', keys: { p256dh: 'p', auth: 'a' } };
+  r = await api('/api/push/subscribe', { method: 'POST', token: tokDual, body: { subscription: WEB_SUB, times: ['08:00', '19:00'], tzOffsetMinutes: 240 } });
+  check('web push subscribes with times + tzOffsetMinutes', r.status === 200 && r.json.enabled === true, JSON.stringify(r.json));
+  await api('/api/push/subscribe', { method: 'POST', token: tokDesk, body: { subscription: { ...WEB_SUB, endpoint: WEB_SUB.endpoint + '-desk' }, times: ['13:00'], tzOffsetMinutes: -60 } });
+  r = await api('/api/me', { token: tokDual });
+  check('/api/me reports web_push:true once a subscription is stored', r.status === 200 && r.json.web_push === true, JSON.stringify(r.json));
+  check('/api/me reminders_via:"web" while the Web Push subscription is the only channel', r.json.reminders_via === 'web', JSON.stringify(r.json));
+  const dualCode = r.json.code;
+  r = await api('/api/me', { token: tokDesk });
+  const deskCode = r.json.code;
+  check('desktop-only account: reminders_via:"web"', r.json.reminders_via === 'web', JSON.stringify(r.json));
+  r = await api('/api/push/native', { method: 'POST', token: tokDual, body: { token: 'd1'.repeat(32) } });
+  check('the same account registers its iPhone (APNs) too', r.status === 200 && r.json.enabled === true, JSON.stringify(r.json));
+  r = await api('/api/me', { token: tokDual });
+  check('Web Push row survives the native registration (/api/me web_push still true)', r.status === 200 && r.json.web_push === true, JSON.stringify(r.json));
+  // web_push says "a subscription is stored"; reminders_via says who delivers —
+  // the phone now, since pushSubscribers() skips this account (second review 2026-09-23)
+  check('/api/me reminders_via flips to "native" once a phone token is registered', r.json.reminders_via === 'native', JSON.stringify(r.json));
+  {
+    const { DatabaseSync } = await import('node:sqlite');
+    const d = new DatabaseSync(join(dataDir, 'rimon.db'), { timeout: 3000, readOnly: true });
+    const row = d.prepare('SELECT push, apns FROM users WHERE code = ?').get(dualCode);
+    d.close();
+    let push = null;
+    try { push = JSON.parse(row?.push ?? 'null'); } catch {}
+    check('stored Web Push prefs keep times + tzOffsetMinutes next to the APNs token', !!row?.apns && push?.tzOffsetMinutes === 240 && push?.times?.length === 2 && push?.subscription?.endpoint === WEB_SUB.endpoint, JSON.stringify(row));
+    // the REAL store functions against the suite's live database (second WAL
+    // connection; migrations are idempotent) — what the scheduler and the
+    // broadcast actually read
+    const store = await import('../store.mjs');
+    store.initStore(dataDir);
+    const reminderCodes = store.pushSubscribers().map((u) => u.code);
+    const audienceCodes = store.pushAudience().map((u) => u.code);
+    store.closeStore();
+    check('pushSubscribers() (mealtime reminders) still skips the account with a native token, keeps the desktop-only one', !reminderCodes.includes(dualCode) && reminderCodes.includes(deskCode), JSON.stringify({ reminderCodes }));
+    check('pushAudience() (owner broadcast) lists the dual-device account exactly once', audienceCodes.filter((c) => c === dualCode).length === 1 && audienceCodes.includes(deskCode), JSON.stringify({ audienceCodes }));
+  }
+
   // ------------------------------------- community rules gate (Play UGC policy)
   const tokNoTerms = await register('No Terms Yet', { terms: false });
   r = await api('/api/boards/create', { method: 'POST', token: tokNoTerms, body: { title: 'Terms Board' } });
   const termsBoard = r.json.id ?? r.json.board?.id;
   r = await api('/api/me', { token: tokNoTerms });
   check('/api/me reports terms_accepted:false before acceptance', r.status === 200 && r.json.terms_accepted === false, JSON.stringify(r.json));
+  check('/api/me reminders_via:null with no push channel at all', r.json.reminders_via === null, JSON.stringify(r.json));
   r = await api('/api/boards/message', { method: 'POST', token: tokNoTerms, body: { board: termsBoard, text: 'too early' } });
   check('posting before accepting the community rules → 403 terms_required', r.status === 403 && r.json.error === 'terms_required', JSON.stringify(r.json));
   r = await api('/api/account/terms', { method: 'POST', token: tokNoTerms });
@@ -413,6 +461,33 @@ try {
   check('posting after acceptance → 200', r.status === 200, JSON.stringify(r.json));
   r = await api('/api/me', { token: tokNoTerms });
   check('/api/me reports terms_accepted:true after acceptance (cross-device)', r.status === 200 && r.json.terms_accepted === true);
+  // iOS build 35 (App Store since 2026-09-12) predates the "I agree" panel and
+  // shows a generic error on any 403 — its WKWebView requests (no "Safari/"
+  // token, no BrachasRimon/<build> marker) keep the pre-gate behaviour; iOS
+  // Safari tabs, Android and iOS >= 37 stay gated. (hotfix 2026-09-22)
+  const tokLegacy = await register('Legacy iPhone', { terms: false });
+  r = await api('/api/boards/create', { method: 'POST', token: tokLegacy, body: { title: 'Legacy Board' } });
+  const legacyBoard = r.json.id ?? r.json.board?.id;
+  const WKWEBVIEW_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+  r = await api('/api/boards/message', { method: 'POST', token: tokLegacy, body: { board: legacyBoard, text: 'from build 35' }, headers: { 'User-Agent': WKWEBVIEW_UA } });
+  check('iOS build-35 WKWebView client (no panel) can still post without the stamp → 200', r.status === 200, JSON.stringify(r.json));
+  r = await api('/api/boards/message', { method: 'POST', token: tokLegacy, body: { board: legacyBoard, text: 'from safari' }, headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' } });
+  check('iPhone Safari tab ("Version/ … Safari/" tokens; has the panel) is still gated → 403', r.status === 403 && r.json.error === 'terms_required', JSON.stringify(r.json));
+  r = await api('/api/boards/message', { method: 'POST', token: tokLegacy, body: { board: legacyBoard, text: 'from android' }, headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 16; Pixel 9 Build/BP2A) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/140.0.0.0 Mobile Safari/537.36 wv' } });
+  check('Android WebView client is gated → 403', r.status === 403 && r.json.error === 'terms_required', JSON.stringify(r.json));
+  r = await api('/api/boards/message', { method: 'POST', token: tokLegacy, body: { board: legacyBoard, text: 'from ios 37' }, headers: { 'User-Agent': WKWEBVIEW_UA + ' BrachasRimon/37' } });
+  check('iOS build >= 37 (UA marker) is gated → 403', r.status === 403 && r.json.error === 'terms_required', JSON.stringify(r.json));
+  // The iOS home-screen (standalone) PWA — the only way the PWA can hold a
+  // push.apple.com subscription — and iOS in-app browsers send the SAME
+  // marker-less WKWebView UA as build 35 (no "Version/", no "Safari/"), so the
+  // server cannot tell them apart: they are grandfathered too. Deliberate and
+  // documented on legacyNativeClient(); the web client still gates in the UI
+  // (BoardChat's "I agree" panel, re-asked on a 403). Locked here so that
+  // tightening the heuristic is a conscious change, made once build 35 is
+  // retired. (second review 2026-09-23)
+  const STANDALONE_PWA_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+  r = await api('/api/boards/message', { method: 'POST', token: tokLegacy, body: { board: legacyBoard, text: 'from the home-screen pwa' }, headers: { 'User-Agent': STANDALONE_PWA_UA } });
+  check('iOS home-screen (standalone) PWA carries the build-35 UA shape → grandfathered too, 200 (deliberate; the web client gates in the UI)', r.status === 200, JSON.stringify(r.json));
 
   // ------------------------------- second device behind the server (streak)
   const tokLead = await register('Streak Leader');
@@ -515,6 +590,27 @@ try {
   r = await api(`/api/status?key=${statusKeyFcm}`);
   check('/api/status counts Android devices and raises no FCM alert', r.status === 200 && r.json.users?.fcm_devices >= 1 && !r.json.alerts.some((a) => /fcm/.test(a.code)), JSON.stringify({ fcm: r.json.users?.fcm_devices, alerts: r.json.alerts }));
 
+  // ------------------------------------ FCM retry-once (stale bearer, 429, 503)
+  // The mock fails the FIRST send to these three tokens only: a 401 must cost
+  // exactly one fresh token exchange + one resend, a 429/503 one wait
+  // (Retry-After: 1 s, capped at 5 s) + one resend — each device then holds
+  // ONE delivered push and /api/status stays quiet. (review 2026-09-22)
+  const RETRY_TOKENS = ['auth1-stale:' + 'z'.repeat(120), 'r429-quota:' + 'q'.repeat(120), 's503-down:' + 'u'.repeat(120)];
+  for (const [i, t] of RETRY_TOKENS.entries()) {
+    const tokRetry = await register(`Android Retry ${i}`);
+    await api('/api/push/native', { method: 'POST', token: tokRetry, body: { token: t, platform: 'android' } });
+    await api('/api/boards/join', { method: 'POST', token: tokRetry, body: { code: mixedCode } });
+  }
+  const fcmExchangesBefore = mockFcm.tokenCalls.length;
+  await api('/api/boards/message', { method: 'POST', token: tokAnd3, body: { board: mixed, text: 'retry me once' } });
+  const gotRetries = await mockFcm.waitFor((rs) => RETRY_TOKENS.every((t) => rs.filter((x) => x.token === t).length >= 2), 8000);
+  await sleep(1500); // room for any (wrong) third attempt to land before counting
+  const sendsFor = (t) => mockFcm.forToken(t).length;
+  check('FCM 401: the bearer is re-exchanged once and the push resent once (2 sends, +1 token exchange)', gotRetries && sendsFor(RETRY_TOKENS[0]) === 2 && mockFcm.tokenCalls.length === fcmExchangesBefore + 1, JSON.stringify({ sends: sendsFor(RETRY_TOKENS[0]), exchanges: mockFcm.tokenCalls.length - fcmExchangesBefore }));
+  check('FCM 429 / 503: retried exactly once after Retry-After, then delivered', sendsFor(RETRY_TOKENS[1]) === 2 && sendsFor(RETRY_TOKENS[2]) === 2, JSON.stringify({ r429: sendsFor(RETRY_TOKENS[1]), s503: sendsFor(RETRY_TOKENS[2]) }));
+  r = await api(`/api/status?key=${statusKeyFcm}`);
+  check('retried-then-delivered pushes raise no FCM alert', r.status === 200 && !r.json.alerts.some((a) => /fcm/.test(a.code)), JSON.stringify(r.json.alerts));
+
   // ----------------------------------------------------------- sign-out clear
   r = await api('/api/push/native', { method: 'POST', token: tokB, body: { token: null } });
   check('sign-out clears the device token', r.status === 200 && r.json.enabled === false);
@@ -563,6 +659,18 @@ try {
   // a higher real value still raises the total (merge = max, not frozen)
   const rHigher = await api('/api/sync', { method: 'POST', token: victimTok, body: { progress: { totalBrachos: 41, streakCurrent: 7, points: 90, history: [{ day: today(), brachos: 5, points: 14 }] } } });
   check('a genuinely higher sync still advances the total', rHigher.json.progress?.points === 90 && rHigher.json.progress?.totalBrachos === 41);
+
+  // ------------------------------------------------ nusach survives a new device
+  // device 1 picks Edot; device 2 (fresh, never chose) syncs WITHOUT a nusach and
+  // must get Edot back; an explicit new choice replaces it; junk is ignored.
+  const rPick = await api('/api/sync', { method: 'POST', token: victimTok, body: { progress: { totalBrachos: 41, streakCurrent: 7, points: 90, history: [], nusach: 'edot' } } });
+  check('an explicit nusach choice is stored on the account', rPick.json.progress?.nusach === 'edot', JSON.stringify(rPick.json.progress?.nusach));
+  const rDev2 = await api('/api/sync', { method: 'POST', token: victimTok, body: { progress: { totalBrachos: 0, streakCurrent: 0, points: 0, history: [] } } });
+  check('a fresh device syncing without a nusach gets the stored one back', rDev2.json.progress?.nusach === 'edot' && rDev2.json.progress?.points === 90);
+  const rJunk = await api('/api/sync', { method: 'POST', token: victimTok, body: { progress: { totalBrachos: 0, streakCurrent: 0, points: 0, history: [], nusach: 'sfard<script>' } } });
+  check('an unknown nusach value is ignored (stored choice kept)', rJunk.json.progress?.nusach === 'edot');
+  const rSwitch = await api('/api/sync', { method: 'POST', token: victimTok, body: { progress: { totalBrachos: 0, streakCurrent: 0, points: 0, history: [], nusach: 'ashkenaz' } } });
+  check('a new explicit choice replaces the stored nusach', rSwitch.json.progress?.nusach === 'ashkenaz' && rSwitch.json.progress?.points === 90);
   void victimTok;
 
   // --------------------------------- per-email sign-in cap survives XFF spoofing
@@ -961,15 +1069,21 @@ try {
   r = await api('/api/account', { method: 'POST', token: g1.token, body: { name: 'Nameless' } });
   check('guest can rename in Account settings and STAYS a guest', r.status === 200 && r.json.name === 'Nameless' && r.json.guest === true, JSON.stringify(r.json));
 
-  // vision: counted under the 10/day guest cap (no key → 503 after the charge; the 11th is the quota 429)
-  const analyzeAs = (tok) => api('/api/analyze', { method: 'POST', token: tok, headers: GUEST_IP, body: { image: 'aGVsbG8=', media_type: 'image/jpeg' } });
+  // vision with no key: a junk body is rejected before any charge, and a real
+  // photo that can't be identified (503 no key) is refunded — so a guest is
+  // never locked out by failures. The caps themselves (10/30/global) are
+  // proven against a mock Anthropic in test/vision-capacity.mjs.
+  const JPEG_B64 = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(6000)]).toString('base64');
+  const analyzeAs = (tok, image = JPEG_B64) => api('/api/analyze', { method: 'POST', token: tok, headers: GUEST_IP, body: { image, media_type: 'image/jpeg' } });
+  r = await analyzeAs(g1.token, 'aGVsbG8=');
+  check('analyze: a non-image body → 400 bad_image (never charged)', r.status === 400 && r.json?.error === 'bad_image', JSON.stringify(r.json));
   const guestCodes = [];
-  for (let i = 0; i < 11; i++) guestCodes.push((await analyzeAs(g1.token)).status);
-  check('guest analyze: 10 calls charged (503 no key), the 11th → 429 daily_limit', guestCodes.slice(0, 10).every((s) => s === 503) && guestCodes[10] === 429, guestCodes.join(','));
+  for (let i = 0; i < 12; i++) guestCodes.push((await analyzeAs(g1.token)).status);
+  check('guest analyze: failed calls (503 no key) are refunded — 12 in a row never hit the 10/day cap', guestCodes.every((s) => s === 503), guestCodes.join(','));
   const capTok = (await api('/api/register', { method: 'POST', headers: GUEST_IP, body: { name: 'Cap Account', password: 'cap-account-pass-1' } })).json.token;
   const acctCodes = [];
   for (let i = 0; i < 11; i++) acctCodes.push((await analyzeAs(capTok)).status);
-  check('account analyze: the 11th call is still under the 30/day cap', acctCodes.every((s) => s === 503), acctCodes.join(','));
+  check('account analyze: never quota-blocked by failures', acctCodes.every((s) => s === 503), acctCodes.join(','));
 
   // account-based features → 403 account_required (never a 401, never data)
   const gated = [

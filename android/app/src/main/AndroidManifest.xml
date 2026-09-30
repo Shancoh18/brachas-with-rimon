@@ -1,7 +1,15 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- allowBackup="false" (Capacitor's Android template ships "true"; flipped
+         to false in the 2026-09-22 review — a template re-copy / `cap add`
+         would restore "true", so re-check after one): Auto Backup would copy
+         the WebView storage — including the persisted store with the
+         account's bearer token — to the user's Google Drive and restore it
+         onto any phone signed into the same Google account. The token must
+         only ever live on the phone that signed in. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -24,6 +32,17 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Android 16 ignores screenOrientation / resizability restrictions
+                 for targetSdk 36 on sw>=600dp screens (tablets, a Fold's inner
+                 display): the app would rotate and the 9:16 Rimon takeovers
+                 (.tk-cover in src/index.css) would show only their bottom third
+                 in landscape. This property is Google's documented opt-out; it
+                 EXPIRES at targetSdk 37. The real fix before the API-37 bump is
+                 a landscape rule for .tk-cover (height: 100vh; width: auto;
+                 margin: 0 auto). (review 2026-09-22) -->
+            <property
+                android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY"
+                android:value="true" />
         </activity>
 
         <provider
@@ -52,12 +71,33 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Meal photos: the Bless screen's <input type="file" accept="image/*"
-         capture="environment"> asks the WebView for the camera; Capacitor's
-         file chooser only offers it when this permission is declared. Optional
-         hardware — a photo from the gallery works just as well. -->
+    <!-- No advertising ID, ever. The social-login plugin's Facebook provider
+         is compiled out (capacitor.config.ts SocialLogin.providers.facebook:
+         false); this removal is the belt-and-braces guard: even if a merged
+         library manifest declares AD_ID again, the final manifest stays
+         without it, so the Play Console's "Advertising ID declaration → No"
+         (PLAYSTORE.md step 6) stays true. Check the merged manifest in the
+         Codemagic build log. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+    <!-- Meal photos: on Android, "Photograph my meal" clicks a SECOND, Android-
+         only <input type="file" accept="image/*" capture="environment">
+         (src/screens/Welcome.tsx). Capacitor's BridgeWebChromeClient opens the
+         camera only for capture + image/*, and — because this permission is
+         declared — asks for it at runtime first; denied or no camera app, the
+         photo comes from "or choose a photo from your gallery" (the plain
+         input). Optional hardware: the gallery works just as well. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Package visibility (Android 11+ / API 30+): Capacitor checks
+         takePictureIntent.resolveActivity() before launching the camera, and
+         with targetSdk ≥ 30 that returns null unless the app declares it
+         queries camera apps — without this, "Photograph my meal" silently
+         falls back to the file picker (review 2026-09-29). -->
+    <queries>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
     <!-- POST_NOTIFICATIONS (Android 13+), RECEIVE_BOOT_COMPLETED and WAKE_LOCK
          are merged in from @capacitor/local-notifications for the mealtime
          reminders; no exact-alarm permission is requested (Play reserves it

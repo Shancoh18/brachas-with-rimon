@@ -10,16 +10,13 @@ import { platform } from './lib/native'
 // a platform — today only Android's edge-to-edge top inset (src/index.css).
 document.documentElement.dataset.platform = platform()
 
-// AbortSignal.timeout is Safari 16+ / Chrome 103+; the iOS build still installs
-// on iOS 15 and an old Android WebView can lag — without this every API call
-// threw before fetch and the app looked dead (audit 2026-09-22)
-if (typeof AbortSignal !== 'undefined' && !('timeout' in AbortSignal)) {
-  ;(AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout = (ms: number) => {
-    const c = new AbortController()
-    setTimeout(() => c.abort(new DOMException('timeout', 'TimeoutError')), ms)
-    return c.signal
-  }
-}
+// AbortSignal.timeout is Safari 16+ / Chrome 103+ and AbortSignal.any Safari
+// 17.4+; the iOS build still installs on iOS 15 and an old Android WebView can
+// lag — every API call used to throw before fetch and the app looked dead
+// (audit 2026-09-22 / fix 2026-09-15). There is deliberately NO global
+// polyfill here: src/lib/timeoutSignal.ts (timeoutSignal / anySignal) is the
+// one mechanism, and every fetch in src/ goes through it — never call the
+// AbortSignal statics directly.
 
 // Appearance is explicit (default LIGHT) — stamp <html data-theme> before the
 // first paint, re-stamp on preference change, and follow the OS only when the

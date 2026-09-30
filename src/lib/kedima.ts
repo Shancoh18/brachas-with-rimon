@@ -7,6 +7,9 @@
  *    4) ha-adamah; 5) shehakol."
  * Hamotzi, when bread is eaten, precedes everything and exempts the meal
  * (except wine, which keeps its own bracha).
+ * Hagafen in turn exempts the other drinks (chabad.org, same article):
+ *   "After saying the blessing borai pri hagafen over wine, additional
+ *    blessings before and after other liquids or drinks are not necessary."
  *
  * Within Ha'etz: Shivas Haminim first, in verse order by proximity to
  * "eretz" (Devarim 8:8, per Shulchan Aruch OC 211:4 / Berachot 41b):
@@ -42,6 +45,8 @@ export interface KedimaItem {
   shivaKey?: ShivaKey;
   whole?: boolean;
   chaviv?: boolean;
+  /** a beverage (FoodEntry.isDrink) — wine's Hagafen covers it */
+  isDrink?: boolean;
 }
 
 export function kedimaSort<T extends KedimaItem>(items: T[]): T[] {
@@ -75,18 +80,32 @@ export interface BrachaGroup<T extends KedimaItem> {
  *
  * Hamotzi exemption: when bread is present it exempts all other foods of the
  * meal EXCEPT wine/grape juice (Hagafen), which keeps its own bracha
- * (chabad.org). Wine in turn covers other drinks — handled in afterBracha
- * and surfaced as a note in the UI.
+ * (chabad.org).
+ *
+ * Hagafen exemption: wine/grape juice covers the other DRINKS (chabad.org,
+ * quoted above) — a Shehakol drink joins the Hagafen group instead of
+ * getting its own Shehakol. Only Shehakol drinks fold: a Shehakol FOOD
+ * (chocolate) keeps its blessing, and an item the DB rules Ha'etz/Ha'adama
+ * stays as ruled. With bread present the drinks already fold into Hamotzi,
+ * so this only changes bread-less meals. (afterBracha applies the same rule
+ * to the after-blessing.)
  */
 export function groupForRecitation<T extends KedimaItem>(items: T[]): BrachaGroup<T>[] {
   const sorted = kedimaSort(items);
   const hasBread = sorted.some((i) => i.bracha === 'Hamotzi');
+  const hasWine = sorted.some((i) => i.bracha === 'Hagafen');
 
   const groups = new Map<Bracha, T[]>();
   for (const item of sorted) {
     if (hasBread && item.bracha !== 'Hamotzi' && item.bracha !== 'Hagafen') {
       // exempted by Hamotzi — attach to the bread group
       groups.get('Hamotzi')!.push(item);
+      continue;
+    }
+    if (hasWine && item.isDrink === true && item.bracha === 'Shehakol') {
+      // exempted by Hagafen — sorted order puts every Hagafen item first, so
+      // the group exists and the wine stays its representative
+      groups.get('Hagafen')!.push(item);
       continue;
     }
     if (!groups.has(item.bracha)) groups.set(item.bracha, []);

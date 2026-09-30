@@ -17,6 +17,22 @@
  *
  * Shiurim are USER-SUPPLIED (a photo cannot measure a kezayis/revi'is).
  *
+ * How an item is placed:
+ *  - Birkat Hamazon needs isBread (the snapshot's rishona is Hamotzi). An
+ *    achrona of 'BirkatHamazon' WITHOUT it is a contradiction no vetted entry
+ *    has — only bad learned data — so it triggers nothing and is reported.
+ *  - A Me'ein Shalosh insert is triggered by the item's own cited achrona
+ *    (AlHamichya / AlHagefen / AlHaetz) OR by its flag (isWineGrape /
+ *    isShivaFruit), so either one alone places the item. Why the achrona
+ *    counts on its own: learned foods carry shivasHaminim:false by design
+ *    (they don't claim kedima rank), so an Al Ha'etz / Al Hagefen food learned
+ *    at runtime used to match no rule and vanish from the after-blessings.
+ *  - isTreeFruit / isDrink never trigger an insert; they only let one that is
+ *    already said cover the item.
+ *  - Borei Nefashos for an uncovered 'BoreiNefashos' item.
+ * Anything still not placed lands in `unresolved` — shown as "ask a rabbi",
+ * never dropped.
+ *
  * DO NOT change without a cited source from the three approved sites.
  */
 import type { AfterBracha } from '../data/foods';
@@ -44,11 +60,22 @@ export interface AfterBrachaResult {
   boreiNefashos: boolean;
   /** items covered by each output, for the UI's "this covers…" notes */
   coverage: { blessing: string; covers: string[] }[];
+  /** labels of items that met the shiur but no output covers — ask a rabbi */
+  unresolved: string[];
   none: boolean;
 }
 
 export function resolveAfterBrachos(eaten: EatenItem[]): AfterBrachaResult {
   const met = eaten.filter((i) => i.shiurMet);
+
+  // 'BirkatHamazon' on an item that isn't bread (rishona not Hamotzi)
+  // contradicts itself — only bad learned data can — so it triggers nothing,
+  // is covered by nothing, and lands in `unresolved`
+  const contradictory = (i: EatenItem) => i.achrona === 'BirkatHamazon' && !i.isBread;
+  const placeable = met.filter((i) => !contradictory(i));
+  const isMichya = (i: EatenItem) => i.achrona === 'AlHamichya';
+  const isGefen = (i: EatenItem) => i.isWineGrape || i.achrona === 'AlHagefen';
+  const isEtz = (i: EatenItem) => i.isShivaFruit || i.achrona === 'AlHaetz';
 
   // Birkat Hamazon covers the whole meal.
   if (met.some((i) => i.isBread)) {
@@ -59,19 +86,21 @@ export function resolveAfterBrachos(eaten: EatenItem[]): AfterBrachaResult {
       coverage: [
         { blessing: 'Birkat Hamazon', covers: eaten.map((i) => i.label) },
       ],
+      unresolved: [],
       none: false,
     };
   }
 
   const inserts: MeeinInsert[] = [];
-  if (met.some((i) => i.achrona === 'AlHamichya' && i.isFiveGrain)) inserts.push('AlHamichya');
-  if (met.some((i) => i.isWineGrape)) inserts.push('AlHagefen');
-  if (met.some((i) => i.isShivaFruit)) inserts.push('AlHaetz');
+  if (placeable.some(isMichya)) inserts.push('AlHamichya');
+  if (placeable.some(isGefen)) inserts.push('AlHagefen');
+  if (placeable.some(isEtz)) inserts.push('AlHaetz');
 
   const coveredByMeein = (i: EatenItem): boolean => {
-    if (i.achrona === 'AlHamichya' && inserts.includes('AlHamichya')) return true;
-    if (i.isWineGrape && inserts.includes('AlHagefen')) return true;
-    if (i.isShivaFruit && inserts.includes('AlHaetz')) return true;
+    if (contradictory(i)) return false; // never quietly absorbed — ask a rabbi
+    if (isMichya(i) && inserts.includes('AlHamichya')) return true;
+    if (isGefen(i) && inserts.includes('AlHagefen')) return true;
+    if (isEtz(i) && inserts.includes('AlHaetz')) return true;
     // Al Ha'etz exempts Borei Nefashos for other TREE fruit
     if (i.isTreeFruit && inserts.includes('AlHaetz')) return true;
     // Hagafen covers other drinks
@@ -102,11 +131,16 @@ export function resolveAfterBrachos(eaten: EatenItem[]): AfterBrachaResult {
     });
   }
 
+  const unresolved = met
+    .filter((i) => !coveredByMeein(i) && !(i.achrona === 'BoreiNefashos' && needBN))
+    .map((i) => i.label);
+
   return {
     birkatHamazon: false,
     meeinInserts: inserts,
     boreiNefashos: needBN,
     coverage,
-    none: inserts.length === 0 && !needBN,
+    unresolved,
+    none: inserts.length === 0 && !needBN && unresolved.length === 0,
   };
 }

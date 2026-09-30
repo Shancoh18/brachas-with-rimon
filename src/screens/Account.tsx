@@ -48,6 +48,7 @@ export function Account() {
     isGuest,
     setGuest,
     gateNotice,
+    setTermsAccepted,
   } = useBracha();
   const signedIn = !!serverToken && !isGuest;
 
@@ -72,6 +73,11 @@ export function Account() {
     if (!serverToken) return;
     apiMe(serverToken)
       .then((r) => {
+        // the account's community-rules stamp outranks the device flag: a phone
+        // that never saw the panel inherits an acceptance made on another
+        // device, and never keeps one a previous account made here (guests are
+        // always unstamped — they cannot chat)
+        if (typeof r.terms_accepted === 'boolean') setTermsAccepted(r.terms_accepted);
         if (r.guest) {
           // a guest row has no profile to restore — and its placeholder
           // name must never become the user's display name

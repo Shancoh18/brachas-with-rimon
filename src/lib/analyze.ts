@@ -5,10 +5,20 @@
  *
  * DEMO MODE: when the proxy is unreachable (local dev without a key) the
  * caller can fall back to `demoMeal()` so the whole flow stays testable.
+ *
+ * FAILURES carry the server's error code ({status, code} — the ApiError shape
+ * api.ts throws; a fetch that never got an answer carries status 0 / 'offline')
+ * so Confirm can say WHY: the user's own daily allowance, the app-wide daily
+ * limit, a busy moment, the per-network rate limit, a dead session, an
+ * unreadable photo, or no connection. Only `busy` (short-lived capacity)
+ * retries once on its own before failing — `slow_down` is a 10-minute
+ * window, not seconds. `photoFailReason` maps EVERY code /api/analyze can
+ * answer (server.mjs, 2026-09-22 merge) — keep the two in step.
  */
-import { API_BASE } from './api';
+import { API_BASE, type ApiError } from './api';
 import type { IdentifiedItem } from './classify';
 import { fetchLearnedFoods, registerLearnedFoods, type LearnedFoodEntry } from './learnedFoods';
+import { timeoutSignal } from './timeoutSignal';
 
 const MAX_EDGE = 1568;
 const MAX_PIXELS = 1_150_000;
@@ -31,18 +41,12 @@ export async function resizeImage(file: File | Blob): Promise<{ dataUrl: string;
   bitmap.close();
 
   const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-  return { dataUrl, base64: dataUrl.split(',')[1], mediaType: 'image/jpeg' };
+  const base64 = dataUrl.split(',')[1];
+  // a canvas the engine refused (zero-size / over its memory cap) encodes as
+  // "data:," — fail here as an unreadable photo instead of uploading nothing
+  if (!base64) throw new Error('photo could not be encoded');
+  return { dataUrl, base64, mediaType: 'image/jpeg' };
 }
-
-/** Why a photo could not be identified — Confirm turns each into plain
- *  words (a guest's 11th photo of the day is NOT "Rimon is broken"). */
-export type FallbackReason = 'daily_limit' | 'busy' | 'unauthorized' | 'offline' | 'unreadable_photo' | 'failed';
-export interface AnalyzeError extends Error {
-  status: number;
-  code?: string;
-  reason: FallbackReason;
-}
-export const analyzeReason = (e: unknown): FallbackReason => (e as Partial<AnalyzeError> | null)?.reason ?? 'failed';
 
 export interface AnalyzeResult {
   items: IdentifiedItem[];
@@ -52,15 +56,71 @@ export interface AnalyzeResult {
   demo?: boolean;
 }
 
+/** Why a photo check failed — Confirm picks its copy from this. ONE enum for
+ *  every answer the server can give (a guest's 11th photo of the day is NOT
+ *  "Rimon is broken"):
+ *   daily_limit   429 daily_limit  — the user's own allowance (10 guest / 30 account)
+ *   global_limit  429 global_limit — the app-wide daily cap, resets 00:00 UTC
+ *   busy          429 busy (capacity, retried once here) · 503 (no vision key)
+ *   rate_limited  429 slow_down    — the 10-minute per-network bucket
+ *   unauthorized  401              — a session the server no longer knows
+ *   offline       fetch failed / timed out · 408 body_timeout (upload stalled)
+ *   bad_image     400 bad_image|no_image · 413 too_large · an undecodable file
+ *   generic       everything else (5xx, 502 anthropic_error, 504 anthropic_timeout, 400 bad_request) */
+export type PhotoFailReason =
+  | 'daily_limit'
+  | 'global_limit'
+  | 'busy'
+  | 'rate_limited'
+  | 'unauthorized'
+  | 'offline'
+  | 'bad_image'
+  | 'generic';
+
+/** wait before the one automatic retry of a busy photo check */
+const BUSY_RETRY_MS = 3_500;
+
+/** non-OK response → ApiError carrying the server's JSON error code */
+async function analyzeError(res: Response): Promise<ApiError> {
+  let body: { error?: string } = {};
+  try { body = await res.json(); } catch { /* non-JSON error (proxy / 5xx page) */ }
+  return Object.assign(new Error(`analyze failed: ${res.status}`), { status: res.status, code: body.error });
+}
+
+/** 429 busy (vision slots or in-flight uploads full) — clears in seconds, worth one retry */
+const isBusy = ({ status, code }: Partial<ApiError>) => status === 429 && code === 'busy';
+
+/** Map whatever analyzePhoto threw to the reason Confirm explains. */
+export function photoFailReason(e: unknown): PhotoFailReason {
+  const { status, code } = (e as Partial<ApiError> | null) ?? {};
+  // fetch never got an answer: no network, or the 45 s client abort
+  if (status === 0 || code === 'offline') return 'offline';
+  if (status === 429 && code === 'daily_limit') return 'daily_limit';
+  if (status === 429 && code === 'global_limit') return 'global_limit';
+  if (isBusy({ status, code })) return 'busy';
+  // the per-network 10-minute rate limit — a retry in seconds would only hit it again
+  if (status === 429 && code === 'slow_down') return 'rate_limited';
+  // any other 429, or 503 (the vision key is missing): capacity — "in a minute"
+  if (status === 429 || status === 503) return 'busy';
+  // a session the server no longer knows (App.tsx's boot sync drops a dead
+  // guest token and a fresh one is minted — the next attempt works)
+  if (status === 401) return 'unauthorized';
+  // no_image: an empty upload, which only an unreadable photo produces;
+  // too_large: a photo the client failed to downsize
+  if ((status === 400 && (code === 'bad_image' || code === 'no_image')) || status === 413) return 'bad_image';
+  // the upload itself stalled for 45 s — a connection problem, not the photo
+  if (status === 408) return 'offline';
+  return 'generic';
+}
+
 export async function analyzePhoto(base64: string, mediaType: string): Promise<AnalyzeResult> {
   // /api/analyze is authenticated (vision costs money per call). Since build
   // 35 the token is a silently minted guest session: a photo taken on a cold
   // start can beat the mint, so wait for it (never throws; a failed mint
   // simply sends the request token-less and the server answers 401).
   const serverToken = await (await import('./guestSession')).waitForSession();
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}/api/analyze`, {
+  const post = () =>
+    fetch(`${API_BASE}/api/analyze`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -68,21 +128,26 @@ export async function analyzePhoto(base64: string, mediaType: string): Promise<A
       },
       body: JSON.stringify({ image: base64, media_type: mediaType }),
       // vision + inline research can legitimately take ~30s; fail crisply after 45
-      signal: AbortSignal.timeout(45_000),
+      signal: timeoutSignal(45_000),
     });
-  } catch (e) {
-    throw Object.assign(new Error('analyze offline'), { status: 0, reason: 'offline' as FallbackReason, cause: e });
-  }
+  // a fetch that rejects (no network, DNS, the 45 s abort) never reached the
+  // server: carry status 0 / 'offline' so Confirm can say "check your connection"
+  const send = async (): Promise<Response> => {
+    try {
+      return await post();
+    } catch (e) {
+      throw Object.assign(new Error('analyze offline'), { status: 0, code: 'offline', cause: e });
+    }
+  };
+  let res = await send();
   if (!res.ok) {
-    let body: { error?: string } = {};
-    try { body = await res.json(); } catch { /* non-JSON */ }
-    const code = body.error;
-    const reason: FallbackReason =
-      res.status === 429 && code === 'daily_limit' ? 'daily_limit'
-      : res.status === 429 || res.status === 503 ? 'busy'
-      : res.status === 401 ? 'unauthorized'
-      : 'failed';
-    throw Object.assign(new Error(`analyze failed: ${res.status}`), { status: res.status, code, reason });
+    const err = await analyzeError(res);
+    // busy clears in seconds: retry ONCE, quietly, before failing. Nothing
+    // else retries — a limit, slow_down or a bad photo won't change in 3 s.
+    if (!isBusy(err)) throw err;
+    await new Promise((r) => setTimeout(r, BUSY_RETRY_MS));
+    res = await send();
+    if (!res.ok) throw await analyzeError(res);
   }
   const result = (await res.json()) as AnalyzeResult;
   // Merge freshly learned foods before anything tries to look them up.

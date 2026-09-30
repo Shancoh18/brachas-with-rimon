@@ -16,7 +16,7 @@
  */
 import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'fs';
-import { createPublicKey, randomBytes, scrypt as scryptCb, timingSafeEqual, verify as cryptoVerify } from 'crypto';
+import { createHash, createPublicKey, randomBytes, scrypt as scryptCb, timingSafeEqual, verify as cryptoVerify } from 'crypto';
 import { promisify } from 'util';
 import { join } from 'path';
 import webpush from 'web-push';
@@ -25,7 +25,8 @@ import { fcmReady, sendFcm } from './fcm.mjs';
 import { siwaReady, exchangeCode, revokeRefreshToken, jwtClaim } from './apple-siwa.mjs';
 import { backupReady, runBackup } from './backup.mjs';
 import { buildStatus, statusKey, mark, fail } from './status.mjs';
-import { guardProse, guardLine, cleanProse } from './content-guard.mjs';
+import { guardProse, cleanProse } from './content-guard.mjs';
+import { WEEKDAYS, canonParsha, thoughtRequest, verifyThought } from './daily-thought.mjs';
 import * as store from './store.mjs';
 
 const PORT = Number(process.env.PORT || 3300);
@@ -93,23 +94,46 @@ const json = (res, code, body) => {
 // /api/analyze passes a larger cap explicitly for the base64 photo. Previously
 // EVERY route accepted 12MB, so an unauthenticated broadcast probe could make
 // the server buffer 12MB before the secret was even checked.
-const readBody = (req, maxBytes = 64 * 1024) =>
+// The promise ALWAYS settles: a phone that drops mid-upload (weak signal, app
+// backgrounded, the client's own 45s abort) never sends 'end', and before
+// 2026-09-15 that hung the await forever — /api/analyze had already taken an
+// in-flight slot, so 16 dropped uploads took photo identification down for
+// everyone until a restart. Chunks are Buffers so a multi-byte (Hebrew)
+// character split across chunks can't be garbled.
+const readBody = (req, maxBytes = 64 * 1024, timeoutMs = 30_000) =>
   new Promise((resolve, reject) => {
-    let d = '';
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      req.destroy(); // stop buffering AND free the socket
+      reject(err);
+    };
+    const timer = setTimeout(() => fail(Object.assign(new Error('body timeout'), { status: 408 })), timeoutMs);
     req.on('data', (c) => {
-      d += c;
-      if (d.length > maxBytes) {
-        // stop buffering AND kill the stream, or the closure keeps growing
-        req.destroy();
-        reject(new Error('too large'));
-      }
+      if (settled) return;
+      size += c.length;
+      if (size > maxBytes) return fail(Object.assign(new Error('too large'), { status: 413 }));
+      chunks.push(c);
     });
     req.on('end', () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       try {
+        const d = Buffer.concat(chunks).toString('utf8');
         resolve(d ? JSON.parse(d) : {});
       } catch (e) {
         reject(e);
       }
+    });
+    req.on('aborted', () => fail(Object.assign(new Error('aborted'), { status: 499 })));
+    req.on('error', (e) => fail(e));
+    req.on('close', () => {
+      if (!req.complete) fail(Object.assign(new Error('aborted'), { status: 499 }));
     });
   });
 const auth = (req) => {
@@ -211,19 +235,99 @@ let analyzeGlobal = { day: '', count: 0 };
 // a token-keyed cap would reset itself on every sign-in.
 const analyzeUse = new Map(); // user id -> {day, count}
 let analyzeInFlight = 0;
-// Auth endpoints: crude per-IP throttle against credential stuffing and
-// friend-code enumeration (923k code space). Window resets every 10 min.
-const authHits = new Map(); // ip -> {t0, count}
-// Railway's Envoy edge APPENDS the caller's address to X-Forwarded-For, so the
-// FIRST element is client-supplied and forgeable (spoof it to a new value per
-// request and a naive throttle never triggers). Trust Envoy's single-value
-// header, else the LAST hop (edge-appended), else the socket. Bounded length.
+let analyzeAtCapSince = 0; // epoch ms the in-flight ceiling was reached (0 = below it)
+// Uploads in progress (body still arriving) — bounded separately from the 16
+// vision slots so slow or stalled uploads can't starve identification.
+const ANALYZE_MAX_UPLOADS = 48;
+const ANALYZE_UPLOADS_PER_IP = 6; // a shul / campus network photographing at once
+const ANALYZE_INFLIGHT_PER_USER = 2; // one account, whole request (upload + vision)
+let analyzeUploads = 0;
+const analyzeUploadsByIp = new Map(); // ip -> uploads in progress
+const analyzeByUser = new Map(); // user id -> photo requests in progress
+const bumpCount = (map, key, delta) => {
+  const n = (map.get(key) || 0) + delta;
+  if (n > 0) map.set(key, n);
+  else map.delete(key);
+};
+/** Give a failed / unseen photo back. `global` only when nothing was billed. */
+const refundAnalyze = (userId, day, { global }) => {
+  const u = analyzeUse.get(userId);
+  if (u?.day === day && u.count > 0) u.count--;
+  if (global && analyzeGlobal.day === day && analyzeGlobal.count > 0) analyzeGlobal.count--;
+};
+/** A real photo or nothing: valid base64 of a JPEG/PNG/WebP/GIF of ≥ ~5 KB.
+ *  Checked BEFORE any quota is charged (junk bodies used to burn the cap). */
+const looksLikeImage = (b64) => {
+  if (typeof b64 !== 'string' || b64.length < 6_800) return false;
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b64.slice(0, 4096)) || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64.slice(-64))) return false;
+  const head = Buffer.from(b64.slice(0, 24), 'base64');
+  const isJpeg = head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+  const isPng = head.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+  const isGif = head.subarray(0, 3).toString('latin1') === 'GIF';
+  const isWebp = head.subarray(0, 4).toString('latin1') === 'RIFF' && head.subarray(8, 12).toString('latin1') === 'WEBP';
+  return isJpeg || isPng || isGif || isWebp;
+};
+// 429s by reason since boot — surfaced in /api/status so a launch-day wall of
+// "busy" / "slow_down" / "global_limit" is visible instead of silent.
+const limitHits = new Map(); // reason -> count
+const busyTimes = []; // epoch ms of recent 'busy' answers (rolling 6h, capped)
+const limited = (res, reason) => {
+  limitHits.set(reason, (limitHits.get(reason) || 0) + 1);
+  if (reason === 'busy') {
+    busyTimes.push(Date.now());
+    if (busyTimes.length > 5_000) busyTimes.splice(0, busyTimes.length - 5_000);
+  }
+  return json(res, 429, { error: reason });
+};
+// Per-IP throttles against credential stuffing and friend-code enumeration
+// (923k code space). Each route has its OWN bucket (key `${bucket}:${ip}`) —
+// until 2026-09-15 one shared counter meant ~60 guest mints on a shul or
+// campus network blocked board joins for everyone on it. 10-minute windows.
+const authHits = new Map(); // `${bucket}:${ip}` -> {t0, count}
+const PRIVATE_HOP = /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|::1$|f[cd][0-9a-f]{2}:|fe80:)/i;
+/** iOS build 35 (on the App Store since 2026-09-12) predates the community-rules
+ *  panel: it maps ANY 403 from /api/boards/message to "Couldn't send that — try
+ *  again", with nothing to tap, so gating it locks those users out of chat until
+ *  Apple approves the next build AND they update. Its WKWebView requests are
+ *  recognisable — an iPhone/iPad UA with no "Safari/" token (only a Safari tab
+ *  carries "Version/x … Safari/x") and no "BrachasRimon/<build>" marker
+ *  (appended by the native shells from build 37 on, capacitor.config.ts
+ *  appendUserAgent). Those requests keep the pre-gate behaviour.
+ *  DELIBERATE OVER-MATCH (second review 2026-09-23): the iOS home-screen
+ *  (standalone) PWA and iOS in-app browsers send that SAME marker-less
+ *  WKWebView UA — no "Version/", no "Safari/" — so the server cannot tell them
+ *  from build 35 and does not enforce the gate for them either. Their users
+ *  still get the panel: the web client gates in the UI (BoardChat swaps the
+ *  composer for "I agree" until the account flag is set, and re-asks on a
+ *  403). Locked by a scenario so any tightening is a conscious change, made
+ *  once build 35 is retired — e.g. a fixed marker header from the web client
+ *  (which must ALSO be added to Access-Control-Allow-Headers above, or every
+ *  browser preflight fails; deploy the server first). iOS Safari tabs, Android
+ *  (Play's UGC policy is what the gate is for) and iOS ≥ 37 are all gated
+ *  server-side. */
+const legacyNativeClient = (req) => {
+  const ua = String(req.headers['user-agent'] || '');
+  return /\b(iPhone|iPad)\b/.test(ua) && !/Safari\//.test(ua) && !/BrachasRimon\//.test(ua);
+};
+// Who is calling, for the per-network buckets. Railway's edge (railway-hikari,
+// since the 2024 move off Envoy) OVERWRITES X-Real-IP with the caller's
+// address and rebuilds X-Forwarded-For as "client, edge-hop" — verified
+// 2026-09-15 against a header-echo service on the same edge. So:
+//  - X-Real-IP first: the edge sets it, a client can't.
+//  - NEVER x-envoy-external-address: the new edge passes it through untouched,
+//    so trusting it let any caller pick their own bucket (every limit bypassed).
+//  - NOT the last XFF hop: on this edge that is Railway's own address, which
+//    put every user in ONE shared bucket.
+// The XFF fallback (last non-private hop) only matters off Railway — local
+// dev and the test suites, which simulate callers with X-Forwarded-For.
 const clientIp = (req) => {
   const chain = String(req.headers['x-forwarded-for'] || '')
     .split(',').map((s) => s.trim()).filter(Boolean);
+  let last = chain[chain.length - 1];
+  for (let i = chain.length - 1; i > 0 && PRIVATE_HOP.test(chain[i]); i--) last = chain[i - 1];
   return String(
-    String(req.headers['x-envoy-external-address'] || '').trim() ||
-    chain[chain.length - 1] ||
+    String(req.headers['x-real-ip'] || '').trim() ||
+    last ||
     req.socket.remoteAddress || '?',
   ).slice(0, 64);
 };
@@ -234,18 +338,38 @@ const clientIp = (req) => {
 const evictExpired = (map, ttlMs, now = Date.now()) => {
   for (const [k, v] of map) if (now - (v?.t0 ?? v) > ttlMs) map.delete(k);
 };
-const throttled = (req, max = 30) => {
-  const ip = clientIp(req);
+/** true = over `max` hits in this key's 10-minute window. A rejected hit is
+ *  NOT counted, so a blocked client can't push its own window further out. */
+const throttledKey = (key, max) => {
   const now = Date.now();
-  const e = authHits.get(ip);
+  const e = authHits.get(key);
   if (!e || now - e.t0 > 600_000) {
-    if (authHits.size > 50_000) evictExpired(authHits, 600_000, now); // bounded without a reset
-    authHits.set(ip, { t0: now, count: 1 });
+    if (authHits.size > 150_000) {
+      // hard cap without a full scan on the request path: drop the oldest
+      // 10% (Map keeps insertion order); the 5-min sweep handles the rest
+      let n = 15_000;
+      for (const k of authHits.keys()) { authHits.delete(k); if (--n === 0) break; }
+    }
+    authHits.delete(key); // re-insert → keeps insertion order = age
+    authHits.set(key, { t0: now, count: 1 });
     return false;
   }
+  if (e.count >= max) return true;
   e.count++;
-  return e.count > max;
+  return false;
 };
+const throttled = (req, max = 30, bucket = 'default') => throttledKey(`${bucket}:${clientIp(req)}`, max);
+// Code guessing: friend codes (923k space) and board codes. The per-route
+// buckets are roomy so a shul network can join boards with RIGHT codes; only
+// WRONG codes count here, shared by both routes, back to the original ~60
+// guesses per network per 10 minutes.
+const CODE_MISS_MAX = 60;
+const codeMissKey = (req) => `codemiss:${clientIp(req)}`;
+const codeGuessBlocked = (req) => {
+  const e = authHits.get(codeMissKey(req));
+  return !!e && Date.now() - e.t0 <= 600_000 && e.count >= CODE_MISS_MAX;
+};
+const noteCodeMiss = (req) => throttledKey(codeMissKey(req), CODE_MISS_MAX);
 // Per-email sign-in failure cap — hop-independent, so it holds even if the IP
 // throttle is somehow bypassed, and it hard-bounds total scrypt CPU.
 const pwFails = new Map(); // email -> {t0, count}
@@ -544,6 +668,7 @@ const mergeByDay = (a, b) => {
   }
   return [...byDay.values()].sort((x, y) => (x.day < y.day ? -1 : 1)).slice(-30);
 };
+const NUSACH_IDS = ['ari', 'ashkenaz', 'edot'];
 const mergeProgress = (cur, incoming) => {
   cur = cur ?? {};
   incoming = incoming ?? {};
@@ -562,6 +687,9 @@ const mergeProgress = (cur, incoming) => {
           ? num(incoming.streakCurrent)
           : Math.max(num(cur.streakCurrent), num(incoming.streakCurrent)),
     history: mergeByDay(cur.history, incoming.history),
+    // the chosen nusach rides the progress row so a reinstall / new device gets
+    // it back; clients send it only for an explicit choice, never a default
+    nusach: NUSACH_IDS.includes(incoming.nusach) ? incoming.nusach : NUSACH_IDS.includes(cur.nusach) ? cur.nusach : undefined,
   };
 };
 const dayTotal = (u, field = 'points') => {
@@ -649,28 +777,39 @@ const looksPackaged = (desc) =>
  *  and a mark/fail so /api/status can tell credit exhaustion (401/402/403)
  *  from a blip. Resolves { ok, status, data } or { ok:false, status, text };
  *  network errors are recorded, then rethrown for the caller's own handling. */
-const anthropic = async (where, apiKey, payload) => {
+// ANTHROPIC_BASE_URL: test-only override so the scenario suite can exercise the
+// real photo path against a local mock (never set on Railway).
+const ANTHROPIC_URL = `${process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com'}/v1/messages`;
+const anthropic = async (where, apiKey, payload, { signal, timeoutMs = 60_000 } = {}) => {
   let r;
   try {
-    r = await fetch('https://api.anthropic.com/v1/messages', {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    r = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60_000),
+      // a caller's signal (the photo's client hung up) cancels the call too
+      signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
     });
+    if (!r.ok) {
+      const text = (await r.text()).slice(0, 400);
+      console.error(`anthropic ${r.status} at ${where}: ${text.slice(0, 200)}`);
+      fail('anthropic', r.status, where, text.slice(0, 200));
+      return { ok: false, status: r.status, text };
+    }
+    const data = await r.json();
+    mark('anthropic', { ok: true, where });
+    return { ok: true, status: r.status, data };
   } catch (e) {
+    // Only a connection that never opened is certainly unbilled; a timeout or
+    // an abort after the request left may still be charged.
+    e.neverSent = !r && ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(e?.cause?.code);
+    // the caller hung up — not an Anthropic failure, don't raise the alert
+    if (signal?.aborted) throw e;
     console.error(`anthropic network error at ${where}: ${e.message}`);
     fail('anthropic', null, where, e.message);
     throw e;
   }
-  if (!r.ok) {
-    const text = (await r.text()).slice(0, 400);
-    console.error(`anthropic ${r.status} at ${where}: ${text.slice(0, 200)}`);
-    fail('anthropic', r.status, where, text.slice(0, 200));
-    return { ok: false, status: r.status, text };
-  }
-  mark('anthropic', { ok: true, where });
-  return { ok: true, status: r.status, data: await r.json() };
 };
 
 /** URLs the web_search tool actually retrieved in this response — search
@@ -810,8 +949,14 @@ which category a food belongs to, report found:false rather than guess.`,
   if (host === 'brachos.org' && !slugNamesFood) {
     const own = `https://www.brachos.org/brachos/${key.replace(/_/g, '-')}/`;
     try {
-      const probe = await fetch(own, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(6000) });
-      if (probe.ok) {
+      // GET, not HEAD (review 2026-09-22): the site's HEAD support is unverified
+      // from here, and a soft-404 that redirects to the home page with a 200
+      // must not count as "the page exists" — so the redirect-followed FINAL
+      // path has to be the food's own path too. The body is dropped unread.
+      const probe = await fetch(own, { method: 'GET', redirect: 'follow', signal: AbortSignal.timeout(6000) });
+      await probe.body?.cancel().catch(() => undefined);
+      const pathOf = (u) => new URL(u).pathname.replace(/\/+$/, '').toLowerCase();
+      if (probe.ok && pathOf(probe.url || own) === pathOf(own)) {
         console.log(`research rejected (neighbour page cited, ${own} exists): ${description} -> ${e.sourceUrl}`);
         return null;
       }
@@ -851,7 +996,7 @@ which category a food belongs to, report found:false rather than guess.`,
  *  Resolves with the entries that finished inside `budgetMs`, each tagged with
  *  the description it answers; the rest keep going in the background so the DB
  *  still grows for next time. */
-function researchUnmatched(unmatched, apiKey, budgetMs = 18_000) {
+function researchUnmatched(unmatched, apiKey, budgetMs = 18_000, signal) {
   const finished = []; // {desc, entry} collected as tasks land — no name re-matching
   const tasks = unmatched.slice(0, 3).map((desc) =>
     // packaged-looking items get a product-identification pass first (open-web
@@ -876,7 +1021,10 @@ function researchUnmatched(unmatched, apiKey, budgetMs = 18_000) {
       }),
   );
   const timeout = new Promise((resolve) => setTimeout(resolve, budgetMs, 'timeout'));
-  return Promise.race([Promise.allSettled(tasks), timeout]).then(() => [...finished]);
+  // stop WAITING when the phone hung up (research keeps running and still
+  // grows the learned DB, but the photo's slot is freed right away)
+  const hungUp = new Promise((resolve) => (signal?.aborted ? resolve() : signal?.addEventListener('abort', resolve, { once: true })));
+  return Promise.race([Promise.allSettled(tasks), timeout, hungUp]).then(() => [...finished]);
 }
 
 const SYSTEM_PROMPT = () => `You are the food-identification engine for a Jewish blessings (bracha) app.
@@ -928,10 +1076,10 @@ const TOOL = () => ({
   },
 });
 
-async function analyze(body) {
+async function analyze(body, { signal, deadline = Date.now() + 40_000 } = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { code: 503, body: { error: 'no_api_key' } };
-  const r = await anthropic('analyze', key, {
+  if (!key) return { code: 503, body: { error: 'no_api_key' }, billed: false };
+  const payload = {
     model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
     max_tokens: 2048,
     system: SYSTEM_PROMPT(),
@@ -946,11 +1094,28 @@ async function analyze(body) {
         ],
       },
     ],
-  });
-  if (!r.ok) return { code: 502, body: { error: 'anthropic_error', detail: r.text } };
+  };
+  // Everything — vision, one retry, research — must answer before the
+  // client's 45s abort: `deadline` starts when the upload began (~40s).
+  // ONE retry on a rate-limit / overload (429, 529) when there is time left —
+  // a launch-day burst shouldn't turn a momentary 429 into "couldn't identify".
+  // `billed` tells the route whether the app-wide spend counter may be refunded.
+  const left = () => deadline - Date.now();
+  let r;
+  try {
+    r = await anthropic('analyze', key, payload, { signal, timeoutMs: Math.max(1_000, left()) });
+    if (!r.ok && (r.status === 429 || r.status === 529) && left() > 20_000 && !signal?.aborted) {
+      await new Promise((ok) => setTimeout(ok, 1000 + Math.floor(Math.random() * 1500)));
+      r = await anthropic('analyze', key, payload, { signal, timeoutMs: Math.max(1_000, left()) });
+    }
+  } catch (e) {
+    // network error, timeout, or the client hung up — no result for the user
+    return { code: 504, body: { error: 'anthropic_timeout' }, billed: !e.neverSent };
+  }
+  if (!r.ok) return { code: 502, body: { error: 'anthropic_error' }, billed: false };
   const data = r.data;
   const toolUse = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_foods');
-  if (!toolUse?.input) return { code: 502, body: { error: 'no_tool_output' } };
+  if (!toolUse?.input) return { code: 502, body: { error: 'no_tool_output' }, billed: true };
 
   const out = toolUse.input;
   // Self-growing DB: research any unmatched foods against the approved sites.
@@ -959,7 +1124,9 @@ async function analyze(body) {
   if (Array.isArray(out.unmatched) && out.unmatched.length) {
     console.log(`unmatched: ${out.unmatched.join(', ')}`);
     try {
-      const found = await researchUnmatched(out.unmatched, key);
+      // only the time left before the client's deadline (the rest keeps
+      // learning in the background for next time)
+      const found = await researchUnmatched(out.unmatched, key, Math.max(0, Math.min(18_000, left() - 1_000)), signal);
       if (found.length) {
         out.learned_entries = found.map((f) => f.entry);
         out.items = out.items || [];
@@ -974,7 +1141,7 @@ async function analyze(body) {
       console.log(`research pipeline error: ${err.message}`);
     }
   }
-  return { code: 200, body: out };
+  return { code: 200, body: out, billed: true };
 }
 
 // ------------------------------------------------------- reminder scheduler
@@ -1180,16 +1347,20 @@ if (GUEST_PRUNE_MS > 0) {
 // "Daily Wisdom" (chabad.org/dailystudy/dailywisdom_cdo) — one lesson per day
 // adapted from the Rebbe's teachings; the Learn tab shows a faithful digest +
 // deep link (owner feature 2026-08-11). chabad.org sits behind Cloudflare, so
-// a plain server fetch gets a challenge page — the content rides the SAME
-// sanctioned pipeline as researchFood: Anthropic web_search hard-locked to
-// chabad.org. One lesson per US-East day, cached on the volume.
+// a plain server fetch gets a challenge page — the content rides Anthropic's
+// web_fetch server tool, hard-locked to chabad.org, on the ONE dated address
+// chabad.org serves the day's lesson at (see daily-thought.mjs for the request
+// and the checks). One lesson per US-East day, cached on the volume.
 const THOUGHT_FILE = join(DATA_DIR, 'daily-thought.json');
 // bump to invalidate every cached thought when the fetch logic changes
 // (v2: parsha cross-check — v1 once cached the ADJACENT week's lesson;
 //  v3: content guard + holiday-on-Shabbat pin + DST-correct NY day — v2
 //  shipped literal <cite> markup and, on a Rosh Hashana week, pinned the
-//  holiday's name as the parsha)
-const THOUGHT_VERSION = 3;
+//  holiday's name as the parsha;
+//  v4: web_fetch of chabad.org's dated lesson page, verified on the page
+//  itself — v3's web_search could not find ~1 day in 3 and once served the
+//  next parsha's Shabbat lesson under the wrong name)
+const THOUGHT_VERSION = 4;
 /** New York calendar parts via Intl — DST-correct. The old fixed UTC−5 was an
  *  hour off all summer, so the day key rolled at 1am EDT. */
 const nyParts = (d = new Date()) => {
@@ -1225,16 +1396,6 @@ const PARSHA_ORDER = [
   'Balak', 'Pinchas', 'Matot', 'Masei', 'Devarim', 'Vaetchanan', 'Eikev', "Re'eh", 'Shoftim', 'Ki Teitzei',
   'Ki Tavo', 'Nitzavim', 'Vayeilech', "Ha'azinu", 'Vezot Haberakhah',
 ];
-/** Spelling-tolerant parsha key — Vayelech/Vayeilech, Bereshit/Bereishit,
- *  Ha'azinu/Haazinu collapse to one consonant skeleton. */
-const canonParsha = (s) =>
-  String(s || '')
-    .toLowerCase()
-    .replace(/^\s*(?:parashat|parshat|parshas|parsha)\s+/, '')
-    .replace(/[^a-z]/g, '')
-    .replace(/kh/g, 'ch')
-    .replace(/[aeiou]/g, '')
-    .replace(/(.)\1+/g, '$1');
 const stripOnShabbat = (s) => String(s || '').replace(/\s*\(on Shabbat\)$/i, '').trim();
 /** The parsha after `name` in the ring; a combined week ('Nitzavim-Vayeilech')
  *  advances from its LAST half. Null when the name isn't a parsha at all. */
@@ -1281,100 +1442,42 @@ async function currentParsha() {
   }
 }
 
-const THOUGHT_TOOL = {
-  name: 'report_daily_thought',
-  description: "Report today's Daily Wisdom lesson as a faithful digest.",
-  input_schema: {
-    type: 'object',
-    properties: {
-      found: { type: 'boolean' },
-      title: { type: 'string', description: 'the lesson title, e.g. "Trusting in G-d"' },
-      parsha: { type: 'string', description: "the parsha of the weekly edition this lesson belongs to, spelled exactly as given in the request, e.g. 'Shoftim'" },
-      digest: {
-        type: 'string',
-        description:
-          'a faithful 150-220 word digest of the lesson IN YOUR OWN WORDS as plain prose paragraphs — cover its full arc (verse, question, teaching, takeaway); never invent content the page does not carry; no tags, citation markers, markdown or URLs',
-      },
-      url: { type: 'string', description: 'the exact chabad.org Daily Wisdom lesson page URL for today' },
-    },
-    required: ['found'],
-  },
-};
-
-/** Fetch + validate today's lesson. Resolves the cache record, or null with
- *  the reason in thoughtState.lastReject; transport errors throw. */
+/** Fetch + verify today's lesson. Resolves the cache record, or null with the
+ *  reason in thoughtState.lastReject; transport errors throw. Hebcal's pin no
+ *  longer decides WHICH lesson (chabad.org's dated page does) — it only spells
+ *  the parsha in the label, so a Hebcal outage no longer blocks the thought. */
 async function fetchDailyThought(apiKey) {
   const { dateKey, weekday: wd } = nyParts();
-  const weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Shabbat'][wd];
-  // Pin the week: v1 let the model drift to the ADJACENT week's edition (it
-  // cached Ki Seitzei's Monday during Shoftim week). Naming the parsha in the
-  // prompt and rejecting mismatched reports closes that. No pin, no fetch —
-  // the day label below is built from it; the attempt gate retries later.
+  const weekday = WEEKDAYS[wd];
   const pin = await currentParsha();
-  if (!pin) throw new Error('parsha pin unavailable (hebcal)');
-  const reject = (why) => {
-    thoughtState.lastReject = why;
-    console.error(`daily-thought: rejected — ${why}`);
+  const req = thoughtRequest({ dateKey, weekday, model: process.env.CLAUDE_MODEL || 'claude-sonnet-5' });
+  const content = [];
+  // A long server-tool turn can stop with pause_turn; send the partial turn
+  // back unchanged — ONE trailing assistant message holding everything so far
+  // — and the API continues it (bounded: this runs unattended).
+  let paused = false;
+  for (let turn = 0; turn < 3; turn++) {
+    const r = await anthropic('daily-thought', apiKey, req, { timeoutMs: 150_000 });
+    if (!r.ok) throw new Error(`daily-thought http ${r.status}: ${r.text.slice(0, 200)}`);
+    const part = r.data?.content ?? [];
+    content.push(...part);
+    paused = r.data?.stop_reason === 'pause_turn';
+    if (!paused) break;
+    const last = req.messages.at(-1);
+    req.messages = last.role === 'assistant'
+      ? [...req.messages.slice(0, -1), { role: 'assistant', content: [...last.content, ...part] }]
+      : [...req.messages, { role: 'assistant', content: part }];
+  }
+  const v = paused
+    ? { ok: false, reason: 'turn still paused after 3 calls' }
+    : verifyThought(content, { dateKey, weekday, pinName: pin?.name ?? null });
+  if (!v.ok) {
+    thoughtState.lastReject = v.reason;
+    console.error(`daily-thought: rejected — ${v.reason}`);
     return null;
-  };
-  const r = await anthropic('daily-thought', apiKey, {
-    model: process.env.CLAUDE_MODEL || 'claude-sonnet-5',
-    max_tokens: 3000,
-    system: `You find and digest ONE page for a Jewish learning app: today's lesson in
-chabad.org's "Daily Wisdom" series (URLs contain /dailystudy/dailywisdom_cdo/), the
-daily Torah thought adapted from the Rebbe's teachings, arranged by weekly parsha
-with one lesson per weekday (Sunday through Shabbat). Find the weekly Daily Wisdom
-page for the CURRENT parsha (it lists all seven day-lessons), then open TODAY'S
-weekday lesson from that list — never a lesson from an adjacent week's edition.
-Digest ONLY what that page says — never pad it with your own Torah. Report via
-report_daily_thought with the exact lesson URL and the edition's parsha.
-Write the digest as plain prose paragraphs separated by blank lines. Never include
-HTML/XML tags, citation markers like <cite> or [1], markdown, or URLs inside the
-digest. If you cannot open the exact lesson page, report found:false — never write
-about being unable to access it.`,
-    tools: [
-      { type: 'web_search_20250305', name: 'web_search', allowed_domains: ['chabad.org'], max_uses: 6 },
-      THOUGHT_TOOL,
-    ],
-    messages: [
-      {
-        role: 'user',
-        content: `Today is ${weekday}, ${dateKey} (New York). This week's parsha is ${pin.name}. Echo it in the parsha field exactly as spelled here. Find today's Daily Wisdom lesson (${weekday}'s entry of the ${pin.name} edition) and digest it.`,
-      },
-    ],
-  });
-  if (!r.ok) throw new Error(`daily-thought http ${r.status}: ${r.text.slice(0, 200)}`);
-  const data = r.data;
-  const t = data.content?.find((c) => c.type === 'tool_use' && c.name === 'report_daily_thought')?.input;
-  if (!t) return reject('no report_daily_thought tool call');
-  if (t.found !== true) return reject('found:false');
-  // Validate hard before it can reach a user: chabad.org Daily Wisdom URL only,
-  // the pinned parsha, and a digest/title that pass the content guard.
-  let u;
-  try { u = new URL(t.url); } catch { return reject(`bad url: ${String(t.url).slice(0, 80)}`); }
-  if (u.hostname.replace(/^www\./, '') !== 'chabad.org' || !/dailywisdom/i.test(u.pathname))
-    return reject(`not a Daily Wisdom url: ${u.href.slice(0, 80)}`);
-  if (!searchedUrls(data).has(u.href)) console.log(`daily-thought: url not among search results (accepted): ${u.href}`);
-  // the whole name or either hyphen half may match (Vayelech ≈ Vayeilech,
-  // 'Nitzavim-Vayeilech' ≈ 'Vayeilech') — canonParsha absorbs the spelling
-  const forms = (s) => [String(s || ''), ...String(s || '').split('-')].map(canonParsha).filter(Boolean);
-  const mine = new Set(forms(pin.name));
-  if (!forms(t.parsha).some((f) => mine.has(f))) return reject(`wrong-week lesson (${t.parsha} vs ${pin.name})`);
-  const digest = guardProse(t.digest, { minChars: 400, minSentences: 3 });
-  if (!digest.ok) return reject(`digest ${digest.problems.join(',')}`);
-  const title = guardLine(t.title, 120);
-  if (!title.ok) return reject(`title ${title.problems.join(',') || 'empty'}`);
+  }
   thoughtState.lastReject = null;
-  return {
-    v: THOUGHT_VERSION,
-    dateKey,
-    title: title.text,
-    parsha: pin.name,
-    dayLabel: `${weekday} · Parshat ${pin.name}`, // server-built — never the model's
-    digest: digest.text.slice(0, 2400),
-    url: u.href,
-    fetched: Date.now(),
-  };
+  return { v: THOUGHT_VERSION, ...v.record };
 }
 
 /** The cached thought. A pre-v3 record never met the content guard, so it is
@@ -1470,7 +1573,7 @@ const server = createServer(async (req, res) => {
     // It exposes user counts and error details, so it is key-gated and plays
     // dead without/with a wrong key — same posture as /api/admin/broadcast.
     if (url.pathname === '/api/status' && req.method === 'GET') {
-      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 120, 'status')) return limited(res, 'slow_down');
       const key = url.searchParams.get('key') || '';
       const expected = statusKey();
       const kBuf = Buffer.from(key);
@@ -1512,6 +1615,51 @@ const server = createServer(async (req, res) => {
         });
         if (doc.level === 'ok') doc.level = 'warn';
       }
+      // Rate limiting + photo capacity, so a launch-day wall of 429s is seen.
+      const atCapSec = analyzeAtCapSince ? Math.round((Date.now() - analyzeAtCapSince) / 1000) : 0;
+      let topBucket = 0;
+      for (const v of authHits.values()) if (v.count > topBucket) topBucket = v.count;
+      const sixHoursAgo = Date.now() - 6 * 3_600_000;
+      while (busyTimes.length && busyTimes[0] < sixHoursAgo) busyTimes.shift();
+      doc.limits = {
+        rate_limited_since_boot: Object.fromEntries(limitHits),
+        busy_last_6h: busyTimes.length,
+        analyze_max_inflight: ANALYZE_MAX_INFLIGHT,
+        analyze_at_cap_seconds: atCapSec,
+        uploads_in_progress: analyzeUploads,
+        throttle_buckets: authHits.size,
+        top_bucket_count: topBucket,
+      };
+      // the capacity routine reads alerts[], not limits — surface saturation there
+      if (busyTimes.length >= 20) {
+        doc.alerts.push({
+          level: 'warn',
+          code: 'analyze_busy_recent',
+          message: `${busyTimes.length} photo requests answered "busy" in the last 6h — photo capacity is saturating (raise ANALYZE_MAX_INFLIGHT if the Anthropic tier allows)`,
+          busy_last_6h: busyTimes.length,
+        });
+        if (doc.level === 'ok') doc.level = 'warn';
+      }
+      if (atCapSec >= 120) {
+        doc.alerts.push({
+          level: 'critical',
+          code: 'analyze_stuck_at_cap',
+          message: `all ${ANALYZE_MAX_INFLIGHT} photo slots busy for ${atCapSec}s — users are getting "busy"; check Anthropic latency or restart`,
+          analyze_at_cap_seconds: atCapSec,
+        });
+        doc.level = 'critical';
+      }
+      // Edge diagnostic: call this from two networks (cellular AND Wi-Fi). Two
+      // different client_ip_hash values = separate rate-limit buckets per user
+      // network; the SAME hash from both = the edge is hiding client IPs and
+      // every user shares one bucket (then fix clientIp before a big launch).
+      const hops = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+      doc.edge = {
+        client_ip_hash: createHash('sha256').update(clientIp(req)).digest('hex').slice(0, 10),
+        xff_hops: hops.length,
+        real_ip_header: !!req.headers['x-real-ip'], // true on Railway (edge-set); false = fallback path in use
+        last_hop_private: hops.length ? PRIVATE_HOP.test(hops[hops.length - 1]) : null,
+      };
       return json(res, 200, doc);
     }
 
@@ -1534,7 +1682,7 @@ const server = createServer(async (req, res) => {
     // /api/account + /api/account/password once it holds email + password.
     // Account-only routes answer 403 account_required until then.
     if (url.pathname === '/api/guest' && req.method === 'POST') {
-      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 300, 'guest')) return limited(res, 'slow_down');
       const { name } = await readBody(req);
       const clean = String(name ?? '').trim().slice(0, 20) || 'Guest';
       const created = store.createUser({ name: clean, guest: 1 });
@@ -1543,7 +1691,7 @@ const server = createServer(async (req, res) => {
 
     if (url.pathname === '/api/register' && req.method === 'POST') {
       // 240/10min: many students share one campus/home NAT on launch day.
-      if (throttled(req, 240)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 240, 'register')) return limited(res, 'slow_down');
       // a guest's bearer token turns this into an UPGRADE of that row
       const guestSession = guestBearer(req);
       const { name, email, password } = await readBody(req);
@@ -1582,7 +1730,7 @@ const server = createServer(async (req, res) => {
     //   email + friend code    (legacy no-password accounts — still valid)
     if (url.pathname === '/api/signin' && req.method === 'POST') {
       // 120/10min per IP; per-email pwFails carries the anti-stuffing load.
-      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 120, 'signin')) return limited(res, 'slow_down');
       const { email, code, password } = await readBody(req);
       const mail = String(email || '').trim().toLowerCase();
       if (password != null && String(password) !== '') {
@@ -1622,7 +1770,7 @@ const server = createServer(async (req, res) => {
     // Links by provider sub first, then by verified email; creates otherwise.
     if (url.pathname === '/api/oauth' && req.method === 'POST') {
       // 240/10min: Sign in with Apple is the main iOS signup path — same NAT logic.
-      if (throttled(req, 240)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 240, 'oauth')) return limited(res, 'slow_down');
       const { provider, idToken, name, authorizationCode } = await readBody(req);
       if (provider !== 'apple' && provider !== 'google') return json(res, 400, { error: 'bad_provider' });
       if (provider === 'google' && !GOOGLE_AUDS.length) return json(res, 501, { error: 'google_not_configured' });
@@ -1712,7 +1860,7 @@ const server = createServer(async (req, res) => {
     // model still never rules from its own knowledge. `dryRun` returns what it
     // WOULD learn without persisting, so rulings can be eyeballed first.
     if (url.pathname === '/api/admin/research' && req.method === 'POST') {
-      if (throttled(req, 10)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 10, 'admin')) return limited(res, 'slow_down');
       const key = process.env.BROADCAST_KEY || '';
       const { secret, foods, dryRun } = await readBody(req);
       const sBuf = Buffer.from(String(secret || ''));
@@ -1743,7 +1891,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/admin/broadcast' && req.method === 'POST') {
-      if (throttled(req)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 30, 'admin')) return limited(res, 'slow_down');
       const key = process.env.BROADCAST_KEY || '';
       const { secret, title, body } = await readBody(req);
       const sBuf = Buffer.from(String(secret || ''));
@@ -1797,13 +1945,13 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true, subscribers: subs.length, sent, expired, failed });
     }
 
-    // Operator review of chat reports (App Review 1.2) and the test-account
-    // prune — same secret and play-dead semantics as /api/admin/broadcast.
     // Operator data correction: drop a learned-food row whose ruling turned
     // out wrong (2026-09-22: 'falafel' had been learned as Ha'adama off the
     // chickpeas page while brachos.org's own falafel page rules Shehakol).
     // The vetted static DB is the fix; this just removes the bad row.
+    // Same 'admin' bucket as the other secret-gated routes (merge 2026-09-22).
     if (url.pathname === '/api/admin/learned/delete' && req.method === 'POST') {
+      if (throttled(req, 60, 'admin')) return limited(res, 'slow_down');
       const { secret, key } = await readBody(req);
       if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
       const k = String(key || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
@@ -1813,21 +1961,23 @@ const server = createServer(async (req, res) => {
       return json(res, removed ? 200 : 404, { ok: !!removed, key: k, removed });
     }
 
+    // Operator review of chat reports (App Review 1.2) and the test-account
+    // prune — same secret and play-dead semantics as /api/admin/broadcast.
     if (url.pathname === '/api/admin/reports' && req.method === 'POST') {
-      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 60, 'admin')) return limited(res, 'slow_down');
       const { secret } = await readBody(req);
       if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
       return json(res, 200, { reports: store.openReports(), open: store.openReportCount() });
     }
     if (url.pathname === '/api/admin/reports/resolve' && req.method === 'POST') {
-      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 60, 'admin')) return limited(res, 'slow_down');
       const { secret, id } = await readBody(req);
       if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
       if (!store.resolveReport(String(id || ''))) return json(res, 404, { error: 'report_not_found' });
       return json(res, 200, { ok: true });
     }
     if (url.pathname === '/api/admin/prune-test-accounts' && req.method === 'POST') {
-      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      if (throttled(req, 60, 'admin')) return limited(res, 'slow_down');
       const { secret, force } = await readBody(req);
       if (!adminSecretOk(secret)) return json(res, 404, { error: 'not_found' });
       // irreversible — insist on an off-volume backup unless explicitly forced
@@ -1846,46 +1996,112 @@ const server = createServer(async (req, res) => {
       // daily use, and cap global concurrency so one client can't OOM the box.
       const who = auth(req);
       if (!who) return json(res, 401, { error: 'unauthorized' });
-      // per-IP ceiling on top of the per-account cap: a token farm on one box
-      // must not multiply vision spend (120/10min still covers a dorm's lunch)
-      if (throttled(req, 120)) return json(res, 429, { error: 'slow_down' });
-      // The in-flight slot is taken BEFORE the body is read: a slow upload used
-      // to sit outside the ceiling, so any number of stalled uploads could pass
-      // this check and then all hit Anthropic together.
-      if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return json(res, 429, { error: 'busy' });
+      // per-IP ceiling on top of the per-account cap, in the photo's OWN bucket
+      // (a token farm on one box must not multiply vision spend, but guest
+      // mints / sign-ins on a shared shul or campus network no longer eat it)
+      if (throttled(req, 600, 'analyze')) return limited(res, 'slow_down');
       touchIfStale(who.user); // a guest identifying meals is an active guest
-      // per-account daily cap — guests get the smaller one
+      // per-account daily cap — guests get the smaller one. Out-of-allowance
+      // is answered FIRST, so nobody out of checks is told "try again in a minute".
       const dailyCap = who.user.guest ? ANALYZE_GUEST_MAX_PER_DAY : ANALYZE_MAX_PER_DAY;
       // cheap fast-fail (may be stale after the await below)
       const pre = analyzeUse.get(who.user.id);
       const today = new Date().toISOString().slice(0, 10);
-      if (pre?.day === today && pre.count >= dailyCap)
-        return json(res, 429, { error: 'daily_limit' });
-      analyzeInFlight++;
+      if (pre?.day === today && pre.count >= dailyCap) return limited(res, 'daily_limit');
+      if (analyzeGlobal.day === today && analyzeGlobal.count >= ANALYZE_GLOBAL_MAX_PER_DAY) return limited(res, 'global_limit');
+      // UPLOAD capacity is separate from VISION capacity: a stalled upload holds
+      // only an upload slot (bounded per network and per account), never one
+      // of the 16 vision slots — before 2026-09-15 one guest trickling 16 slow
+      // uploads kept "busy" on for every user indefinitely.
+      const ip = clientIp(req);
+      if (
+        analyzeUploads >= ANALYZE_MAX_UPLOADS ||
+        (analyzeUploadsByIp.get(ip) || 0) >= ANALYZE_UPLOADS_PER_IP ||
+        (analyzeByUser.get(who.user.id) || 0) >= ANALYZE_INFLIGHT_PER_USER
+      )
+        return limited(res, 'busy');
+      const deadline = Date.now() + 40_000; // the client aborts at 45s
+      analyzeUploads++;
+      bumpCount(analyzeUploadsByIp, ip, 1);
+      bumpCount(analyzeByUser, who.user.id, 1);
+      let uploading = true;
+      const uploadDone = () => {
+        if (!uploading) return;
+        uploading = false;
+        analyzeUploads--;
+        bumpCount(analyzeUploadsByIp, ip, -1);
+      };
+      let visionSlot = false;
+      let charged = false;
+      // the phone hung up before we answered → cancel the Anthropic call too
+      const hangup = new AbortController();
+      res.on('close', () => {
+        if (!res.writableFinished) hangup.abort();
+      });
       try {
         // 4 MB: the client sends a ≤ ~1 MB base64 photo; the old 12 MB let one
-        // caller pin a lot of memory per slot
-        const body = await readBody(req, 4 * 1024 * 1024);
+        // caller pin a lot of memory per slot. 45s = the client's own abort.
+        let body;
+        try {
+          body = await readBody(req, 4 * 1024 * 1024, 45_000);
+        } catch (e) {
+          if (e.status === 413) return json(res, 413, { error: 'too_large' });
+          return json(res, e.status === 408 ? 408 : 400, { error: e.status === 408 ? 'body_timeout' : 'bad_request' });
+        } finally {
+          uploadDone();
+        }
+        // Not a real photo → reject BEFORE charging anything (junk bodies used
+        // to count against the user's and the whole app's daily cap).
         if (!body.image) return json(res, 400, { error: 'no_image' });
+        if (!looksLikeImage(body.image)) return json(res, 400, { error: 'bad_image' });
+        // Vision slot only now, with a complete photo in hand.
+        if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT) return limited(res, 'busy');
+        analyzeInFlight++;
+        visionSlot = true;
+        if (analyzeInFlight >= ANALYZE_MAX_INFLIGHT && !analyzeAtCapSince) analyzeAtCapSince = Date.now();
         // Re-check AND increment atomically after the await: Node is single-
         // threaded, so a get/check/set with no await between them can't interleave.
         // Without this, parallel requests all read the same pre-await count and
         // could each pass the cap (multiplying vision spend).
         const use = analyzeUse.get(who.user.id);
-        if (use?.day === today && use.count >= dailyCap)
-          return json(res, 429, { error: 'daily_limit' });
-        // Global spend ceiling (same atomic-after-await discipline as above).
+        if (use?.day === today && use.count >= dailyCap) return limited(res, 'daily_limit');
+        // Global spend ceiling (same atomic-after-await discipline as above) —
+        // its own code, so the app can say "paused for everyone" instead of
+        // blaming the user's own allowance.
         if (analyzeGlobal.day !== today) analyzeGlobal = { day: today, count: 0 };
-        if (analyzeGlobal.count >= ANALYZE_GLOBAL_MAX_PER_DAY)
-          return json(res, 429, { error: 'daily_limit' });
-        // charge the quota only once the request is valid — a malformed or
-        // oversized body shouldn't burn one of the user's 30 daily calls
-        analyzeUse.set(who.user.id, use?.day === today ? { day: today, count: use.count + 1 } : { day: today, count: 1 });
+        if (analyzeGlobal.count >= ANALYZE_GLOBAL_MAX_PER_DAY) return limited(res, 'global_limit');
+        analyzeUse.set(who.user.id, use?.day === today ? { ...use, count: use.count + 1 } : { day: today, count: 1 });
         analyzeGlobal.count++;
-        const out = await analyze(body);
+        charged = true;
+        const out = await analyze(body, { signal: hangup.signal, deadline });
+        if (out.code !== 200 || hangup.signal.aborted) {
+          // The user got nothing → give them their photo back. The app-wide
+          // SPEND counter comes back only when Anthropic can't have billed it
+          // (an error status, or a connection that never opened) — timeouts and
+          // hang-ups may be charged, and refunding them uncapped spend.
+          // Hang-up refunds of the user's own allowance are capped per day so
+          // hanging up can't turn one account into unlimited billed calls.
+          const u = analyzeUse.get(who.user.id);
+          const maybeBilled = out.code === 200 || out.billed !== false;
+          if (!maybeBilled) {
+            refundAnalyze(who.user.id, today, { global: true });
+          } else if (u?.day === today && (u.hangupRefunds || 0) < 3) {
+            u.hangupRefunds = (u.hangupRefunds || 0) + 1;
+            refundAnalyze(who.user.id, today, { global: false });
+          }
+          charged = false;
+        }
         return json(res, out.code, out.body);
+      } catch (e) {
+        if (charged) refundAnalyze(who.user.id, today, { global: false });
+        throw e;
       } finally {
-        analyzeInFlight--;
+        uploadDone();
+        bumpCount(analyzeByUser, who.user.id, -1);
+        if (visionSlot) {
+          analyzeInFlight--;
+          if (analyzeInFlight < ANALYZE_MAX_INFLIGHT) analyzeAtCapSince = 0;
+        }
       }
     }
 
@@ -1926,6 +2142,16 @@ const server = createServer(async (req, res) => {
         providers: ['apple', 'google'].filter((p) => !!a.user[p]),
         guest: a.user.guest,
         terms_accepted: !!a.user.termsAcceptedAt,
+        // a Web Push subscription (PWA reminders) is STORED for this account —
+        // additive. "Stored", not "fires": the mealtime scheduler
+        // (store.pushSubscribers) skips any account holding a native token.
+        web_push: !!a.user.push?.subscription,
+        // which channel carries this account's mealtime reminders — mirrors
+        // store.pushSubscribers(): a phone app (APNs/FCM) schedules them
+        // locally and suppresses the Web Push ones, so the PWA's reminder
+        // sheet can say "handled by your phone app" instead of showing an
+        // "on" toggle that does nothing (second review 2026-09-23)
+        reminders_via: a.user.apns || a.user.fcm ? 'native' : a.user.push?.subscription ? 'web' : null,
       });
     }
 
@@ -1990,7 +2216,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname === '/api/league') return json(res, 200, { league: leagueFor(a.user), code: a.user.code });
 
     if (url.pathname === '/api/friends/add' && req.method === 'POST') {
-      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      // per ACCOUNT first (these routes are signed in), plus a roomy per-IP bucket
+      // so a shared network isn't one allowance for everyone on it
+      if (throttledKey(`friends:u:${a.user.id}`, 60) || throttled(req, 300, 'friends') || codeGuessBlocked(req))
+        return limited(res, 'slow_down');
       const { code } = await readBody(req);
       const raw = String(code || '').trim();
       // Code only — never email. Resolving a bare email into a friendship both
@@ -2000,7 +2229,10 @@ const server = createServer(async (req, res) => {
       const other = store.userByCode(normalizeCode(raw));
       // a guest's code never resolves for anyone: they hold no account, and
       // their name must never surface in another user's league
-      if (!other || other.guest) return json(res, 404, { error: 'code_not_found' });
+      if (!other || other.guest) {
+        noteCodeMiss(req);
+        return json(res, 404, { error: 'code_not_found' });
+      }
       if (other.id === a.user.id) return json(res, 400, { error: 'thats_you' });
       store.addFriend(a.user.id, other.id);
       return json(res, 200, { league: leagueFor(a.user), added: other.name });
@@ -2092,10 +2324,16 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/boards/join' && req.method === 'POST') {
-      if (throttled(req, 60)) return json(res, 429, { error: 'slow_down' });
+      // per ACCOUNT first (these routes are signed in), plus a roomy per-IP bucket
+      // so a shared network isn't one allowance for everyone on it
+      if (throttledKey(`join:u:${a.user.id}`, 60) || throttled(req, 600, 'join') || codeGuessBlocked(req))
+        return limited(res, 'slow_down');
       const { code } = await readBody(req);
       const board = store.boardByCode(code);
-      if (!board) return json(res, 404, { error: 'board_not_found' });
+      if (!board) {
+        noteCodeMiss(req);
+        return json(res, 404, { error: 'board_not_found' });
+      }
       const already = store.boardsOf(a.user.id).some((b) => b.id === board.id);
       if (!already) {
         if (store.boardsOf(a.user.id).length >= MAX_BOARDS_PER_USER)
@@ -2153,7 +2391,7 @@ const server = createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/boards/message' && req.method === 'POST') {
-      if (!a.user.termsAcceptedAt) return json(res, 403, { error: 'terms_required' });
+      if (!a.user.termsAcceptedAt && !legacyNativeClient(req)) return json(res, 403, { error: 'terms_required' });
       const { board: boardId, code, text } = await readBody(req);
       const board = resolveBoard(boardId, code);
       if (!board || !store.isBoardMember(board.id, a.user.id)) return json(res, 404, { error: 'board_not_found' });
@@ -2226,10 +2464,16 @@ const server = createServer(async (req, res) => {
         return json(res, 200, { ok: true, enabled: false, platform: plat });
       }
       const t = String(token);
-      // a native token means this device schedules mealtime reminders locally
-      // and hears chat over APNs/FCM — retire any Web Push subscription the
-      // same account left behind on the PWA, or every nudge arrives twice
-      store.setPush(a.user.id, null);
+      // The account's Web Push row is KEPT (review fix 2026-09-22). It holds the
+      // PWA's mealtime prefs AND the tz offset — build 35's only source of
+      // "today" for league points — and wiping it on every app open (build 35
+      // re-registers its APNs token once per session) silenced desktop
+      // reminders and scored evenings on UTC. No double reminder: the
+      // scheduler reads store.pushSubscribers(), which already skips any
+      // account holding an APNs/FCM token (the phone schedules those locally).
+      // Chat / league nudges still fan out per channel (sendPush), so a desktop
+      // PWA and the phone app on one account each get their own, like any
+      // messenger with a desktop client. /api/me reports `web_push`.
       if (plat === 'android') {
         // FCM registration tokens: base64url-ish plus ':' — never hex-shaped,
         // so an Android token can never land in the APNs column (or vice versa)
@@ -2263,7 +2507,15 @@ const server = createServer(async (req, res) => {
 
     return json(res, 404, { error: 'not_found' });
   } catch (e) {
-    return json(res, 500, { error: 'server_error', detail: String(e.message).slice(0, 200) });
+    // a body the caller abandoned, sent too slowly or too big, or bad JSON:
+    // the caller's problem, not a server fault — answer it, don't log a 500
+    if (e?.status === 408 || e?.status === 413 || e?.status === 499 || e instanceof SyntaxError) {
+      if (res.headersSent || res.destroyed) return;
+      return json(res, e.status === 413 ? 413 : e.status === 408 ? 408 : 400, { error: e.status === 413 ? 'too_large' : 'bad_request' });
+    }
+    // log it: a 500 used to leave no trace in the Railway logs at all
+    console.error(`500 ${req.method} ${req.url?.split('?')[0]}: ${e?.stack || e}`);
+    return json(res, 500, { error: 'server_error' });
   }
 });
 
