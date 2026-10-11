@@ -10,7 +10,7 @@ android {
         // versionCode mirrors the iOS CURRENT_PROJECT_VERSION so one number
         // names one build on both stores. Play rejects a versionCode it has
         // already seen — bump BOTH before every sync-master (see CLAUDE.md).
-        versionCode 37
+        versionCode 38
         versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

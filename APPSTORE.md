@@ -5,10 +5,11 @@ portrait-only), reminders use native iOS local notifications, in-app account
 deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
 generated. Version 1.0 (build 35) is LIVE on the App Store since 2026-09-12.
-Next submission: **version 1.0.1, build 37** (`MARKETING_VERSION` and
-`CURRENT_PROJECT_VERSION` in `ios/App/App.xcodeproj/project.pbxproj`; a
+Next submission: **version 1.0.1** — build 37 is in TestFlight, and the tree
+now carries **build 38** (`MARKETING_VERSION` 1.0.1 and
+`CURRENT_PROJECT_VERSION` 38 in `ios/App/App.xcodeproj/project.pbxproj`). A
 released version cannot take new builds, so every build from here goes to a
-new version — create 1.0.1 in App Store Connect and attach 37).
+new version; 1.0.1 is not released yet, so 37 or 38 can be attached to it.
 
 Review history:
 
@@ -54,7 +55,11 @@ Review history:
   and network timeouts no longer call `AbortSignal.timeout`/`any` directly
   (`src/lib/timeoutSignal.ts` wraps them for iOS 15/16). Build 36 was
   never built (see above), so 37 is the first build Codemagic runs since 35.
-  Bump to 38 before the next sync-master.
+- **Build 38** — 2026-10-11, still **version 1.0.1**: 37 plus the Android,
+  Google Play and PWA icons regenerated from the iOS App Store icon (they still
+  showed the old line-art). The iOS AppIcon is the master and is unchanged, so
+  nothing iOS-visible differs from 37. Once 38 has been synced, bump to 39
+  before the next sync-master.
 
 What remains needs your Apple account. Two paths — pick one.
 
@@ -119,7 +124,10 @@ What remains needs your Apple account. Two paths — pick one.
    - Reviewer account: `review@brachaswithrimon.app` / the password kept OUT
      of this public repo (mirrored as BRACHA_REVIEW_PASSWORD in
      `D:/Claude GROUP APP/group-app-ad/.env`) — fill it into the Notes block
-     where marked, never into the sign-in fields.
+     where marked, never into the sign-in fields. Since 2026-10-11 the
+     server never grandfathers this account past the community-rules gate,
+     so reviewers (Apple and Play) meet the "I agree" step in board chat —
+     never tap "I agree" on it yourself, or every later review skips it.
 
    The account must exist on the live API before you submit — sign it up in
    the app (Friends tab → account panel) with exactly that email/password (or

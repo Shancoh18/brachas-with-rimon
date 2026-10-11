@@ -12,10 +12,13 @@
 #      (App Store Connect > Users and Access > Integrations > App Store Connect API).
 #   3. iOS: in the app's settings enable "iOS automatic code signing" with that key.
 #   4. Android: Teams > Code signing identities > Android keystores > upload
-#      group-app-ad/android-signing/brachas-upload.p12 with reference name
-#      `brachas_upload` (alias `upload`; password in group-app-ad/.env as
-#      BRACHA_ANDROID_UPLOAD_KEYSTORE_PASSWORD). The android-play workflow
-#      refuses to start until that reference exists.
+#      THE KEY PLAY HAS REGISTERED as its upload key, reference name
+#      `brachas_upload` (alias `upload`). Until Google approves the upload-key
+#      reset chosen 2026-10-11 that is the Windows-box key (SHA-1 2A:AB:DE…);
+#      after it, the Mac key group-app-ad/android-signing/brachas-upload.p12
+#      (SHA-1 2B:FF:F6…, password in group-app-ad/.env as
+#      BRACHA_ANDROID_UPLOAD_KEYSTORE_PASSWORD). See PLAYSTORE.md step 3. The
+#      android-play workflow refuses to start until that reference exists.
 #   5. Android (later, optional): Teams > Environment variables > group
 #      `google_play` with GCLOUD_SERVICE_ACCOUNT_CREDENTIALS (a Play Console
 #      service-account JSON) to publish straight to the internal track — see

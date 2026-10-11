@@ -799,6 +799,9 @@ try {
   const modBoard = r.json.id;
   const modCode = r.json.code;
   await api('/api/boards/join', { method: 'POST', token: tokM2, body: { code: modCode } });
+  // distinct `joined` ms: a same-ms tie falls to user_id order (random ids), which made
+  // "earliest-joined member inherits ownership" below fail about half the time
+  await new Promise((res) => setTimeout(res, 5));
   await api('/api/boards/join', { method: 'POST', token: tokM3, body: { code: modCode } });
 
   // profanity filter — whole word only, so Scunthorpe stays a place

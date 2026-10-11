@@ -6,18 +6,22 @@
 import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import { readdirSync, readFileSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { dirname, join, relative } from 'path';
+import { fileURLToPath } from 'url';
+
+// the repo root = this script's parent folder (Windows box or Mac copy alike)
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Preflight gate: type-check + server push/chat scenario suite. A deploy that
 // fails these never reaches the live site. SKIP_PREFLIGHT=1 = emergency hatch.
-execFileSync('node', ['scripts/preflight.mjs'], { cwd: 'D:/Claude GROUP APP/bracha-app', stdio: 'inherit' });
+execFileSync('node', ['scripts/preflight.mjs'], { cwd: ROOT, stdio: 'inherit' });
 
 // Build — IN-PROCESS args, because Git Bash mangles leading-slash args
 // (--base=/x/ became a Windows path once and shipped a blank site).
-execFileSync('node', ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { cwd: 'D:/Claude GROUP APP/bracha-app', stdio: 'inherit' });
+execFileSync('node', ['node_modules/vite/bin/vite.js', 'build', '--base=./'], { cwd: ROOT, stdio: 'inherit' });
 
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
-const DIST = 'D:/Claude GROUP APP/bracha-app/dist';
+const DIST = join(ROOT, 'dist');
 
 /**
  * Every call retries on transient network faults. Uploading the mascot videos

@@ -2,6 +2,8 @@
  * Community-rules gate backfill (hotfix 2026-09-22): accounts that existed
  * before the gate went live are stamped once at boot; later accounts stay
  * gated; a real acceptance is never overwritten; re-running changes nothing.
+ * The store-review account (review@brachaswithrimon.app) is never grandfathered
+ * and its grandfather stamp is lifted (2026-10-11), so reviewers meet the gate.
  * Run: node --experimental-sqlite server/test/terms-backfill.mjs
  */
 import { mkdtempSync, rmSync } from 'fs';
@@ -22,6 +24,9 @@ ins.run('old1', 'Old One', 'RIMON-OLD1', GATE - 86_400_000);
 ins.run('old2', 'Old Two', 'RIMON-OLD2', GATE - 1);
 ins.run('new1', 'New One', 'RIMON-NEW1', GATE + 1);
 db.prepare('UPDATE users SET terms_accepted_at = ? WHERE id = ?').run(GATE + 5000, 'old2');
+// the store-review account: pre-gate, already grandfathered by an earlier boot
+db.prepare('INSERT INTO users (id,name,email,code,created,terms_accepted_at) VALUES (?,?,?,?,?,?)')
+  .run('rev1', 'Reviewer', 'review@brachaswithrimon.app', 'RIMON-REV1', GATE - 86_400_000, GATE);
 db.close();
 
 db = openDb(dir); // second boot → migration + backfill
@@ -29,9 +34,12 @@ const at = (id) => db.prepare('SELECT terms_accepted_at t FROM users WHERE id = 
 check('account created before the gate is grandfathered (stamped at the gate time)', at('old1') === GATE, String(at('old1')));
 check('an explicit acceptance is never overwritten', at('old2') === GATE + 5000, String(at('old2')));
 check('account created after the gate stays gated', at('new1') === null, String(at('new1')));
+check('the store-review account is un-grandfathered (sees the gate)', at('rev1') === null, String(at('rev1')));
+db.prepare('UPDATE users SET terms_accepted_at = ? WHERE id = ?').run(GATE + 9000, 'rev1'); // reviewer taps "I agree"
 db.close();
 db = openDb(dir); // third boot → no change
 check('backfill is idempotent', at('old1') === GATE && at('old2') === GATE + 5000 && at('new1') === null);
+check("the reviewer's real acceptance survives a reboot", at('rev1') === GATE + 9000, String(at('rev1')));
 db.close();
 rmSync(dir, { recursive: true, force: true });
 console.log(failures ? `TERMS-BACKFILL: ${failures} FAILED` : 'TERMS-BACKFILL: ALL PASS');

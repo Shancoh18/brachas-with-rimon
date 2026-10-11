@@ -8,7 +8,8 @@
  */
 import puppeteer from 'puppeteer-core';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const arg = (k, d) => {
   const m = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -18,10 +19,13 @@ const OUT = resolve(arg('out', 'store-assets/preview-cards'));
 const W = Number(arg('w', 886));
 const H = Number(arg('h', 1920));
 mkdirSync(OUT, { recursive: true });
-const ROOT = resolve('.');
+// repo root from this file, so the defaults below resolve whatever the cwd
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const b64 = (p) => `data:image/${p.endsWith('.webp') ? 'webp' : 'png'};base64,${readFileSync(p).toString('base64')}`;
 const mascot = (n) => b64(join(ROOT, 'public', 'mascot', n));
-const ICON_PATH = process.env.STORE_ICON || 'C:/Users/VR/OneDrive/Desktop/Brachas brand kit/CHOSEN-appicon-frost-glass-1024.png';
+// end-card icon: art/icon-1024.png = byte copy of the iOS App Store icon
+// (Frost Blush), kept in sync by scripts/android-launcher-icons.mjs
+const ICON_PATH = process.env.STORE_ICON || join(ROOT, 'art', 'icon-1024.png');
 const icon = b64(ICON_PATH);
 
 const CAPTIONS = [
@@ -77,7 +81,7 @@ await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 });
 const render = async (id, html, transparent) => {
   const file = join(OUT, `${id}.html`);
   writeFileSync(file, html);
-  await page.goto('file:///' + file.replace(/\\/g, '/'), { waitUntil: 'networkidle0', timeout: 60_000 });
+  await page.goto(pathToFileURL(file).href, { waitUntil: 'networkidle0', timeout: 60_000 });
   await page.evaluate(() => document.fonts.ready);
   await new Promise((r) => setTimeout(r, 300));
   await page.screenshot({ path: join(OUT, `${id}.png`), type: 'png', omitBackground: transparent, clip: { x: 0, y: 0, width: W, height: H } });

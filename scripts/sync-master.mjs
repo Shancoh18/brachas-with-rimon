@@ -6,17 +6,22 @@
 import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import { readdirSync, readFileSync, statSync } from 'fs';
-import { join, relative } from 'path';
+import { dirname, join, relative } from 'path';
+import { fileURLToPath } from 'url';
 
 const REPO = 'repos/Shancoh18/brachas-with-rimon';
-const ROOT = 'D:/Claude GROUP APP/bracha-app';
+// the repo root = this script's parent folder, so the same script runs on the Windows box
+// (D:/Claude GROUP APP/bracha-app) and on the Mac (~/Developer/bracha-app)
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Preflight gate: every master sync fires a TestFlight build, so nothing
 // broken should ever reach GitHub. SKIP_PREFLIGHT=1 = emergency hatch.
 execFileSync('node', ['scripts/preflight.mjs'], { cwd: ROOT, stdio: 'inherit' });
 // .claude = local harness config/worktrees — never publish, and a half-removed
 // worktree inside it can EPERM the walk
-const SKIP = new Set(['.git', '.github', 'node_modules', 'dist', '.env', '.env.local', '.claude']);
+// .synced-from-master = the Mac copy's local note of the master sha it matches (no .git there);
+// store-assets/ = the default output dir of the store-graphics scripts (never publish renders)
+const SKIP = new Set(['.git', '.github', 'node_modules', 'dist', '.env', '.env.local', '.claude', '.synced-from-master', 'store-assets']);
 // generated iOS artifacts (also git-ignored); the exFAT drive can wedge these
 const SKIP_PATHS = new Set([
   'ios/App/App/public',
@@ -120,9 +125,11 @@ for (const p of files) {
 console.log(`blobs done (${uploaded} uploaded, ${files.length - uploaded} reused)`);
 
 const tree = gh(['-X', 'POST', `${REPO}/git/trees`, '--input', '-'], { tree: treeEntries });
-const message = execFileSync('git', ['-C', ROOT, 'log', '-1', '--pretty=%B'], {
+// SYNC_MESSAGE names the commit where there is no local git history (the Mac copy);
+// otherwise the local HEAD's message, as before
+const message = (process.env.SYNC_MESSAGE || execFileSync('git', ['-C', ROOT, 'log', '-1', '--pretty=%B'], {
   encoding: 'utf8',
-}).trim();
+})).trim();
 const commit = gh(['-X', 'POST', `${REPO}/git/commits`, '--input', '-'], {
   message,
   tree: tree.sha,

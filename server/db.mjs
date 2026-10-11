@@ -133,7 +133,14 @@ export function openDb(dataDir) {
   // (Android / Play reviewers must still agree). Runs every boot, changes
   // nothing the second time, never overwrites a real acceptance.
   const TERMS_GATE_LIVE = Date.parse('2026-09-22T17:40:00Z');
-  db.prepare('UPDATE users SET terms_accepted_at = ? WHERE terms_accepted_at IS NULL AND created < ?').run(TERMS_GATE_LIVE, TERMS_GATE_LIVE);
+  // Store-review accounts are NEVER grandfathered (Play review 2026-10-11): a
+  // reviewer signing in with one must meet the "I agree" step Play's UGC
+  // policy looks for. The second statement lifts only the grandfather stamp
+  // (exactly TERMS_GATE_LIVE) — a real tap stamps Date.now() and survives — so
+  // it runs once in effect, is a no-op afterwards, and touches no real user.
+  const REVIEW_EMAIL = 'review@brachaswithrimon.app';
+  db.prepare("UPDATE users SET terms_accepted_at = ? WHERE terms_accepted_at IS NULL AND created < ? AND COALESCE(email, '') <> ?").run(TERMS_GATE_LIVE, TERMS_GATE_LIVE, REVIEW_EMAIL);
+  db.prepare('UPDATE users SET terms_accepted_at = NULL WHERE email = ? AND terms_accepted_at = ?').run(REVIEW_EMAIL, TERMS_GATE_LIVE);
   // the user's UTC offset (minutes, Date.getTimezoneOffset) from the last
   // /api/sync — "today" for league points and evening pushes used to come
   // only from Web-Push prefs, so every native user was scored on UTC days

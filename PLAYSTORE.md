@@ -10,6 +10,13 @@ server + client, back button, portrait, icons/splash, Codemagic workflows,
 Play assets, privacy + deletion pages). What is left needs YOUR Google account
 and is listed under **Operator checklist** — in order.
 
+State on 2026-10-11: version 1.0.1 build 37 is on **Internal testing** (uploaded
+2026-10-01, step 4); Play App Signing is enrolled and the registered upload key
+is the Windows-box key (step 3). Build 38 replaces the Android launcher icon,
+which still showed the old engraved line-art, with the iOS App Store icon
+(see "Icons" under "How the Android build is wired"); the Play hi-res icon and
+feature graphic were re-rendered the same day (see "Assets").
+
 ## What is cross-platform and what is not
 
 | Feature | iPhone | Android | Notes |
@@ -63,23 +70,54 @@ Redeploy (variables are read at boot). `/api/status` then shows
 the Android app still works; only server pushes stay off (`delivery:
 "awaiting_server_key"`), exactly like iOS before the APNs key.
 
-### 3. Upload keystore into Codemagic (2 minutes)
-Already generated: `D:/Claude GROUP APP/group-app-ad/android-signing/brachas-upload.p12`
-(PKCS12, alias `upload`, password in `group-app-ad/.env` as
-`BRACHA_ANDROID_UPLOAD_KEYSTORE_PASSWORD`; key password = store password).
-Certificate fingerprints (you will paste these into Google Cloud + Play):
+### 3. Upload key (Play App Signing) + Codemagic keystore
+**As of 2026-10-11 Play App Signing is enrolled** (Google holds the real
+app-signing key) and the UPLOAD key Play has registered is the **Windows-box
+key of 2026-09-22** — the key build 37 was signed with. Every AAB uploaded to
+Play must be signed with it:
 
 ```
-SHA-1   2A:AB:DE:1F:A9:40:2B:D1:8C:60:74:C3:98:87:6E:F1:17:0F:79:76
-SHA-256 30:D2:2E:01:0C:32:D1:A6:5A:0F:41:A3:8A:15:65:C6:0E:07:BB:63:BB:35:82:F9:1D:12:3E:E2:71:96:E4:5A
+SHA-1   2A:AB:DE:1F:A9:40:2B:D1:8C:60:74:C3:98:87:6E:F1:17:0F:79:76   (Windows key = registered upload key)
 ```
 
-codemagic.io → Teams → Personal → **Code signing identities → Android
-keystores → Add keystore**: upload the .p12, reference name exactly
-`brachas_upload`, alias `upload`, both passwords. The `android-play` workflow
-in `codemagic.yaml` refers to that name. Back the .p12 up somewhere private
-(it is the UPLOAD key; with Play App Signing on — the default — Google holds
-the real app-signing key and can reset an upload key if this one is lost).
+That keystore lives ONLY on the Windows box:
+`D:\Claude GROUP APP\group-app-ad\android-signing\brachas-upload.p12`, alias
+`upload`, both passwords = `BRACHA_ANDROID_UPLOAD_KEYSTORE_PASSWORD` in that
+box's `group-app-ad\.env` (same file and variable names as the Mac key — the
+SHA-1 tells them apart). Until the reset below is approved, a Play-acceptable
+AAB needs that file (in Codemagic as `brachas_upload`, or jarsigner on the
+Windows box); otherwise Android waits for the approval.
+
+The full upload certificate (SHA-256 included) is in Play Console → Protected
+with Play → App signing.
+
+**Upload-key reset to the Mac key (owner decision 2026-10-11):** the owner
+submits it in Play Console (Protected with Play → App signing → Request upload
+key reset → Other) with `Claude Mind/bracha/2026-10-11-release38/upload-key-reset/upload_certificate.pem`
+(the Mac key's public certificate). Google approves it within a few days and
+the console then shows the date the Mac key becomes valid; from then on ONLY
+the Mac key works and the Windows key is dead. Until that date, keep using the
+Windows key.
+
+The Mac key generated 2026-09-30 is **NOT accepted by Play** unless an
+upload-key reset to it is requested in Play Console and approved by Google:
+`group-app-ad/android-signing/brachas-upload.p12` beside the Mac working copy's
+workspace (`~/Desktop/:my-project:/group-app-ad/`) — PKCS12, alias `upload`,
+RSA 2048 / SHA-256, valid to 2056; password in `group-app-ad/.env` as
+`BRACHA_ANDROID_UPLOAD_KEYSTORE_PASSWORD`; key password = store password.
+
+```
+SHA-1   2B:FF:F6:54:0E:1B:39:23:8E:3C:1A:43:1A:C5:2F:35:E3:99:76:6E   (Mac key, NOT registered)
+SHA-256 B6:57:28:F1:FC:D4:B1:6D:55:0A:26:72:0E:F1:07:B1:4A:07:9F:C5:02:32:FB:F2:95:EE:EE:90:4C:E7:87:49
+```
+
+Codemagic: codemagic.io → Teams → Personal → **Code signing identities →
+Android keystores**, reference name exactly `brachas_upload`, alias `upload`,
+both passwords — the `android-play` workflow in `codemagic.yaml` signs with
+whatever keystore sits under that name. Its AAB is accepted by Play only if
+that keystore is the registered upload key (the Windows key today, or the Mac
+key once a reset is approved). Back both keystores up somewhere private
+(with Play App Signing on, Google can reset a lost upload key).
 
 ### 4. First build
 Needs release 37 (or later) on master: release 36's `codemagic.yaml` was
@@ -90,6 +128,23 @@ workflow **Android Play build (signed AAB)** → download
 **Android debug APK** workflow builds a sideloadable APK with no secrets —
 good for trying the app on your own phone today: enable "install unknown
 apps", open the .apk.)
+
+What actually happened for build 37: it reached **Internal testing on
+2026-10-01** as an UNSIGNED Codemagic AAB (built from a temporary branch
+`android-unsigned-37`, since deleted) that was then signed with `jarsigner`
+on the Windows box with the Windows upload key (step 3). Build 38 and later
+need the same: an AAB signed with the registered upload key.
+
+**Every Android build from now on (the Mac is the release machine):**
+1. Codemagic → Code signing identities → Android keystores: `brachas_upload`
+   must hold the registered upload key (after the reset: the Mac key — the
+   owner uploads `brachas-upload.p12` there once; Claude never types keystore
+   passwords).
+2. Start **Android Play build (signed AAB)** on `master`.
+3. In the build log, the `keytool -printcert -jarfile` step prints the signer:
+   upload the AAB only if its SHA-1 is the registered one (step 3).
+4. Play Console → Test and release → the track → Create new release → upload
+   `app-release.aab` → release notes → Save → roll out.
 
 ### 5. Google Sign-In (optional but recommended — Android users expect it)
 console.cloud.google.com → same project as Firebase → APIs & Services →
@@ -107,9 +162,9 @@ Credentials → Create OAuth client ID:
   every master push). The "Build web app" step prints whether
   `VITE_GOOGLE_WEB_CLIENT_ID` / `VITE_GOOGLE_IOS_CLIENT_ID` were set; without
   them "Continue with Google" is silently compiled out.
-- **Android** → package `com.shancoh.brachaswithrimon`, SHA-1 = the upload
-  key above. After the first Play upload, add a SECOND Android client with the
-  **app signing key's SHA-1** from Play Console → Setup → App signing
+- **Android** → package `com.shancoh.brachaswithrimon`, SHA-1 = the
+  registered upload key (step 3). Also add a SECOND Android client with the
+  **app signing key's SHA-1** from Play Console → Protected with Play → App signing
   (Play re-signs the bundle with that key; Credential Manager checks the
   installed APK's signer).
 - iOS later: an **iOS** client → `VITE_GOOGLE_IOS_CLIENT_ID` (+ add it to
@@ -188,9 +243,11 @@ code and no advertising-ID permission.
    days.
 
 Every upload needs a NEW `versionCode` in `android/app/build.gradle` — keep
-it equal to the iOS `CURRENT_PROJECT_VERSION` (both are 37 now — version
-1.0.1, the 2026-09-22 merge of the Sep-15 fixes onto release 36; `versionName`
-tracks `MARKETING_VERSION`) and bump all THREE places before
+it equal to the iOS `CURRENT_PROJECT_VERSION` (both are 38 now, still version
+1.0.1: 37 = the 2026-09-22 merge of the Sep-15 fixes onto release 36, on
+Internal testing since 2026-10-01; 38 = 37 + the icons regenerated from the
+iOS icon, 2026-10-11; `versionName` tracks `MARKETING_VERSION`) and bump all
+THREE places before
 `scripts/sync-master.mjs`: `versionCode`, `CURRENT_PROJECT_VERSION` (both
 pbxproj configs) and `appendUserAgent: 'BrachasRimon/<build>'` in
 `capacitor.config.ts` — the server's `legacyNativeClient()` keys its
@@ -244,9 +301,21 @@ legacy-client rule on that marker (CLAUDE.md build-number rule).
 **Contact email**: shancoh18@gmail.com · **Website**: https://shancoh18.github.io/brachas-with-rimon/
 
 ## Assets (already rendered — real UI, no generative redraw)
-`C:\Users\VR\OneDrive\Desktop\Brachas brand kit\google-play-v1.0\`
-- `icon-512x512.png` — 512×512, 32-bit PNG (Play hi-res icon)
-- `feature-graphic-1024x500.png` — `scripts/play-feature-graphic.mjs`
+Icon + feature graphic, re-rendered 2026-10-11 from the iOS App Store icon,
+in `~/Desktop/:my-project:/Claude Mind/bracha/2026-10-11-release38/graphics/`
+(the `google-play-v1.0` copies of these two show the OLD line-art — do not
+upload them). Upload in Play Console → Store listing; they are separate from
+the AAB, while the launcher icon on devices changes only with a new build:
+- `icon-512x512.png` — 512×512, 32-bit RGBA, fully opaque (Play hi-res icon):
+  `node scripts/android-launcher-icons.mjs --play=<dir>`
+- `feature-graphic-1024x500.png` — 1024×500 RGB, no alpha:
+  `CHROME_PATH="<chrome binary>" node scripts/play-feature-graphic.mjs --out=<dir>`
+  (embeds `art/icon-1024.png`; needs network for Google Fonts; also writes
+  `feature-graphic.html` beside the PNG; the CHROME_PATH default is the
+  Windows path)
+
+Screenshots, unchanged (= the App Store set), in
+`C:\Users\VR\OneDrive\Desktop\Brachas brand kit\google-play-v1.0\`:
 - `screenshots-phone-1080x1920/01-home … 09-friends.png` — 9:16 boards from
   the same real captures as the App Store set (`scripts/store-artboards.mjs
   --w=1080 --h=1920`); Play wants 2–8 phone screenshots, 16:9 or 9:16, each
@@ -280,9 +349,32 @@ legacy-client rule on that marker (CLAUDE.md build-number rule).
   every workflow lists each alias on its own line. Never alias the whole list
   (`- *web_tests`): Codemagic rejects the entire file and ignores every push
   (why release 36 never built — see CLAUDE.md, Android build hardening).
-- Icons + splash: `npx @capacitor/assets generate --android` from
-  `assets/icon-only.png` + `assets/icon-foreground.png` +
-  `assets/icon-background.png` + `assets/splash.png`.
+- Icons (2026-10-11, build 38): ONE master = the live iOS icon
+  `ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png`
+  ("Frost Blush" frosted-glass pomegranate, 1024×1024 RGB, md5 8fec8357…).
+  Every Android, Play and PWA icon comes from ONE command:
+  `node scripts/android-launcher-icons.mjs [--play=<dir>] [--preview=<dir>] [--dry]`.
+  It byte-copies the master to `art/icon-1024.png` + `assets/icon-only.png`
+  and writes the adaptive foreground (`mipmap-*/ic_launcher_foreground.png`,
+  true 108dp: 81–432 px), the legacy `ic_launcher` / `ic_launcher_round`
+  (API 24–25, 36–192 px), plain `<adaptive-icon>` XML (no `<inset>`, no
+  `<monochrome>`), `@color/ic_launcher_background` #FAF8EF,
+  `assets/icon-foreground.png` + `icon-background.png`, and
+  `public/icon-192.png` / `icon-512.png` (any) + `icon-maskable-512.png`
+  (maskable). Idempotent; it warns if the master's md5 changes (its geometry
+  was measured on this art). `scripts/preflight.mjs` blocks every upload when
+  `art/icon-1024.png` or `assets/icon-only.png` differ from the iOS icon by a
+  byte. NEVER regenerate icons from the old line-art, and never with
+  `npx @capacitor/assets generate --android` (not used for icons): it
+  recreates soft 192 px layers wrapped in `<inset 16.7%>` — the bug Android
+  shipped through build 37. Splash (`splash.png`, Rimon on cream) already
+  matches iOS; if `@capacitor/assets` is ever run for splash images, re-run
+  the icon script afterwards.
+- Notification glyph `ic_stat_rimon`: NOT made by the launcher script —
+  `scripts/android-stat-icon.mjs` traces it from `art/legacy-lineart-1024.png`
+  (the old engraved line-art, md5 cb59c65f…, kept ONLY for this);
+  `--out=<res dir>` (default `android/app/src/main/res`), `--preview=<png>`.
+  Re-running it reproduces the shipped glyph byte-identically.
 - `capacitor.config.ts`: SystemBars `style: LIGHT` (dark icons on cream),
   CSS insets; `src/index.css` pads the top on Android
   (`html[data-platform='android']`, stamped in `src/main.tsx`);

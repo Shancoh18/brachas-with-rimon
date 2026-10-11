@@ -13,7 +13,7 @@ const config: CapacitorConfig = {
   // marker is gated like Safari and Android. BUMP THE NUMBER WITH THE BUILD
   // NUMBER (CLAUDE.md build-number rule) — it is the only way the server can
   // tell one native build from another.
-  appendUserAgent: 'BrachasRimon/37',
+  appendUserAgent: 'BrachasRimon/38',
   ios: {
     contentInset: 'automatic',
     backgroundColor: '#faf7e9',

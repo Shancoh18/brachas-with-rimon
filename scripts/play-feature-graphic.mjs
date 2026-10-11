@@ -1,7 +1,9 @@
 /**
  * Google Play feature graphic (1024×500, PNG/JPEG, no alpha) — the banner
  * Play shows above the listing. Brand system (cream / espresso / gold /
- * rimon), the real app icon and Rimon, no generative redraw.
+ * rimon), the real app icon and Rimon, no generative redraw. The icon tile is
+ * art/icon-1024.png, a byte copy of the iOS App Store icon (Frost Blush) kept
+ * in sync by scripts/android-launcher-icons.mjs.
  *
  *   node scripts/play-feature-graphic.mjs --out=<dir>
  *
@@ -11,7 +13,8 @@
 import puppeteer from 'puppeteer-core';
 import sharp from 'sharp';
 import { mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { join, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 const arg = (k, d) => {
   const m = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -19,7 +22,8 @@ const arg = (k, d) => {
 };
 const OUT = resolve(arg('out', 'store-assets/play'));
 mkdirSync(OUT, { recursive: true });
-const ROOT = resolve('.');
+// repo root from this file, so the real icon is embedded whatever the cwd
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const b64 = (p) => `data:image/${p.endsWith('.webp') ? 'webp' : 'png'};base64,${readFileSync(p).toString('base64')}`;
 const icon = b64(join(ROOT, 'art', 'icon-1024.png'));
 const rimon = b64(join(ROOT, 'public', 'mascot', 'rimon-pointing.webp'));
@@ -55,7 +59,7 @@ h1 em{font-style:normal;color:var(--crimson)}
   <img class="icon" src="${icon}">
   <img class="rimon" src="${rimon}">
 </div>
-<div class="foot">Study aid · iPhone &amp; Android · Learn, practise, race your friends</div>
+<div class="foot">Study aid · Learn, practise, race your friends</div>
 </body></html>`;
 
 const browser = await puppeteer.launch({

@@ -55,7 +55,7 @@
 
         <!-- FCM (board chat / leaderboard nudges from the server): the status-bar
              glyph must be an alpha-only silhouette (scripts/android-stat-icon.mjs
-             builds ic_stat_rimon from the brand icon), tinted brand gold, filed
+             traces ic_stat_rimon from the legacy line-art, art/legacy-lineart-1024.png), tinted brand gold, filed
              under the "rimon" channel the app creates (src/lib/native.ts). -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
