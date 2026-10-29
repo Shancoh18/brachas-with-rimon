@@ -22,6 +22,36 @@
   --ease-lux: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* ------------------------------------------------------------ iPhone Duo
+   Two size classes, not six poses (Apple tech talk "Prepare your app for
+   iPhone Duo"; Xcode 27.1 device profile iPhone19,4):
+   - compact = the phone layout. The Duo's OUTER display is 466×678 pt with
+     the status bar + camera in a column on the trailing edge, so insets are
+     ASYMMETRIC — every side is read on its own via --safe-left/--safe-right.
+   - regular = the INNER display, 951×669 open (669×951 rotated).
+   `split:` = regular AND wider than tall → two equal pages that meet exactly
+   at the viewport centre, where the hinge is. Splitting at the centre is
+   correct flat AND half-folded (book pose), so no fold detection is needed
+   for the layout itself. The 500 pt floor keeps a phone turned sideways in
+   a browser (≈874×402) on the phone layout. `short:` = a compact screen
+   under 720 pt tall (the closed Duo, iPhone SE): optional copy steps aside
+   so the main action stays above the tab bar — the video's "hide the
+   description when stacked". No upright phone matches `split:` (all are
+   < 860 pt wide), so the iPhone layout is untouched.
+   SAME QUERY in src/lib/duo.ts (SPLIT_QUERY) and .tab-dock below. */
+@custom-variant split (@media (min-width: 860px) and (min-height: 500px) and (orientation: landscape));
+@custom-variant short (@media (max-width: 639px) and (max-height: 720px));
+/* `sidecol:` = the closed Duo's trailing status/camera column is present
+   (html[data-side-column], stamped by src/lib/duo.ts watchSideColumn) */
+@custom-variant sidecol (&:where([data-side-column] *));
+
+:root {
+  /* QA can override these on <html> to fake the Duo's side column in a desktop
+     browser (env() can't be emulated there) */
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
 /* ------------------------------------------------------------- dark mode
    Dark warm chrome; the paper stays paper. Flipping the palette variables
    inverts every espresso/cream utility at runtime (Tailwind v4 resolves
@@ -100,6 +130,75 @@ html,
 body,
 #root {
   min-height: 100dvh;
+}
+
+/* the page keeps clear of side safe areas (the closed Duo's status/camera
+   column); 0 on every upright iPhone. Fixed layers inset themselves. */
+#root {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+.safe-x {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+
+/* Floating tab bar: a bottom island on phones, centred in the SAFE width.
+   iPhone Duo: Apple puts bars in a column on the TRAILING edge, under the
+   status bar (owner ruling 2026-10-29: "on the right, like Apple's settings
+   in Safari"):
+   - html[data-side-column] (src/lib/duo.ts) = the Duo's trailing status
+     column, present closed AND open → the bar stands upright IN that column,
+     at the bottom under the clock; the page keeps its bottom edge and needs
+     no rail gutter (.rail-gutter → 0);
+   - a wide screen WITHOUT that column (split, e.g. a desktop browser): a right
+     rail clear of the hinge; .rail-gutter sets --rail-w so split pages pad
+     their right page around it. */
+.rail-gutter {
+  --rail-w: 0px;
+}
+@media (min-width: 860px) and (min-height: 500px) and (orientation: landscape) {
+  .rail-gutter {
+    --rail-w: 92px;
+  }
+}
+html[data-side-column] .rail-gutter {
+  --rail-w: 0px;
+}
+.tab-dock {
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  left: var(--safe-left);
+  right: var(--safe-right);
+}
+html[data-side-column] .tab-dock {
+  top: 0;
+  bottom: 0;
+  left: auto;
+  right: 0;
+  width: var(--safe-right);
+  padding: 0 0 calc(16px + env(safe-area-inset-bottom));
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+@media (min-width: 860px) and (min-height: 500px) and (orientation: landscape) {
+  .tab-dock {
+    top: 0;
+    bottom: 0;
+    left: auto;
+    right: calc(var(--safe-right) + 14px);
+    padding: 0;
+    flex-direction: column;
+    align-items: center;
+  }
+}
+html[data-side-column] .tab-dock > div {
+  flex-direction: column;
+}
+@media (min-width: 860px) and (min-height: 500px) and (orientation: landscape) {
+  .tab-dock > div {
+    flex-direction: column;
+  }
 }
 
 /* WKWebView can get stuck pinch-zoomed; the app manages its own layout.
@@ -305,6 +404,11 @@ body {
    so prefers-reduced-motion (animation:none) lands on the final still. */
 .tk-root {
   position: fixed;
+  /* full-bleed on purpose: the cream covers every edge — and the tab bar the
+     iPhone Duo stands in its trailing column — while the CONTENT layers below
+     keep to the safe width (--safe-left/--safe-right; 0 on upright iPhones).
+     Narrowing this box instead left page-coloured strips at the insets and
+     the tab bar live beside a takeover (review 2026-10-29). */
   inset: 0;
   z-index: 50;
   overflow: hidden;
@@ -332,6 +436,36 @@ body {
   transform: translateX(-50%);
   width: max(100vw, 56.25vh);
   height: max(100vh, 177.78vw);
+}
+/* takeover content keeps to the safe width: the render is centred in it and
+   the words / chips / CTA rows stop at the insets (no-ops on upright iPhones) */
+.tk-cover {
+  left: calc(var(--safe-left) + (100% - var(--safe-left) - var(--safe-right)) / 2);
+}
+.tk-root > .absolute.inset-x-0 {
+  left: var(--safe-left);
+  right: var(--safe-right);
+}
+.tk-root[data-takeover='badge'] {
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+}
+/* iPhone Duo open wide (split): the portrait-built takeover becomes two pages
+   — the 9:16 render fitted to the height on the left page, the words, chips
+   and CTA on the right — so no button sits on the hinge and Rimon isn't
+   cropped to his feet by a landscape cover box. */
+@media (min-width: 860px) and (min-height: 500px) and (orientation: landscape) {
+  .tk-cover {
+    left: 25%;
+    width: 56.25vh;
+    height: 100vh;
+  }
+  .tk-root > .absolute.inset-x-0 {
+    left: 50%;
+  }
+  .tk-root[data-takeover='badge'] {
+    padding-left: 50%;
+  }
 }
 .tk-cover img {
   position: absolute;

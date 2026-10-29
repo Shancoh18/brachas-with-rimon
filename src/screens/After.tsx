@@ -17,6 +17,7 @@ import { useBracha, type PendingAfterItem, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell, WhyDropdown } from '../components/ui';
+import { useSplit } from '../lib/duo';
 import { WHY_AFTER } from '../data/why';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
@@ -83,6 +84,7 @@ export function After() {
   const source = frozen ?? pendingAfter?.items ?? [];
 
   const result = useMemo(() => resolveAfterBrachos(source), [source]);
+  const split = useSplit(); // before the early return below — hook order
 
   const sayAfterNow = () => {
     const said: string[] = [];
@@ -104,26 +106,33 @@ export function After() {
   // ------------------------------------------------------------- ASK phase
   // Never abrupt: the blessings are said, the meal is HAPPENING. Rimon waits.
   if (phase === 'ask') {
+    // iPhone Duo open wide: Rimon + the pause take the left page, the three
+    // choices wait on the right (the Welcome split)
+    const pause = (
+      <>
+        <div className="rise-in">
+          <Rimon
+            pose="idle"
+            say="Beautiful — every blessing said. Now enjoy your meal! I'll be right here when you're done."
+            size={split ? 176 : 150}
+          />
+        </div>
+        <header className="rise-in rise-in-1 space-y-3">
+          <Eyebrow>B’teavon — enjoy</Eyebrow>
+          <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">
+            Savor it.
+          </h2>
+          <p className="mx-auto max-w-[300px] text-[13.5px] leading-relaxed text-espresso-soft">
+            When you’ve finished eating, we’ll close the meal properly with the after-blessings.
+            No rush.
+          </p>
+        </header>
+      </>
+    );
     return (
-      <ScreenShell>
-        <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-16 text-center">
-          <div className="rise-in">
-            <Rimon
-              pose="idle"
-              say="Beautiful — every blessing said. Now enjoy your meal! I'll be right here when you're done."
-              size={150}
-            />
-          </div>
-          <header className="rise-in rise-in-1 space-y-3">
-            <Eyebrow>B’teavon — enjoy</Eyebrow>
-            <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">
-              Savor it.
-            </h2>
-            <p className="mx-auto max-w-[300px] text-[13.5px] leading-relaxed text-espresso-soft">
-              When you’ve finished eating, we’ll close the meal properly with the after-blessings.
-              No rush.
-            </p>
-          </header>
+      <ScreenShell aside={pause}>
+        <div className="flex flex-1 flex-col items-center justify-center gap-8 pb-16 text-center split:pb-10">
+          {!split && pause}
           <div className="rise-in rise-in-2 flex flex-col items-center gap-3">
             <PillButton variant="rimon" icon="✓" onClick={() => setPhase('shiur')}>
               I’m done eating — after-blessings
@@ -163,22 +172,35 @@ export function After() {
   }
 
   if (!confirmed) {
+    const question = (
+      <header className="rise-in space-y-2 pb-2 text-center">
+        <Eyebrow>{resumed ? 'Welcome back — let’s finish' : 'Almost done'}</Eyebrow>
+        <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
+          How much did you eat?
+        </h2>
+        <p className="mx-auto max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">
+          An after-blessing is only said on a <em>kezayis</em> (an olive’s volume) of food eaten
+          within ~4 minutes — or a <em>revi’is</em> of a drink. Untick anything you only tasted.
+        </p>
+      </header>
+    );
+    // iPhone Duo open wide: Rimon + the kezayis question take the left page;
+    // the checklist and its button sit centred on the right
+    const aside = (
+      <>
+        <Rimon pose="thinking" size={160} />
+        {question}
+      </>
+    );
     return (
-      <ScreenShell>
-        <header className="rise-in space-y-2 pb-2 text-center">
-          <Eyebrow>{resumed ? 'Welcome back — let’s finish' : 'Almost done'}</Eyebrow>
-          <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-            How much did you eat?
-          </h2>
-          <p className="mx-auto max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">
-            An after-blessing is only said on a <em>kezayis</em> (an olive’s volume) of food eaten
-            within ~4 minutes — or a <em>revi’is</em> of a drink. Untick anything you only tasted.
-          </p>
-        </header>
-        <div className="flex justify-center py-4">
-          <Rimon pose="thinking" size={100} />
-        </div>
-        <div className="flex flex-col gap-2.5">
+      <ScreenShell aside={aside}>
+        {!split && question}
+        {!split && (
+          <div className="flex justify-center py-4">
+            <Rimon pose="thinking" size={100} />
+          </div>
+        )}
+        <div className="flex flex-col gap-2.5 split:mt-auto">
           {source.map((i, idx) => (
             <label
               key={i.id}
@@ -196,7 +218,7 @@ export function After() {
             </label>
           ))}
         </div>
-        <div className="flex justify-center py-8">
+        <div className="flex justify-center py-8 split:mb-auto">
           <PillButton
             variant="rimon"
             onClick={() => {
@@ -217,48 +239,77 @@ export function After() {
       : '';
   const meein = result.meeinInserts.length > 0 ? assembleMeein(pack, result.meeinInserts, day) : null;
 
-  return (
-    <ScreenShell wide>
-      <header className="rise-in flex flex-col items-center gap-4 pb-6 text-center">
-        <Rimon
-          pose="celebrate"
-          say={
-            result.none
-              ? 'No after-blessing this time — nothing reached a kezayis.'
-              : `Beautifully done! ${streakAlive(progress) ? `🔥 Day ${progress.streakCurrent} of your streak — ` : ''}here’s how to finish.`
-          }
-          size={140}
-        />
-        <div className="space-y-2">
-          <Eyebrow>After the meal</Eyebrow>
-          <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">
-            {result.birkatHamazon
-              ? 'Birkat Hamazon'
-              : result.none
-                ? 'You’re all set'
-                : 'Your after-blessings'}
-          </h2>
-        </div>
-      </header>
+  const cheer = (
+    <Rimon
+      pose="celebrate"
+      say={
+        result.none
+          ? 'No after-blessing this time — nothing reached a kezayis.'
+          : `Beautifully done! ${streakAlive(progress) ? `🔥 Day ${progress.streakCurrent} of your streak — ` : ''}here’s how to finish.`
+      }
+      size={split ? 168 : 140}
+    />
+  );
+  const title = (
+    <div className="space-y-2">
+      <Eyebrow>After the meal</Eyebrow>
+      <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">
+        {result.birkatHamazon
+          ? 'Birkat Hamazon'
+          : result.none
+            ? 'You’re all set'
+            : 'Your after-blessings'}
+      </h2>
+    </div>
+  );
+  const modeToggle = !result.none && (
+    <div className="rise-in rise-in-1 mx-auto mb-5 flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07] split:mb-0">
+      {MODES.map((m) => (
+        <button
+          key={m}
+          onClick={() => setTextMode(m)}
+          className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
+            textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
+          }`}
+        >
+          {m === 'translit' ? 'transliteration' : m}
+        </button>
+      ))}
+    </div>
+  );
+  // coverage notes
+  const coverage = result.coverage.map((c) => (
+    <p key={c.blessing} className="text-center text-[11.5px] leading-relaxed text-mocha">
+      <strong className="text-espresso-soft">{c.blessing}</strong> covers:{' '}
+      <span className="capitalize">{c.covers.join(' · ').toLowerCase()}</span>
+    </p>
+  ));
+  // iPhone Duo open wide: Rimon, the title, the text-mode toggle and what each
+  // blessing covers stay in view on the left page while the long text scrolls
+  // on the right — a passage is never split across the hinge
+  const aside = (
+    <>
+      {cheer}
+      {title}
+      {modeToggle}
+      {coverage.length > 0 && <div className="max-w-[340px] space-y-1">{coverage}</div>}
+    </>
+  );
 
-      {/* text-mode toggle */}
-      {!result.none && (
-        <div className="rise-in rise-in-1 mx-auto mb-5 flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
-          {MODES.map((m) => (
-            <button
-              key={m}
-              onClick={() => setTextMode(m)}
-              className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
-                textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
-              }`}
-            >
-              {m === 'translit' ? 'transliteration' : m}
-            </button>
-          ))}
-        </div>
+  return (
+    <ScreenShell wide aside={aside}>
+      {!split && (
+        <header className="rise-in flex flex-col items-center gap-4 pb-6 text-center">
+          {cheer}
+          {title}
+        </header>
       )}
 
-      <div className="flex flex-col gap-5">
+      {/* text-mode toggle */}
+      {!split && modeToggle}
+
+      {/* nothing to say (none): the lone Finish button sits centred on the right page */}
+      <div className={`flex flex-col gap-5 ${result.none ? 'split:mt-auto' : ''}`}>
         {/* ------------------------------------------------ Birkat Hamazon */}
         {result.birkatHamazon && (
           <Bezel className="rise-in rise-in-2" innerClassName="px-6 py-7">
@@ -424,13 +475,7 @@ export function After() {
           </Bezel>
         )}
 
-        {/* coverage notes */}
-        {result.coverage.map((c) => (
-          <p key={c.blessing} className="text-center text-[11.5px] leading-relaxed text-mocha">
-            <strong className="text-espresso-soft">{c.blessing}</strong> covers:{' '}
-            <span className="capitalize">{c.covers.join(' · ').toLowerCase()}</span>
-          </p>
-        ))}
+        {!split && coverage}
 
         {!NUSACHIM[nusach].complete && (
           <p className="text-center text-[10.5px] leading-snug text-mocha">
@@ -439,7 +484,7 @@ export function After() {
         )}
       </div>
 
-      <div className="flex justify-center py-10">
+      <div className={`flex justify-center py-10 ${result.none ? 'split:mb-auto' : ''}`}>
         <PillButton
           variant="rimon"
           icon="🎉"

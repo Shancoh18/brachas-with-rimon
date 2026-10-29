@@ -14,6 +14,12 @@ import { AuthPanel } from '../components/AuthPanel';
 import { Rimon, RimonWalker, type RimonPose } from '../components/Rimon';
 import { Eyebrow, PillButton } from '../components/ui';
 
+// iPhone Duo open wide (split:, src/index.css): every slide becomes two pages
+// meeting at the hinge — Rimon on the left page, the words + button on the
+// right — so no button sits in the crease (owner, 2026-10-29).
+const PAGE_ART = 'split:col-start-1 split:row-span-4 split:row-start-1 split:self-center split:justify-self-center';
+const PAGE_TEXT = 'split:col-start-2 split:px-10';
+
 const BASE = import.meta.env.BASE_URL;
 const AUTO_MS = 8000;
 
@@ -140,6 +146,11 @@ export function Onboarding() {
 
   return (
     <div
+      // Full-bleed on purpose: the slide tints may run under the closed iPhone
+      // Duo's status/camera column, but every slide's CONTENT, the progress
+      // rail, skip and the disclaimer pad by --safe-left/--safe-right (0 on
+      // upright iPhones). Narrowing this box instead let the next slide show
+      // in the column — WebKit doesn't clip the transformed track here.
       className="grain fixed inset-0 overflow-hidden bg-cream"
       onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
       onTouchEnd={(e) => {
@@ -155,7 +166,7 @@ export function Onboarding() {
       }}
     >
       {/* stories progress rail */}
-      <div className="absolute inset-x-4 top-4 z-20 flex gap-1.5">
+      <div className="absolute left-[calc(1rem_+_var(--safe-left))] right-[calc(1rem_+_var(--safe-right))] top-4 z-20 flex gap-1.5">
         {Array.from({ length: total }, (_, i) => (
           <div key={i} className="h-1 flex-1 overflow-hidden rounded-full bg-espresso/[0.1]">
             <div
@@ -172,7 +183,7 @@ export function Onboarding() {
       {!atFinal && (
         <button
           onClick={() => setIdx(total - 1)}
-          className="absolute right-4 top-8 z-20 rounded-full bg-espresso/[0.06] px-4 py-2 text-[11px] font-bold text-espresso-soft transition-colors duration-150 hover:bg-espresso/10"
+          className="absolute right-[calc(1rem_+_var(--safe-right))] top-8 z-20 rounded-full bg-espresso/[0.06] px-4 py-2 text-[11px] font-bold text-espresso-soft transition-colors duration-150 hover:bg-espresso/10"
         >
           skip
         </button>
@@ -194,10 +205,10 @@ export function Onboarding() {
         {SLIDES.map((s, i) => (
           <section
             key={s.title}
-            className="relative flex h-full w-full shrink-0 flex-col items-center justify-center gap-6 px-8 pb-20 pt-16 text-center"
+            className="relative flex h-full w-full shrink-0 flex-col items-center justify-center gap-6 pb-20 pl-[calc(2rem_+_var(--safe-left))] pr-[calc(2rem_+_var(--safe-right))] pt-16 text-center split:grid split:grid-cols-[calc(50vw_-_var(--safe-left))_minmax(0,1fr)] split:content-center split:gap-x-0 split:gap-y-5 split:pl-[var(--safe-left)] split:pr-[var(--safe-right)]"
           >
             <div className="pointer-events-none absolute inset-0" style={{ background: s.tint }} />
-            <div className={i === idx ? 'rise-in' : ''}>
+            <div className={`${i === idx ? 'rise-in' : ''} ${PAGE_ART}`}>
               {s.hero === 'eating' ? (
                 <EatingRimon active={i === idx} size={s.rimonSize} />
               ) : (
@@ -206,12 +217,12 @@ export function Onboarding() {
             </div>
 
             {s.demo === 'walker' && (
-              <div className="w-full max-w-[320px]">
+              <div className="w-full max-w-[320px] split:order-2 split:col-start-2 split:justify-self-center">
                 <RimonWalker progress={i === idx ? walkerT : 0} done={walkerT >= 1 && i === idx} />
               </div>
             )}
             {s.demo === 'foods' && (
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-2 split:order-2 split:col-start-2">
                 {['eats-bread', 'eats-apple', 'eats-carrot'].map((f, k) => (
                   <img
                     key={f}
@@ -224,13 +235,13 @@ export function Onboarding() {
               </div>
             )}
             {s.demo === 'streak' && (
-              <div className="flex items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-2 split:order-2 split:col-start-2">
                 <span className="rounded-full bg-rimon/[0.09] px-4 py-2 text-[14px] font-bold text-rimon">🔥 12-day streak</span>
                 <span className="rounded-full border border-gold/35 bg-gold/[0.08] px-4 py-2 text-[13px] font-bold text-gold">🍇 Seven Species ✓</span>
               </div>
             )}
 
-            <header className={`space-y-3 ${i === idx ? 'rise-in rise-in-1' : ''}`}>
+            <header className={`space-y-3 split:order-1 ${PAGE_TEXT} ${i === idx ? 'rise-in rise-in-1' : ''}`}>
               <Eyebrow>{s.eyebrow}</Eyebrow>
               <h1 className="font-display text-[40px] font-black leading-[1.04] tracking-tight text-espresso">
                 {s.title}
@@ -238,7 +249,7 @@ export function Onboarding() {
               <p className="mx-auto max-w-[310px] text-[14px] leading-relaxed text-espresso-soft">{s.body}</p>
             </header>
 
-            <div className="relative z-20">
+            <div className="relative z-20 split:order-3 split:col-start-2">
               <PillButton variant="rimon" onClick={next}>
                 {s.cta}
               </PillButton>
@@ -249,7 +260,7 @@ export function Onboarding() {
         {/* ------------------------------------------------- finish slide */}
         <section
           data-onboarding-finish
-          className="relative flex h-full w-full shrink-0 flex-col items-center justify-center gap-5 overflow-y-auto px-8 pb-16 pt-16 text-center"
+          className="relative flex h-full w-full shrink-0 flex-col items-center justify-center gap-5 overflow-y-auto pb-16 pl-[calc(2rem_+_var(--safe-left))] pr-[calc(2rem_+_var(--safe-right))] pt-16 text-center split:grid split:grid-cols-[calc(50vw_-_var(--safe-left))_minmax(0,1fr)] split:content-center split:gap-x-0 split:gap-y-4 split:pl-[var(--safe-left)] split:pr-[var(--safe-right)]"
         >
           <div
             className="pointer-events-none absolute inset-0"
@@ -258,14 +269,14 @@ export function Onboarding() {
           {signedIn ? (
             /* replaying the intro while signed in — no forms, just a bow */
             <>
-              <div className={atFinal ? 'rise-in' : ''}>
+              <div className={`${atFinal ? 'rise-in' : ''} ${PAGE_ART}`}>
                 <Rimon
                   pose="celebrate"
                   say={`Good to see you again${displayName ? `, ${displayName}` : ''}! Everything is already yours.`}
                   size={170}
                 />
               </div>
-              <header className={`space-y-2.5 ${atFinal ? 'rise-in rise-in-1' : ''}`}>
+              <header className={`space-y-2.5 ${PAGE_TEXT} ${atFinal ? 'rise-in rise-in-1' : ''}`}>
                 <Eyebrow>All set</Eyebrow>
                 <h1 className="font-display text-[36px] font-black leading-[1.05] tracking-tight text-espresso">
                   You’re signed in.
@@ -274,7 +285,7 @@ export function Onboarding() {
                   Streaks, league, reminders — all synced to your account.
                 </p>
               </header>
-              <div className={atFinal ? 'rise-in rise-in-2' : ''}>
+              <div className={`split:col-start-2 ${atFinal ? 'rise-in rise-in-2' : ''}`}>
                 <PillButton variant="rimon" icon="→" onClick={() => setOnboarded(true)}>
                   Back to the app
                 </PillButton>
@@ -283,21 +294,21 @@ export function Onboarding() {
           ) : showAuth ? (
             /* optional: people who already have an account sign in here */
             <>
-              <div className={atFinal ? 'rise-in' : ''}>
+              <div className={`${atFinal ? 'rise-in' : ''} ${PAGE_ART}`}>
                 <Rimon pose="pointing" say="Welcome back — sign in and everything follows you." size={110} />
               </div>
-              <header className={`space-y-2 ${atFinal ? 'rise-in rise-in-1' : ''}`}>
+              <header className={`space-y-2 ${PAGE_TEXT} ${atFinal ? 'rise-in rise-in-1' : ''}`}>
                 <Eyebrow>Welcome back</Eyebrow>
                 <h1 className="font-display text-[32px] font-black leading-[1.05] tracking-tight text-espresso">
                   Sign in.
                 </h1>
               </header>
-              <div className="rise-in rise-in-2">
+              <div className="rise-in rise-in-2 split:col-start-2 split:justify-self-center">
                 <AuthPanel initialMode="signin" onDone={() => setOnboarded(true)} />
               </div>
               <button
                 onClick={() => setShowAuth(false)}
-                className="rise-in rise-in-3 min-h-[44px] px-2 text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
+                className="rise-in rise-in-3 min-h-[44px] px-2 split:col-start-2 split:justify-self-center text-[12px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
               >
                 continue without an account
               </button>
@@ -305,10 +316,10 @@ export function Onboarding() {
           ) : (
             /* the default finish: straight into the app, nothing to fill in */
             <>
-              <div className={atFinal ? 'rise-in' : ''}>
+              <div className={`${atFinal ? 'rise-in' : ''} ${PAGE_ART}`}>
                 <Rimon pose="celebrate" say="That’s the tour — let’s bless something!" size={170} />
               </div>
-              <header className={`space-y-2.5 ${atFinal ? 'rise-in rise-in-1' : ''}`}>
+              <header className={`space-y-2.5 ${PAGE_TEXT} ${atFinal ? 'rise-in rise-in-1' : ''}`}>
                 <Eyebrow>All set</Eyebrow>
                 <h1 className="font-display text-[36px] font-black leading-[1.05] tracking-tight text-espresso">
                   Ready when you are.
@@ -318,7 +329,7 @@ export function Onboarding() {
                   whenever you want them.
                 </p>
               </header>
-              <div className={`flex flex-col items-center gap-3 ${atFinal ? 'rise-in rise-in-2' : ''}`}>
+              <div className={`flex flex-col items-center gap-3 split:col-start-2 ${atFinal ? 'rise-in rise-in-2' : ''}`}>
                 <PillButton variant="rimon" icon="→" onClick={() => setOnboarded(true)}>
                   Continue
                 </PillButton>
@@ -334,7 +345,7 @@ export function Onboarding() {
         </section>
       </div>
 
-      <p className="pointer-events-none absolute bottom-3 left-0 right-0 z-20 text-center text-[9.5px] text-mocha">
+      <p className="pointer-events-none absolute bottom-3 left-[var(--safe-left)] right-[var(--safe-right)] z-20 split:left-1/2 text-center text-[9.5px] text-mocha">
         A study aid — for practical halachic questions, consult a qualified rabbi.
       </p>
     </div>

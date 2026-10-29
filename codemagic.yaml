@@ -132,13 +132,15 @@ workflows:
       #   reversed-client-id URL scheme — with the id set and no scheme, tapping Google crashes iOS
       # ^ uncomment after creating the (possibly empty) env group google_oauth in Codemagic — a missing group fails the build
       node: 22
-      # Pinned, not `latest`: Codemagic moves `latest` to Xcode 27 (iOS 27 SDK)
-      # after an announcement, and Apple TN3187 says an app built with the SDK
-      # after iOS 26 WITHOUT the UIScene life cycle won't launch. This app has no
-      # SceneDelegate / UIApplicationSceneManifest yet: adopt UIScene and test it
-      # on TestFlight before moving this pin to 27.x. (26.6 = Codemagic's current
-      # default and satisfies Apple's iOS 26 SDK upload rule.)
-      xcode: 26.6
+      # Pinned, not `latest` or `edge`: 27.1 (27A9275, the same build the Mac
+      # session tested with) is the first SDK that knows the iPhone Duo — an app
+      # built with an older SDK is letterboxed on the Duo's inner screen. The iOS
+      # 27 SDK also REQUIRES the UIScene life cycle (Apple TN3187): without it the
+      # app crashes at launch. Build 39 (2026-10-29) adopted it — SceneDelegate in
+      # AppDelegate.swift + UIApplicationSceneManifest in Info.plist. Never drop
+      # back below 27 without reading CLAUDE.md "iPhone Duo"; never remove the
+      # SceneDelegate while this pin is 27.x.
+      xcode: 27.1
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.shancoh.brachaswithrimon

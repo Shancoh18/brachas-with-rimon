@@ -15,6 +15,7 @@
  */
 import { useEffect, useState } from 'react';
 import { apiBlockedUsers, apiDeleteAccount, apiMe, apiPushNative, apiSetPassword, apiUnblockUser, apiUpdateAccount } from '../lib/api';
+import { useSplit } from '../lib/duo';
 import { isNative, platform } from '../lib/native';
 import { appleAvailable, googleAvailable } from '../lib/socialAuth';
 import { useBracha } from '../store';
@@ -66,6 +67,7 @@ export function Account() {
   const [pwSaved, setPwSaved] = useState(false);
   // people blocked from chat (App Review 1.2) — the undo lives here
   const [blocked, setBlocked] = useState<{ user_id: string; name: string }[]>([]);
+  const split = useSplit();
 
   // restore the profile card from the server (also self-heals a stale token
   // and the guest flag — the server's word on `guest` wins)
@@ -211,9 +213,100 @@ export function Account() {
     'mt-0.5 w-full bg-transparent text-[15px] font-medium text-espresso outline-none placeholder:text-mocha/40';
   const label = 'text-[9.5px] font-bold uppercase tracking-[0.18em] text-mocha';
 
+  // iPhone Duo open wide: who you are — Rimon, the title, your friend code or
+  // the guest pitch — takes the left page; every field and toggle stays on the
+  // right, the way Settings splits on iPad. Phones show the same pieces in
+  // place (the split: classes below only apply to the left page).
+  const intro = (
+    <div className="space-y-2">
+      <Eyebrow>{signedIn ? 'Your account' : isGuest ? 'Guest mode' : 'Join or sign in'}</Eyebrow>
+      <h2
+        className={`font-display font-bold leading-tight text-espresso ${
+          signedIn || !isGuest ? 'text-[32px] split:text-[38px]' : 'text-[28px] split:text-balance'
+        }`}
+      >
+        {signedIn ? 'Account' : isGuest ? 'You’re using Brachas as a guest' : 'Sign in'}
+      </h2>
+      <p className="max-w-[300px] text-[13px] leading-relaxed text-espresso-soft split:mx-auto split:max-w-[360px] split:text-balance">
+        {signedIn
+          ? 'Your name, your email, your keys — all in one place.'
+          : 'Everything here works without an account. Create one whenever you want your progress on other devices, or friends.'}
+      </p>
+      {signedIn && providers.length > 0 && (
+        <div className="flex gap-1.5 split:justify-center">
+          {providers.map((p) => (
+            <span
+              key={p}
+              className="rounded-full bg-espresso/[0.06] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-espresso-soft"
+            >
+              {p === 'apple' ? ' Apple linked' : 'G Google linked'}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  // the friend code is identity, not a setting — on the left page when open
+  const friendCard = (
+    <Bezel
+      className="rise-in rise-in-2 mt-3 split:mt-0 split:w-full split:max-w-[340px] split:text-left"
+      innerClassName="px-5 py-4"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className={label}>Your friend code</p>
+          <p className="font-display text-[24px] font-bold tracking-wide text-gold">{friendCode}</p>
+        </div>
+        <button
+          onClick={() => {
+            void navigator.clipboard.writeText(friendCode ?? '');
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          className="rounded-full bg-espresso/[0.05] px-4 py-2 text-[11px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
+        >
+          {copied ? 'copied ✓' : 'copy'}
+        </button>
+      </div>
+      <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
+        Friends add you with this code, and it still works as a backup sign-in key
+        alongside your email. Keep it private — treat it like a password.
+      </p>
+    </Bezel>
+  );
+
+  // the guest pitch sits beside the sign-up panel when open, not above it
+  const pitch = (
+    <Bezel className="rise-in rise-in-1 split:w-full split:max-w-[340px] split:text-left" innerClassName="px-5 py-4">
+      <p className={label}>What an account adds</p>
+      <ul data-account-adds className="mt-2 space-y-2">
+        {ACCOUNT_ADDS.map((line) => (
+          <li key={line} className="flex gap-2.5 text-[12.5px] leading-snug text-espresso">
+            <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden />
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
+        Nothing you’ve done as a guest is lost — creating an account keeps this
+        progress. Signing in switches this device to that account.
+      </p>
+    </Bezel>
+  );
+
+  const aside = (
+    <>
+      {/* sized so the guest page (pitch and all) still fits 669pt unscrolled */}
+      <Rimon pose="pointing" size={signedIn ? 140 : isGuest ? 120 : 168} />
+      <div className="rise-in rise-in-1">{intro}</div>
+      {signedIn ? friendCard : isGuest ? pitch : null}
+    </>
+  );
+
   return (
-    <ScreenShell wide>
-      <div className="pb-24">
+    <ScreenShell wide aside={aside}>
+      <div className="pb-24 split:pb-12">
         <button
           onClick={() => setTab('bless')}
           className="rise-in pb-4 text-[12.5px] font-medium text-mocha transition-colors duration-150 hover:text-espresso"
@@ -230,36 +323,12 @@ export function Account() {
           </div>
         )}
 
-        <header className="rise-in flex items-start justify-between gap-4 pb-6">
-          <div className="space-y-2">
-            <Eyebrow>{signedIn ? 'Your account' : isGuest ? 'Guest mode' : 'Join or sign in'}</Eyebrow>
-            <h2
-              className={`font-display font-bold leading-tight text-espresso ${
-                signedIn || !isGuest ? 'text-[32px]' : 'text-[28px]'
-              }`}
-            >
-              {signedIn ? 'Account' : isGuest ? 'You’re using Brachas as a guest' : 'Sign in'}
-            </h2>
-            <p className="max-w-[300px] text-[13px] leading-relaxed text-espresso-soft">
-              {signedIn
-                ? 'Your name, your email, your keys — all in one place.'
-                : 'Everything here works without an account. Create one whenever you want your progress on other devices, or friends.'}
-            </p>
-            {signedIn && providers.length > 0 && (
-              <div className="flex gap-1.5">
-                {providers.map((p) => (
-                  <span
-                    key={p}
-                    className="rounded-full bg-espresso/[0.06] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-espresso-soft"
-                  >
-                    {p === 'apple' ? ' Apple linked' : 'G Google linked'}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-          <Rimon pose="pointing" size={88} className="shrink-0" />
-        </header>
+        {!split && (
+          <header className="rise-in flex items-start justify-between gap-4 pb-6">
+            {intro}
+            <Rimon pose="pointing" size={88} className="shrink-0" />
+          </header>
+        )}
 
         {signedIn ? (
           <>
@@ -326,51 +395,16 @@ export function Account() {
               </div>
             </Bezel>
 
-            {/* the friend code */}
-            <Bezel className="rise-in rise-in-2 mt-3" innerClassName="px-5 py-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className={label}>Your friend code</p>
-                  <p className="font-display text-[24px] font-bold tracking-wide text-gold">{friendCode}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    void navigator.clipboard.writeText(friendCode ?? '');
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                  className="rounded-full bg-espresso/[0.05] px-4 py-2 text-[11px] font-bold text-espresso-soft transition-colors hover:bg-espresso/10"
-                >
-                  {copied ? 'copied ✓' : 'copy'}
-                </button>
-              </div>
-              <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
-                Friends add you with this code, and it still works as a backup sign-in key
-                alongside your email. Keep it private — treat it like a password.
-              </p>
-            </Bezel>
+            {/* the friend code (left page when open) */}
+            {!split && friendCard}
           </>
         ) : (
           <>
-            {/* guest / no session: the pitch, then the panel in upgrade mode */}
-            {isGuest && (
-              <Bezel className="rise-in rise-in-1" innerClassName="px-5 py-4">
-                <p className={label}>What an account adds</p>
-                <ul data-account-adds className="mt-2 space-y-2">
-                  {ACCOUNT_ADDS.map((line) => (
-                    <li key={line} className="flex gap-2.5 text-[12.5px] leading-snug text-espresso">
-                      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-3 border-t border-espresso/[0.07] pt-3 text-[10.5px] leading-relaxed text-mocha">
-                  Nothing you’ve done as a guest is lost — creating an account keeps this
-                  progress. Signing in switches this device to that account.
-                </p>
-              </Bezel>
-            )}
-            <div className={`rise-in rise-in-2 flex flex-col items-center gap-3 ${isGuest ? 'mt-5' : ''}`}>
+            {/* guest / no session: the pitch, then the panel in upgrade mode
+                (the pitch moves to the left page when open; the panel keeps
+                its tree position so a half-typed form survives the fold) */}
+            {isGuest && !split && pitch}
+            <div className={`rise-in rise-in-2 flex flex-col items-center gap-3 ${isGuest ? 'mt-5 split:mt-0' : ''}`}>
               <AuthPanel />
               <p className="max-w-[300px] text-center text-[10.5px] leading-snug text-mocha">
                 Signing in on a new device brings your name, streaks and league along.

@@ -189,9 +189,18 @@ export function BoardChat({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-espresso/30 backdrop-blur-[2px]" data-board-chat>
+    // iPhone Duo open wide: the sheet takes the RIGHT page, as Apple moves
+    // sheets to the trailing side in book pose — a full-width sheet would
+    // put the composer across the hinge. The `!` beats .safe-x (unlayered).
+    <div
+      className="safe-x fixed inset-0 z-50 flex flex-col justify-end bg-espresso/30 backdrop-blur-[2px] split:pl-[calc(50vw_+_16px)]! split:pr-[calc(var(--safe-right)_+_16px)]!"
+      data-board-chat
+    >
+      {/* open wide, a tap on the dimmed left page closes it too; the strip
+          either side of the crease stays dead */}
+      <div aria-hidden onClick={onClose} className="absolute inset-y-0 left-0 hidden w-[calc(50vw_-_16px)] split:block" />
       <button aria-label="close chat" onClick={onClose} className="min-h-0 flex-1" />
-      <div className="sheet-rise relative flex max-h-[72dvh] flex-col rounded-t-[1.75rem] border-t border-hairline bg-cream shadow-[0_-18px_60px_rgba(43,33,26,0.25)]">
+      <div className="sheet-rise relative flex max-h-[72dvh] split:max-h-[86dvh] flex-col rounded-t-[1.75rem] border-t border-hairline bg-cream shadow-[0_-18px_60px_rgba(43,33,26,0.25)]">
         <div className="flex items-center justify-between border-b border-espresso/[0.07] px-5 py-3.5">
           <div className="min-w-0">
             <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">Group chat</p>

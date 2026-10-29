@@ -116,6 +116,67 @@ cubic-bezier(0.32,0.72,0,1) motion only — no linear/ease-in-out, no harsh
 shadows, no Inter/Roboto. Hebrew blocks: `dir="rtl" lang="he"` + `.hebrew`
 (line-height 1.9 for nikud).
 
+## iPhone Duo (2026-10-29 — ships in 1.0.2 build 39, the first Xcode 27.1 build)
+Apple's rule: design for two size classes, not six poses. Outer display
+466×678 pt with the status bar + camera in a column on the TRAILING edge
+(asymmetric insets); inner display 951×669 pt (Xcode 27.1 profile iPhone19,4).
+OWNER RULES: nothing interactive in the crease; bars live on the RIGHT
+(trailing) edge "like Apple's settings in Safari".
+- NATIVE (blocker for any Xcode 27 build): iOS 27 SDK apps must adopt the
+  UIScene life cycle or UIKit kills the launch (EXC_BREAKPOINT in
+  `_UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`). Info.plist
+  `UIApplicationSceneManifest` → `SceneDelegate` (bottom of AppDelegate.swift,
+  same file so the pbxproj needn't change) loads Main.storyboard and forwards
+  URL / user-activity opens to Capacitor's ApplicationDelegateProxy. Xcode 27.1
+  is also what un-letterboxes the app on the Duo (Codemagic pinned to `xcode: 27.1`
+  from build 39 — never below 27 again, never without the SceneDelegate).
+- Side insets: `--safe-left/--safe-right` (src/index.css) pad `#root`, the
+  chat/reminder sheets (`.safe-x`), and the CONTENT of Onboarding and the
+  `.tk-root` takeovers — both fixed boxes stay FULL-BLEED (narrowing them let
+  WebKit show the next slide in the column, left page-coloured strips beside
+  takeovers and the tab bar live on top of them). QA fakes the columns with
+  `--safe-right: 84px` (closed) / `86px` (open) on <html>.
+- Status column: src/lib/duo.ts `watchSideColumn()` (main.tsx) stamps
+  `html[data-side-column]` when there is a right inset ≥ 44pt and no left one
+  — the Duo has one CLOSED (84pt, status + camera) and OPEN (~86pt, status;
+  measured in the iOS 27.1 simulator). The tab bar then stands upright IN that
+  column at the bottom, under the clock (`.tab-dock`); the `sidecol:` variant
+  drops the page's bottom clearance and `.rail-gutter` sets `--rail-w: 0`.
+  With no column but a wide screen (desktop browser) it is a right rail and
+  `.rail-gutter` reserves `--rail-w: 92px` beside the right page.
+- Open: `split:` = `(min-width:860px) and (min-height:500px) and
+  (orientation:landscape)` — SAME query in duo.ts `SPLIT_QUERY` (`useSplit()`,
+  one long-lived MediaQueryList) and the `.tab-dock` / `.rail-gutter` /
+  `.tk-cover` media blocks. EVERY ScreenShell is two equal pages meeting at
+  50vw = the hinge (right in flat AND book pose); `aside={…}` fills the sticky
+  left page (identity: Rimon, eyebrow, title, summary visuals, mode toggles),
+  the right page keeps actions, lists, forms and long text whole. A screen
+  without an aside keeps its content on the right page (safety net). All
+  screens have one: Welcome, Confirm, Guide, After (every state), Benching,
+  Reference, Learn (all four views), Journey, Friends (+ AccountRequired,
+  Boards; BoardChat and the reminder sheet sit on the right page), Account,
+  Donate, Identify. Phone-only copies render behind `!useSplit()` (never two
+  Rimons). ScreenShell keeps ONE element tree in both modes (the right-page
+  wrapper is `display:contents` on phones) so opening/closing never remounts
+  the screen — Hear-it audio, open panels and typed input survive. Onboarding
+  slides and the takeovers (render on the left page, words + CTA on the right)
+  split too.
+- `short:` = compact AND < 720 pt tall (closed Duo, iPhone SE, iPhone Safari
+  with its toolbar, small/zoomed Android screens — any platform, on purpose):
+  Welcome hides its description line and tightens the title so the camera
+  CTA clears the tab bar. Upright iPhones from 390×844 up are pixel-identical
+  (diffed at 390×844, 402×874, 440×956).
+- The left page is a plain <div> (not <aside>), so titles/instructions moved
+  there stay in the normal reading order for VoiceOver.
+- Testing: Xcode 27.1 + iOS 27.1 simulator runtime → "iPhone Duo" in Device
+  Hub (Closed / Partially Open / Open / Rotate buttons). Building iOS on the
+  Mac needs `npx cap sync ios` first (the committed CapApp-SPM/Package.swift is
+  the Windows one, with backslash paths Xcode can't read; Codemagic re-syncs).
+  The Capacitor CLI demands Node ≥ 22; on Node 20 the same sync runs as
+  `node -e "process.argv=['node','cap','sync','ios'];require('./node_modules/@capacitor/cli/dist/index').run()"`.
+  Native fold state, if ever needed: UIKit `UIHingeInteraction` /
+  `UIHinge.status` (iOS 27.1).
+
 ## Gamification (adult Duolingo tone — friendly, never childish)
 - src/lib/progress.ts — streaks (day-rollover logic), per-bracha counts, CHALLENGES registry, badges. Persisted in the zustand store (key brachas-with-rimon).
 - Points economy (src/lib/dailyChallenges.ts, owner-tuned 2026-08-05): +2 per bracha, +3 per AFTER-blessing (the 'BirkatHamazon'/'MeeinShalosh'/'BoreiNefashos' keys completeMeal receives — closing the circle earns extra), +10 regular daily, +20 food of the day.
@@ -180,12 +241,12 @@ Signing gotcha learned 2026-08-06: toggling ANY capability on the App ID INVALID
 - SIGN-IN IS OPTIONAL — ANONYMOUS GUEST SESSIONS (build 35). App Review REJECTED build 33 on 2026-09-09 under guideline 5.1.1(v) ("requires users to register before accessing features that are not account based") because App.tsx mounted a full-screen AuthGate whenever there was no serverToken. The binding design: after onboarding, when there is no serverToken the app silently POSTs `/api/guest` → `{token, code, guest:true}` — NO personal information — and shows the app immediately; if that call fails it still renders with local-only progress and retries on the next boot/foreground. The server marks `users.guest=1` and clears it on upgrade; `/api/me` reports `guest`. Works as a guest: blessing guide, photo identification (guests get a 10/day allowance on their anonymous row; accounts keep 30/day), confirm/after/benching, reference, Learn lessons + daily thought + parsha, Journey/progress/streaks, reminders/local notifications, Account settings. ACCOUNT-BASED (people must be findable by a code/name): the Friends tab — friend codes, leaderboards/boards, board chat, report/block — renders an INLINE "create an account" panel in place of the feature, NEVER a full-screen wall. Creating an account from a guest session UPGRADES the same user row in place (progress + friend code kept): register with name/email/password, Sign in with Apple, or Google, while holding the guest token. Signing IN to an existing account from a guest session switches to that account (the orphan guest row is pruned later). Never put a gate in front of the app again — that is exactly the rejection. The reviewer account + review notes + the App Privacy label live in APPSTORE.md — update them together when a data flow changes.
 - Donate is HIDDEN on native for the 1.0 review (`donateAvailable()` in src/lib/donate.ts gates on `isNative()` unless NATIVE_ENABLED): an external donation link inside the binary is an IAP-rule conversation we don't want in the first review. The web tab stays.
 - Store assets are REAL UI from the deployed PWA, never mockups: scripts/store-capture.mjs (6.9-inch 1320×2868 PNGs; `--video` for the screencast; creates and deletes its own demo account) → scripts/store-artboards.mjs (framed boards, alpha stripped) → scripts/store-preview-cards.mjs + scripts/store-preview-compose.mjs (886×1920 App Preview, burned captions). Full recipe in APPSTORE.md.
-- Build number = CURRENT_PROJECT_VERSION (38 = still version 1.0.1, 2026-10-11: 37 + the Android/Play/PWA icons regenerated from the iOS icon — nothing iOS-visible changes; 37 = version 1.0.1, the 2026-09-22 merge of the Sep-15 liturgy + photo-capacity fixes onto release 36 — 1.0 (35) is already released on the App Store, so the next submission MUST be 1.0.1 and skips 36, which was NEVER BUILT (release 36's codemagic.yaml was invalid, so Codemagic ignored that push — its newest build stayed #43 = build 35 of 2026-09-10); 36 never existed and 37 is real (TestFlight + Play internal) — never reuse 36, 37 or 38. 35 was the guest-session fix for the 5.1.1(v) rejection on top of Sign in with Apple token revocation + the `PrivacyInfo.xcprivacy` privacy manifest. 34 carried those two but was SUPERSEDED before it was ever submitted — never reuse it; 33 was built, uploaded and attached in ASC on 2026-09-07 and REJECTED on 2026-09-09; 32 was superseded the same day by the cloud-e2e proxy patch. 37 is the first build Codemagic fires since 35 — there is no 36 anywhere); see the TESTFLIGHT TRIGGER WARNING below before syncing. THREE places move together on every bump: `CURRENT_PROJECT_VERSION` (both pbxproj configs), `versionCode` in android/app/build.gradle, and `appendUserAgent: 'BrachasRimon/<build>'` in capacitor.config.ts — the server's `legacyNativeClient()` (server/server.mjs) keys on that UA marker to tell iOS build 35 (no community-rules panel; keeps the pre-gate chat behaviour) from every later native build.
+- Build number = CURRENT_PROJECT_VERSION (39 = version 1.0.2, 2026-10-29: iPhone Duo layouts + the UIScene life cycle, first build on Xcode 27.1 — 1.0.1 (37) was released 2026-10-11, so 39 can only go to 1.0.2+; 38 = still version 1.0.1, 2026-10-11: 37 + the Android/Play/PWA icons regenerated from the iOS icon — nothing iOS-visible changes; 37 = version 1.0.1, the 2026-09-22 merge of the Sep-15 liturgy + photo-capacity fixes onto release 36 — 1.0 (35) is already released on the App Store, so the next submission MUST be 1.0.1 and skips 36, which was NEVER BUILT (release 36's codemagic.yaml was invalid, so Codemagic ignored that push — its newest build stayed #43 = build 35 of 2026-09-10); 36 never existed and 37 is real (TestFlight + Play internal) — never reuse 36, 37, 38 or 39. 35 was the guest-session fix for the 5.1.1(v) rejection on top of Sign in with Apple token revocation + the `PrivacyInfo.xcprivacy` privacy manifest. 34 carried those two but was SUPERSEDED before it was ever submitted — never reuse it; 33 was built, uploaded and attached in ASC on 2026-09-07 and REJECTED on 2026-09-09; 32 was superseded the same day by the cloud-e2e proxy patch. 37 is the first build Codemagic fires since 35 — there is no 36 anywhere); see the TESTFLIGHT TRIGGER WARNING below before syncing. THREE places move together on every bump: `CURRENT_PROJECT_VERSION` (both pbxproj configs), `versionCode` in android/app/build.gradle, and `appendUserAgent: 'BrachasRimon/<build>'` in capacitor.config.ts — the server's `legacyNativeClient()` (server/server.mjs) keys on that UA marker to tell iOS build 35 (no community-rules panel; keeps the pre-gate chat behaviour) from every later native build.
 
 ## Android / Google Play (2026-09-22 — read PLAYSTORE.md for the operator checklist)
 - `android/` is a Capacitor 8 shell of the SAME bundle (`npx cap add android`; minSdk 24, target/compile SDK 36 = Play's Aug-2026 floor). Generated dirs are git-ignored and skipped by sync-master; Codemagic regenerates them (`npx cap sync android`). Workflows: `android-play` (signed AAB, needs the `brachas_upload` keystore in Codemagic, and that keystore MUST be the upload key Play has registered — see PLAY UPLOAD KEY below; the Mac key file is `group-app-ad/android-signing/brachas-upload.p12`, password in `group-app-ad/.env`) and `android-debug-apk` (no secrets, sideload). Both are MANUAL-start; only `ios-app-store` fires on master pushes.
 - PLAY UPLOAD KEY (2026-10-11): Play App Signing is enrolled and Play's registered UPLOAD key is the Windows-box key (SHA-1 2A:AB:DE:1F:…:79:76) — every AAB must be signed with it unless an upload-key reset is approved; the Mac key (`brachas-upload.p12`, SHA-1 2B:FF:F6:54:…) is NOT accepted until then. An upload-key reset to the Mac key was chosen 2026-10-11 (owner decision; the owner submits it in Play Console with the certificate in Claude Mind/bracha/2026-10-11-release38/upload-key-reset/) — check Protected with Play → App signing for the approval and the date the new key becomes valid; after that `brachas_upload` = the Mac key and the Windows key is dead. Always read the `keytool -printcert -jarfile` signer line in the android-play log before uploading an AAB. Build 37 reached Internal testing 2026-10-01 as an unsigned Codemagic AAB jarsigned on the Windows box (PLAYSTORE.md step 3/4).
-- BUILD NUMBERS: `versionCode` in android/app/build.gradle mirrors `CURRENT_PROJECT_VERSION` (both 38 now, versionName / MARKETING_VERSION 1.0.1). Play refuses a repeated versionCode — bump BOTH, plus the `appendUserAgent: 'BrachasRimon/<build>'` marker in capacitor.config.ts, before every sync-master.
+- BUILD NUMBERS: `versionCode` in android/app/build.gradle mirrors `CURRENT_PROJECT_VERSION` (both 39 now, versionName / MARKETING_VERSION 1.0.2). Play refuses a repeated versionCode — bump BOTH, plus the `appendUserAgent: 'BrachasRimon/<build>'` marker in capacitor.config.ts, before every sync-master.
 - ANDROID BUILD HARDENING (review 2026-09-22): Codemagic's Android workflows run on `java: 21` (Capacitor 8 compiles at VERSION_21 — Java 17 dies with "invalid source release: 21", no bundle is ever produced) and print `java -version` before Gradle. capacitor.config.ts `SocialLogin.providers = { google, apple, facebook: false }` compiles the unused Facebook Login SDK OUT of the Android bundle (its `AD_ID` / `ACCESS_ADSERVICES_*` permissions made Play's "Advertising ID declaration → No" a release-page error) — Android (Gradle) and CocoaPods ONLY: the iOS SPM build (`ios/App/CapApp-SPM`) still links facebook-ios-sdk, dormant, so the App Store privacy answers keep accounting for FBSDKCoreKit; the manifest also removes `AD_ID` with `tools:node="remove"`. `android:allowBackup="false"` (Capacitor's template ships `true` — flipped in the review, re-check after any template re-copy; the persisted store holds the bearer token — never to Google Drive). `<property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true" />` in MainActivity keeps the portrait lock on Android 16 sw≥600dp devices — it EXPIRES at targetSdk 37; the real fix before that bump is a landscape rule for `.tk-cover` in src/index.css. `codemagic.yaml`'s `definitions.web_tests` steps mirror `scripts/preflight.mjs` suite for suite — keep them in lockstep. Each step carries its OWN anchor (`- &food_search`) and every workflow's `scripts:` lists each alias on its own line (`- *food_search`), so a new suite = one anchored step in `web_tests` + its alias in ALL THREE workflows (a step that is only in `definitions` never runs). NEVER anchor the whole list and write `- *web_tests`: that nests a list inside `scripts:`, Codemagic rejects the ENTIRE file and silently ignores every push — why release 36 (2026-09-22) never built. The `groups: - google_oauth` lines in every workflow are COMMENTED: create the (possibly empty) env group in Codemagic first, then uncomment — a missing group fails the build.
 - PLATFORM, NEVER "isNative = iPhone": `src/lib/native.ts` exports `platform()/isIOS()/isAndroid()`. Apple sign-in is iOS-only (`appleAvailable`), Google keys on the WEB client id off iOS, the Settings copy branches, `<html data-platform>` (main.tsx) lets CSS special-case Android (top inset only — iOS insets natively).
 - PUSH IS PER CHANNEL: `users.apns` (iOS) + `users.fcm` (Android); `POST /api/push/native {token, platform}` (no platform = ios, for old clients; `{token:null}` with no platform clears both); `server/fcm.mjs` = FCM HTTP v1 with a service-account JWT (`FCM_SERVICE_ACCOUNT` Railway var, silently OFF until set, `/api/status` reports `fcm_devices` + `fcm_*` alerts); `sendPush`, the broadcast and `pushAudience` fan out to every channel; registering a native token KEEPS the account's Web Push row (review fix 2026-09-22 — it holds the PWA's reminder prefs AND the tz offset that build 35 sends nowhere else; wiping it on every app open silenced desktop reminders and scored evenings on UTC): `pushSubscribers` skips any account holding an APNs/FCM token, so mealtime reminders are never doubled (they are local on both phones), while chat/league nudges fan out to every channel the account holds (a desktop PWA + the phone app each get their own); `/api/me` reports `web_push`. Mock: `server/test/mock-fcm.mjs`; the "Android (FCM) + mixed boards" scenarios prove a mixed board buzzes both phones.

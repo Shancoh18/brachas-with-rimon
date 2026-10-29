@@ -269,8 +269,11 @@ export default function App() {
     <>
       {/* pb clearance when the floating tab bar shows — without it the page's
           last content (the disclaimer) scrolls UNDER the bar and ghosts
-          through it at the bottom of every root screen */}
-      <div className={inFlow ? '' : 'pb-24'}>{body}</div>
+          through it at the bottom of every root screen. iPhone Duo: the bar
+          stands in the trailing status column (no bottom clearance); with no
+          such column but a wide screen it is a right rail, and .rail-gutter
+          (index.css) sets --rail-w so split pages pad their right page. */}
+      <div className={inFlow ? '' : 'rail-gutter pb-24 sidecol:pb-0 split:pb-0'}>{body}</div>
       {!inFlow && <TabBar />}
       <Celebration />
       {reveal && serverToken && (

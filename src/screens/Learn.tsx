@@ -12,10 +12,11 @@
  * STARRING: a starred lesson is pinned to the top and NEVER leaves —
  * whatever new content arrives — until the user unstars it.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { LESSONS, type Lesson } from '../data/learn';
 import { takeawayFor } from '../data/parshaTakeaways';
 import { apiDailyThought, apiLessons, type DailyThought } from '../lib/api';
+import { useSplit } from '../lib/duo';
 import { fetchDailyParsha, parshaIsFresh } from '../lib/parsha';
 import { todayStamp } from '../lib/progress';
 import { useBracha } from '../store';
@@ -103,6 +104,71 @@ function Star({ on, onClick }: { on: boolean; onClick: () => void }) {
   );
 }
 
+/** iPhone Duo open wide — the LEFT page of every Learn view: Rimon, the
+ *  eyebrow + title, one line of context and an optional one-glance visual.
+ *  The reading itself stays whole on the right page, never across the hinge. */
+function LeftPage({
+  eyebrow,
+  title,
+  line,
+  children,
+}: {
+  eyebrow: ReactNode;
+  title: ReactNode;
+  line?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <>
+      <div className="rise-in">
+        <Rimon pose="teaching" size={164} />
+      </div>
+      <header className="rise-in rise-in-1 space-y-3">
+        <Eyebrow>{eyebrow}</Eyebrow>
+        <h2 className="font-display text-[38px] font-bold leading-[1.1] tracking-tight text-espresso">{title}</h2>
+        {line}
+      </header>
+      {children}
+    </>
+  );
+}
+
+/** lessons read, as a ring — the library's progress at a glance (left page) */
+function ReadRing({ read, total }: { read: number; total: number }) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const share = total > 0 ? Math.min(1, read / total) : 0;
+  return (
+    <div
+      role="img"
+      aria-label={`${read} of ${total} lessons read`}
+      className="rise-in rise-in-2 relative grid size-[132px] place-items-center"
+    >
+      <svg viewBox="0 0 120 120" className="absolute inset-0 -rotate-90" aria-hidden>
+        <circle cx="60" cy="60" r={r} fill="none" strokeWidth="6" className="stroke-espresso/[0.08]" />
+        {/* no arc at zero — a round cap alone would draw a stray dot */}
+        {read > 0 && (
+          <circle
+            cx="60"
+            cy="60"
+            r={r}
+            fill="none"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - share)}
+            className="stroke-gold transition-[stroke-dashoffset] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]"
+          />
+        )}
+      </svg>
+      <div>
+        <p className="font-display text-[34px] font-black leading-none text-espresso">{read}</p>
+        <p className="mt-1.5 text-[9.5px] font-bold uppercase tracking-[0.2em] text-mocha">of {total} read</p>
+      </div>
+    </div>
+  );
+}
+
 export function Learn() {
   const { progress, markLessonRead, starredLessons, toggleStar, remoteLessons, setRemoteLessons, parsha, setParsha } =
     useBracha();
@@ -111,6 +177,9 @@ export function Learn() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [showParsha, setShowParsha] = useState(false);
   const [showThought, setShowThought] = useState(false);
+  // iPhone Duo open wide: each view's Rimon + title move to the left page
+  // (ScreenShell aside); called before the reader views' early returns
+  const split = useSplit();
 
   // the reader views swap in-place — start each at the top, not mid-scroll
   useEffect(() => {
@@ -217,8 +286,15 @@ export function Learn() {
   // A full reader view, same pattern as the parsha reader below — the card on
   // the main screen is a compact click-through (owner direction 2026-08-11).
   if (showThought && dailyThought && showThoughtCard) {
+    const aside = (
+      <LeftPage
+        eyebrow={`💭 ${thoughtIsOld ? 'Thought from' : 'Daily thought ·'} ${dailyThought.dayLabel}`}
+        title={dailyThought.title}
+        line={<p className="text-[12.5px] italic leading-relaxed text-mocha">Adapted from the teachings of the Rebbe</p>}
+      />
+    );
     return (
-      <ScreenShell>
+      <ScreenShell aside={aside}>
         <div className="pb-24" data-daily-thought-reader>
           <button
             onClick={() => setShowThought(false)}
@@ -226,15 +302,17 @@ export function Learn() {
           >
             ← back to Learn
           </button>
-          <header className="rise-in flex items-start justify-between gap-3 pb-6">
-            <div className="space-y-3">
-              <Eyebrow>💭 {thoughtIsOld ? 'Thought from' : 'Daily thought ·'} {dailyThought.dayLabel}</Eyebrow>
-              <h2 className="font-display text-[30px] font-bold leading-tight text-espresso">
-                {dailyThought.title}
-              </h2>
-            </div>
-            <Rimon pose="teaching" size={76} className="shrink-0" />
-          </header>
+          {!split && (
+            <header className="rise-in flex items-start justify-between gap-3 pb-6">
+              <div className="space-y-3">
+                <Eyebrow>💭 {thoughtIsOld ? 'Thought from' : 'Daily thought ·'} {dailyThought.dayLabel}</Eyebrow>
+                <h2 className="font-display text-[30px] font-bold leading-tight text-espresso">
+                  {dailyThought.title}
+                </h2>
+              </div>
+              <Rimon pose="teaching" size={76} className="shrink-0" />
+            </header>
+          )}
           <div className="rise-in rise-in-1 space-y-5">
             {cleanDigest(dailyThought.digest).split(/\n{2,}/).map((p, i) => (
               <p key={i} className="text-[14.5px] leading-[1.75] text-espresso-soft">
@@ -268,8 +346,38 @@ export function Learn() {
   if (showParsha && parsha) {
     // Yom Tov week: the takeaway teaches from the NEXT regular parsha
     const takeaway = takeawayFor(parsha.takeawayParsha ?? parsha.parsha);
+    const aside = (
+      <LeftPage
+        eyebrow={
+          parsha.holiday
+            ? `📜 Yom Tov reading · ${parsha.aliyahName}`
+            : `📜 Daily Torah · ${parsha.aliyahName} (${parsha.aliyahNumber} of 7)`
+        }
+        title={parsha.parsha}
+        line={
+          <p className="text-[12.5px] text-mocha">
+            {parsha.ref} — {parsha.holiday ? 'the Torah reading for this Shabbat' : 'today’s portion of the weekly parsha'}
+          </p>
+        }
+      >
+        {/* the week at a glance: one aliyah a day, Sunday to Shabbat (the
+            eyebrow says it in words; a Yom Tov reading has no week to walk) */}
+        {!parsha.holiday && (
+          <div aria-hidden className="rise-in rise-in-2 flex w-full max-w-[240px] gap-1.5">
+            {Array.from({ length: 7 }, (_, i) => (
+              <span
+                key={i}
+                className={`h-1.5 flex-1 rounded-full ${
+                  i + 1 === parsha.aliyahNumber ? 'bg-rimon' : i + 1 < parsha.aliyahNumber ? 'bg-gold' : 'bg-espresso/15'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </LeftPage>
+    );
     return (
-      <ScreenShell wide>
+      <ScreenShell wide aside={aside}>
         <div className="pb-24">
           <button
             onClick={() => setShowParsha(false)}
@@ -277,24 +385,26 @@ export function Learn() {
           >
             ← back to Learn
           </button>
-          <header className="rise-in flex items-start justify-between gap-3 pb-6">
-            <div className="space-y-3">
-              {/* a holiday reading isn't "1 of 7" of anything — the aliyah-a-day
-                  framing only fits the weekly parsha */}
-              <Eyebrow>
-                {parsha.holiday
-                  ? `📜 Yom Tov reading · ${parsha.aliyahName}`
-                  : `📜 Daily Torah · ${parsha.aliyahName} (${parsha.aliyahNumber} of 7)`}
-              </Eyebrow>
-              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-                {parsha.parsha}
-              </h2>
-              <p className="text-[12px] text-mocha">
-                {parsha.ref} — {parsha.holiday ? 'the Torah reading for this Shabbat' : 'today’s portion of the weekly parsha'}
-              </p>
-            </div>
-            <Rimon pose="teaching" size={76} className="shrink-0" />
-          </header>
+          {!split && (
+            <header className="rise-in flex items-start justify-between gap-3 pb-6">
+              <div className="space-y-3">
+                {/* a holiday reading isn't "1 of 7" of anything — the aliyah-a-day
+                    framing only fits the weekly parsha */}
+                <Eyebrow>
+                  {parsha.holiday
+                    ? `📜 Yom Tov reading · ${parsha.aliyahName}`
+                    : `📜 Daily Torah · ${parsha.aliyahName} (${parsha.aliyahNumber} of 7)`}
+                </Eyebrow>
+                <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
+                  {parsha.parsha}
+                </h2>
+                <p className="text-[12px] text-mocha">
+                  {parsha.ref} — {parsha.holiday ? 'the Torah reading for this Shabbat' : 'today’s portion of the weekly parsha'}
+                </p>
+              </div>
+              <Rimon pose="teaching" size={76} className="shrink-0" />
+            </header>
+          )}
           <Bezel className="rise-in rise-in-1" innerClassName="px-6 py-7">
             <div className="flex flex-col gap-6">
               {parsha.hebrew.map((he, i) => (
@@ -352,8 +462,21 @@ export function Learn() {
 
   if (lesson) {
     const starredNow = starredLessons.includes(lesson.id);
+    const aside = (
+      <LeftPage
+        eyebrow={`${lesson.emoji} ${lesson.minutes} min read`}
+        title={lesson.title}
+        line={<p className="font-display text-[17px] italic leading-relaxed text-gold">{lesson.hook}</p>}
+      >
+        {progress.lessonsRead.includes(lesson.id) && (
+          <span className="rise-in rise-in-2 rounded-full bg-sage/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-sage">
+            read ✓
+          </span>
+        )}
+      </LeftPage>
+    );
     return (
-      <ScreenShell>
+      <ScreenShell aside={aside}>
         <div className="pb-24">
           <div className="rise-in flex items-center justify-between pb-5">
             <button
@@ -364,18 +487,20 @@ export function Learn() {
             </button>
             <Star on={starredNow} onClick={() => toggleStar(lesson.id)} />
           </div>
-          <header className="rise-in flex items-start justify-between gap-3 pb-6">
-            <div className="space-y-3">
-              <Eyebrow>
-                {lesson.emoji} {lesson.minutes} min read
-              </Eyebrow>
-              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-                {lesson.title}
-              </h2>
-              <p className="font-display text-[16px] italic leading-relaxed text-gold">{lesson.hook}</p>
-            </div>
-            <Rimon pose="teaching" size={76} className="shrink-0" />
-          </header>
+          {!split && (
+            <header className="rise-in flex items-start justify-between gap-3 pb-6">
+              <div className="space-y-3">
+                <Eyebrow>
+                  {lesson.emoji} {lesson.minutes} min read
+                </Eyebrow>
+                <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
+                  {lesson.title}
+                </h2>
+                <p className="font-display text-[16px] italic leading-relaxed text-gold">{lesson.hook}</p>
+              </div>
+              <Rimon pose="teaching" size={76} className="shrink-0" />
+            </header>
+          )}
           <div className="rise-in rise-in-1 space-y-5">
             {lesson.body.map((p, i) => (
               <p key={i} className="text-[14.5px] leading-[1.75] text-espresso-soft">
@@ -417,19 +542,32 @@ export function Learn() {
     );
   }
 
+  // the shelf's left page: who's teaching, and how much of the library is read
+  const aside = (
+    <LeftPage
+      eyebrow="The why behind the words"
+      title="Learn"
+      line={<p className="text-[13.5px] leading-relaxed text-espresso-soft">Fresh study every day.</p>}
+    >
+      <ReadRing read={readCount} total={library.length} />
+    </LeftPage>
+  );
+
   return (
-    <ScreenShell>
+    <ScreenShell aside={aside}>
       <div className="pb-24">
-        <header className="rise-in flex items-start justify-between gap-4 pb-6">
-          <div className="space-y-2">
-            <Eyebrow>The why behind the words</Eyebrow>
-            <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Learn</h2>
-            <p className="text-[13px] leading-relaxed text-espresso-soft">
-              Fresh study every day — {readCount} of {library.length} read.
-            </p>
-          </div>
-          <Rimon pose="teaching" size={88} />
-        </header>
+        {!split && (
+          <header className="rise-in flex items-start justify-between gap-4 pb-6">
+            <div className="space-y-2">
+              <Eyebrow>The why behind the words</Eyebrow>
+              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Learn</h2>
+              <p className="text-[13px] leading-relaxed text-espresso-soft">
+                Fresh study every day — {readCount} of {library.length} read.
+              </p>
+            </div>
+            <Rimon pose="teaching" size={88} />
+          </header>
+        )}
 
         {/* daily thought — today's chabad.org Daily Wisdom digest (owner
             feature 2026-08-11); a compact CLICK-THROUGH into its reader, same

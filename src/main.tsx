@@ -5,10 +5,13 @@ import App from './App.tsx'
 import { useBracha } from './store'
 import { applyTheme, watchSystemTheme } from './lib/theme'
 import { platform } from './lib/native'
+import { watchSideColumn } from './lib/duo'
 
 // Stamp the shell we run in ('ios' | 'android' | 'web') so CSS can special-case
 // a platform — today only Android's edge-to-edge top inset (src/index.css).
 document.documentElement.dataset.platform = platform()
+// closed iPhone Duo: the tab bar moves into the trailing status/camera column
+watchSideColumn()
 
 // AbortSignal.timeout is Safari 16+ / Chrome 103+ and AbortSignal.any Safari
 // 17.4+; the iOS build still installs on iOS 15 and an old Android WebView can

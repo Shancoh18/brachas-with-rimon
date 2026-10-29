@@ -9,7 +9,7 @@
  * or sign in to an existing account). The moment the store holds a real
  * account the normal screen renders.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiAddFriend, apiLeague, apiSync, isAccountRequired, type LeagueRow } from '../lib/api';
 import { streakAlive } from '../lib/progress';
 import { useBracha } from '../store';
@@ -17,6 +17,18 @@ import { AccountRequired } from '../components/AccountRequired';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 import { Boards } from '../components/Boards';
+import { useSplit } from '../lib/duo';
+
+const GUEST_INTRO = 'Trade codes, race on shared leaderboards, and cheer each other on in board chat.';
+const LEAGUE_INTRO =
+  'Your league syncs across everyone — all-time points lead, and leaderboard wins are counted forever.';
+
+// the guest's left page on the open Duo: what an account opens up, at a glance
+const PREVIEW = [
+  { icon: '🎟️', label: 'Trade codes' },
+  { icon: '🏆', label: 'Timed races' },
+  { icon: '💬', label: 'Board chat' },
+];
 
 export function Friends() {
   const { progress, displayName, setDisplayName, serverToken, friendCode, clearServerAccount, isGuest, setGuest } =
@@ -33,6 +45,7 @@ export function Friends() {
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const alive = streakAlive(progress);
+  const split = useSplit(); // before the guest early return below — hook order
 
   // sync progress + pull league whenever the tab opens, then keep it LIVE
   // while the screen stays open (30s poll) — friends' bracha counts used to
@@ -134,43 +147,94 @@ export function Friends() {
     setTimeout(() => setCopied(false), 2500);
   };
 
+  // iPhone Duo open wide: Rimon, the title and a one-glance summary take the
+  // left page; everything you type or tap — codes, the leaderboard, boards and
+  // their chat — stays on the right. On phones the header is unchanged.
+  const aside = (intro: string, summary: ReactNode) => (
+    <>
+      <Rimon pose="pointing" size={168} />
+      <header className="rise-in space-y-2">
+        <Eyebrow>Blessings were meant to be heard</Eyebrow>
+        <h2 className="font-display text-[40px] font-bold leading-tight text-espresso">Friends</h2>
+        <p className="mx-auto max-w-[320px] text-[13px] leading-relaxed text-espresso-soft">{intro}</p>
+      </header>
+      {summary}
+    </>
+  );
+  const meAt = rows.findIndex((r) => r.you);
+  const me = rows[meAt];
+  const stat = (value: ReactNode, label: string, tone: string) => (
+    <div className="min-w-0 flex-1">
+      <p className={`font-display text-[30px] font-black leading-none ${tone}`}>{value}</p>
+      <p className="mt-1.5 text-[9.5px] font-bold uppercase tracking-wider text-mocha">{label}</p>
+    </div>
+  );
+  // where you stand — the same rows the leaderboard on the right shows
+  const standing = me ? (
+    <div
+      data-friends-standing
+      className="rise-in rise-in-2 flex w-full max-w-[330px] items-center gap-2 divide-x divide-espresso/[0.07] rounded-[1.25rem] border border-hairline bg-white/60 px-2 py-4 shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
+    >
+      {stat(`#${meAt + 1}`, `of ${rows.length} in league`, 'text-gold')}
+      {stat(me.points ?? 0, 'pts all-time', 'text-rimon')}
+      {stat(me.wins ?? 0, (me.wins ?? 0) === 1 ? 'board win' : 'board wins', 'text-espresso')}
+    </div>
+  ) : null;
+  const preview = (
+    <div data-friends-preview className="rise-in rise-in-2 grid w-full max-w-[330px] grid-cols-3 gap-2.5">
+      {PREVIEW.map((f) => (
+        <div
+          key={f.label}
+          className="rounded-[1.25rem] border border-hairline bg-white/60 px-2 py-4 shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
+        >
+          <span className="block text-[24px] leading-none">{f.icon}</span>
+          <span className="mt-2 block text-[9.5px] font-bold uppercase tracking-wider text-mocha">{f.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+
   // Guest (or no session yet): the tab stays, the feature gives way to the
   // inline account panel. AuthPanel flips isGuest off on success and this
   // same component re-renders as the full screen — no navigation needed.
   if (isGuest || !serverToken) {
     return (
-      <ScreenShell>
-        <div className="pb-24">
-          <header className="rise-in flex items-start justify-between gap-4 pb-6">
-            <div className="space-y-2">
-              <Eyebrow>Blessings were meant to be heard</Eyebrow>
-              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Friends</h2>
-              <p className="text-[13px] leading-relaxed text-espresso-soft">
-                Trade codes, race on shared leaderboards, and cheer each other on in board chat.
-              </p>
-            </div>
-            <Rimon pose="pointing" size={88} />
-          </header>
-          <AccountRequired reason="Friends, leaderboards and chat need an account so people can find you." />
+      <ScreenShell aside={aside(GUEST_INTRO, preview)}>
+        <div className="pb-24 split:pb-12">
+          {!split && (
+            <header className="rise-in flex items-start justify-between gap-4 pb-6">
+              <div className="space-y-2">
+                <Eyebrow>Blessings were meant to be heard</Eyebrow>
+                <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Friends</h2>
+                <p className="text-[13px] leading-relaxed text-espresso-soft">{GUEST_INTRO}</p>
+              </div>
+              <Rimon pose="pointing" size={88} />
+            </header>
+          )}
+          {/* same slot either way, so the half-typed form survives the fold;
+              open wide the panel's own Rimon gives way to the left page's */}
+          <AccountRequired
+            rimon={!split}
+            reason="Friends, leaderboards and chat need an account so people can find you."
+          />
         </div>
       </ScreenShell>
     );
   }
 
   return (
-    <ScreenShell>
-      <div className="pb-24">
-        <header className="rise-in flex items-start justify-between gap-4 pb-6">
-          <div className="space-y-2">
-            <Eyebrow>Blessings were meant to be heard</Eyebrow>
-            <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Friends</h2>
-            <p className="text-[13px] leading-relaxed text-espresso-soft">
-              Your league syncs across everyone — all-time points lead, and
-              leaderboard wins are counted forever.
-            </p>
-          </div>
-          <Rimon pose="pointing" size={88} />
-        </header>
+    <ScreenShell aside={aside(LEAGUE_INTRO, standing)}>
+      <div className="pb-24 split:pb-12">
+        {!split && (
+          <header className="rise-in flex items-start justify-between gap-4 pb-6">
+            <div className="space-y-2">
+              <Eyebrow>Blessings were meant to be heard</Eyebrow>
+              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">Friends</h2>
+              <p className="text-[13px] leading-relaxed text-espresso-soft">{LEAGUE_INTRO}</p>
+            </div>
+            <Rimon pose="pointing" size={88} />
+          </header>
+        )}
 
         {/* name + join */}
         <Bezel className="rise-in rise-in-1" innerClassName="px-5 py-4">
@@ -254,7 +318,12 @@ export function Friends() {
         )}
         <Bezel className="rise-in rise-in-2" innerClassName="divide-y divide-espresso/[0.06] px-2 py-1">
           {rows.map((row, i) => (
-            <div key={row.code || row.name} className={`flex items-center gap-3 px-3 py-3.5 ${row.you ? '' : 'opacity-90'}`}>
+            // split: tighter on the Duo's right page (narrower than a phone) so
+            // the name keeps its "you" tag
+            <div
+              key={row.code || row.name}
+              className={`flex items-center gap-3 px-3 py-3.5 split:gap-2 split:px-2 ${row.you ? '' : 'opacity-90'}`}
+            >
               <span className={`w-6 text-center font-display text-[18px] font-bold ${i === 0 ? 'text-gold' : 'text-mocha'}`}>
                 {i + 1}
               </span>

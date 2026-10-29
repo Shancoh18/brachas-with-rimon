@@ -11,6 +11,7 @@ import { searchFoods } from '../lib/foodSearch';
 import { useBracha } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
+import { useSplit } from '../lib/duo';
 
 const STATES: FoodState[] = ['unknown', 'raw', 'cooked', 'baked', 'whole', 'cut', 'liquid'];
 
@@ -98,9 +99,29 @@ export function Confirm() {
   // Hebrew names, regional/spelling aliases, and typo tolerance. Searching
   // FOODS (not a snapshot) keeps server-learned foods findable too.
   const matches = useMemo(() => searchFoods(query, FOODS, 9), [query]);
+  // iPhone Duo open wide: the meal photo gets the whole left page (the
+  // recipe-photo split from Apple's ArrangementView demos); the list to
+  // check stays on the right. On phones the small photo strip is unchanged.
+  const split = useSplit();
+  const aside = (
+    <>
+      {photo ? (
+        <img
+          src={photo}
+          alt="your meal"
+          className="rise-in max-h-[56dvh] w-full max-w-[360px] rounded-[1.75rem] object-cover shadow-[0_24px_60px_-28px_rgba(43,33,26,0.45)] ring-1 ring-espresso/10"
+        />
+      ) : null}
+      <Rimon
+        pose="pointing"
+        size={photo ? 104 : 168}
+        say={photo ? undefined : 'Add everything on your plate — I’ll do the order.'}
+      />
+    </>
+  );
 
   return (
-    <ScreenShell>
+    <ScreenShell aside={aside}>
       {/* manual entry arrives from home with nothing staged — a top-left back
           beats a bottom "start over" (owner 2026-08-11) */}
       {manualEntry && (
@@ -118,7 +139,7 @@ export function Confirm() {
             {manualEntry ? 'What did you eat?' : 'Is this your meal?'}
           </h2>
         </div>
-        <Rimon pose="pointing" size={84} />
+        {!split && <Rimon pose="pointing" size={84} />}
       </header>
 
       <p className="rise-in rise-in-1 pb-5 text-[13px] leading-relaxed text-espresso-soft">
@@ -159,7 +180,7 @@ export function Confirm() {
         </div>
       )}
 
-      {photo && (
+      {photo && !split && (
         <div className="rise-in rise-in-1 mb-5 overflow-hidden rounded-[1.5rem] ring-1 ring-espresso/10">
           <img src={photo} alt="your meal" className="max-h-40 w-full object-cover" />
         </div>

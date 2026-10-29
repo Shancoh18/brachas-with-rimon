@@ -12,6 +12,7 @@ import { useBracha, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon, RimonWalker } from '../components/Rimon';
 import { Bezel, Eyebrow, PillButton, ScreenShell, WhyDropdown } from '../components/ui';
+import { useSplit } from '../lib/duo';
 import { WHY_BRACHA, WHY_INTRO, WHY_INTRO_SOURCE } from '../data/why';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
@@ -45,6 +46,7 @@ export function Guide() {
   const { items, nusach, textMode, setTextMode, guideIndex, setGuideIndex, setScreen, completeMeal, mergePendingAfter } =
     useBracha();
   const pack = NUSACHIM[nusach];
+  const split = useSplit(); // before the early return below — hook order
 
   const groups = useMemo(
     () =>
@@ -88,22 +90,34 @@ export function Guide() {
           ? `Say it over the ${rep.label.toLowerCase()} — it covers the rest of this group too.`
           : `This one is for your ${rep.label.toLowerCase()}.`;
 
-  return (
-    <ScreenShell>
-      {/* Rimon walks the meal's blessings with you */}
-      <div className="rise-in pb-2">
-        <RimonWalker progress={groups.length > 1 ? step / (groups.length - 1) : 1} done={false} />
-        <div className="flex items-center justify-center gap-2 pt-1">
-          {groups.map((g2, i) => (
-            <span
-              key={g2.bracha}
-              className={`h-1.5 rounded-full transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-                i === step ? 'w-8 bg-rimon' : i < step ? 'w-3 bg-gold' : 'w-3 bg-espresso/15'
-              }`}
-            />
-          ))}
-        </div>
+  // Rimon walks the meal's blessings with you
+  const walker = (
+    <div className="rise-in w-full pb-2">
+      <RimonWalker progress={groups.length > 1 ? step / (groups.length - 1) : 1} done={false} />
+      <div className="flex items-center justify-center gap-2 pt-1">
+        {groups.map((g2, i) => (
+          <span
+            key={g2.bracha}
+            className={`h-1.5 rounded-full transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+              i === step ? 'w-8 bg-rimon' : i < step ? 'w-3 bg-gold' : 'w-3 bg-espresso/15'
+            }`}
+          />
+        ))}
       </div>
+    </div>
+  );
+  // iPhone Duo open wide: Rimon + his instruction and the progress walk take
+  // the left page; the words to say and the buttons stay on the right
+  const aside = (
+    <>
+      <Rimon pose="pointing" say={sayLine} size={150} />
+      {walker}
+    </>
+  );
+
+  return (
+    <ScreenShell aside={aside}>
+      {!split && walker}
 
       <header className="rise-in flex items-start justify-between gap-4 pb-4">
         <div className="space-y-2">
@@ -118,7 +132,7 @@ export function Guide() {
             {rep.chaviv ? ' ★' : ''}
           </p>
         </div>
-        <Rimon pose="pointing" say={sayLine} size={92} />
+        {!split && <Rimon pose="pointing" say={sayLine} size={92} />}
       </header>
 
       {/* text-mode toggle */}

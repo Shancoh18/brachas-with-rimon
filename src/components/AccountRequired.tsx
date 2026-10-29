@@ -15,12 +15,22 @@ import { AuthPanel } from './AuthPanel';
 import { Rimon } from './Rimon';
 import { Bezel, Eyebrow } from './ui';
 
-export function AccountRequired({ reason, onDone }: { reason: string; onDone?: () => void }) {
+export function AccountRequired({
+  reason,
+  onDone,
+  rimon = true,
+}: {
+  reason: string;
+  onDone?: () => void;
+  /** false where the screen already shows Rimon (the open Duo's left page) —
+   *  never two of him at once */
+  rimon?: boolean;
+}) {
   const [mode, setMode] = useState<'create' | 'signin'>('create');
   return (
     <Bezel className="rise-in rise-in-1" innerClassName="px-5 py-6">
       <div data-account-required className="flex flex-col items-center gap-3 text-center">
-        <Rimon pose="pointing" size={84} />
+        {rimon && <Rimon pose="pointing" size={84} />}
         <Eyebrow>Account needed</Eyebrow>
         <h3 className="font-display text-[26px] font-bold leading-tight text-espresso">
           {mode === 'create' ? 'Create an account' : 'Sign in'}

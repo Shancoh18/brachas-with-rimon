@@ -9,8 +9,10 @@ import { NUSACHIM } from '../data/texts';
 import { useBracha, type TextMode } from '../store';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, ScreenShell } from '../components/ui';
+import { useSplit } from '../lib/duo';
 
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
+const RIMON_LINE = 'Ate bread? This is the thank-you that covers the whole meal.';
 
 /** The holiday/occasion additions, spelled out one card each. */
 const ADDITIONS = [
@@ -35,9 +37,42 @@ export function Benching() {
   const { setScreen, nusach, textMode, setTextMode } = useBracha();
   const pack = NUSACHIM[nusach];
   const bh = pack.birkatHamazon;
+  const split = useSplit();
+
+  // text-mode toggle, same control as the quick guide
+  const modeToggle = (className: string) => (
+    <div className={`${className} flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]`}>
+      {MODES.map((m) => (
+        <button
+          key={m}
+          onClick={() => setTextMode(m)}
+          className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
+            textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
+          }`}
+        >
+          {m === 'translit' ? 'transliteration' : m}
+        </button>
+      ))}
+    </div>
+  );
+
+  // iPhone Duo open wide: Rimon, the title and the text-mode toggle take the
+  // left page — it stays put, so the toggle is in reach all the way down the
+  // liturgy, which reads unbroken on the right page. One Rimon, carrying the
+  // line the phone's closing Rimon says.
+  const aside = (
+    <>
+      <Rimon pose="teaching" size={160} say={RIMON_LINE} />
+      <header className="rise-in space-y-3">
+        <Eyebrow>Grace after meals</Eyebrow>
+        <h2 className="font-display text-[40px] font-bold leading-tight text-espresso">Birkat Hamazon</h2>
+      </header>
+      {modeToggle('rise-in rise-in-1')}
+    </>
+  );
 
   return (
-    <ScreenShell wide>
+    <ScreenShell wide aside={aside}>
       <div className="pb-16">
         <button
           onClick={() => setScreen('welcome')}
@@ -45,16 +80,18 @@ export function Benching() {
         >
           ← home
         </button>
-        <header className="rise-in flex items-start justify-between gap-4 pb-2">
-          <div className="space-y-2">
-            <Eyebrow>Grace after meals</Eyebrow>
-            <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-              Birkat Hamazon
-            </h2>
-            <p className="max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">{bh.intro}</p>
-          </div>
-          <Rimon pose="teaching" size={84} className="shrink-0" />
-        </header>
+        {!split && (
+          <header className="rise-in flex items-start justify-between gap-4 pb-2">
+            <div className="space-y-2">
+              <Eyebrow>Grace after meals</Eyebrow>
+              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
+                Birkat Hamazon
+              </h2>
+              <p className="max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">{bh.intro}</p>
+            </div>
+            <Rimon pose="teaching" size={84} className="shrink-0" />
+          </header>
+        )}
 
         {/* when do I say it? — unmissable */}
         <Bezel className="rise-in rise-in-1 mb-5" innerClassName="px-5 py-4">
@@ -66,20 +103,13 @@ export function Benching() {
           </p>
         </Bezel>
 
-        {/* text-mode toggle, same control as the quick guide */}
-        <div className="rise-in rise-in-1 mb-5 flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
-          {MODES.map((m) => (
-            <button
-              key={m}
-              onClick={() => setTextMode(m)}
-              className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
-                textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
-              }`}
-            >
-              {m === 'translit' ? 'transliteration' : m}
-            </button>
-          ))}
-        </div>
+        {/* split: the toggle is on the left page; the pack's intro (it ends
+            in a colon) leads straight into the blessings instead */}
+        {split ? (
+          <p className="rise-in rise-in-1 pb-4 text-[12.5px] leading-relaxed text-espresso-soft">{bh.intro}</p>
+        ) : (
+          modeToggle('rise-in rise-in-1 mb-5')
+        )}
 
         {/* the blessings */}
         <div className="flex flex-col gap-3">
@@ -165,9 +195,11 @@ export function Benching() {
           </p>
         </div>
 
-        <div className="flex flex-col items-center gap-1 pt-8">
-          <Rimon pose="idle" size={92} say="Ate bread? This is the thank-you that covers the whole meal." />
-        </div>
+        {!split && (
+          <div className="flex flex-col items-center gap-1 pt-8">
+            <Rimon pose="idle" size={92} say={RIMON_LINE} />
+          </div>
+        )}
       </div>
     </ScreenShell>
   );

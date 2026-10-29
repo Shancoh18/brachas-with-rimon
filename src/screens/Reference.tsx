@@ -11,9 +11,14 @@ import { useBracha, type TextMode } from '../store';
 import { HearIt } from '../components/HearIt';
 import { Rimon } from '../components/Rimon';
 import { Bezel, Eyebrow, ScreenShell } from '../components/ui';
+import { useSplit } from '../lib/duo';
 
 const BASE = import.meta.env.BASE_URL;
 const MODES: TextMode[] = ['hebrew', 'translit', 'english'];
+const TITLE = 'The six blessings, in order';
+const INTRO =
+  'When different foods share the table, say the blessings in this order. Tap any card for the full text.';
+const RIMON_SAY = 'Same foods every day? This page is your shortcut. New plate? Photograph it!';
 
 interface Group {
   bracha: Bracha;
@@ -91,9 +96,44 @@ export function Reference() {
   const pack = NUSACHIM[nusach];
   const [open, setOpen] = useState<Bracha | null>(null);
   const [openAfter, setOpenAfter] = useState<'bh' | 'ms' | 'bn' | null>(null);
+  const split = useSplit();
+
+  // text-mode toggle for the expanded texts
+  const modeToggle = (
+    <div
+      className={`rise-in rise-in-1 flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07] ${split ? '' : 'mb-5'}`}
+    >
+      {MODES.map((m) => (
+        <button
+          key={m}
+          onClick={() => setTextMode(m)}
+          className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
+            textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
+          }`}
+        >
+          {m === 'translit' ? 'transliteration' : m}
+        </button>
+      ))}
+    </div>
+  );
+
+  // iPhone Duo open wide: Rimon, the title and the text-mode toggle take the
+  // left page. It is sticky, so the toggle stays in reach all the way down the
+  // long list; the cards and their Hear-it players stay on the right.
+  const aside = (
+    <>
+      <Rimon pose="idle" size={164} say={RIMON_SAY} />
+      <header className="rise-in space-y-2">
+        <Eyebrow>Quick guide</Eyebrow>
+        <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">{TITLE}</h2>
+        <p className="mx-auto max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">{INTRO}</p>
+      </header>
+      {modeToggle}
+    </>
+  );
 
   return (
-    <ScreenShell wide>
+    <ScreenShell wide aside={aside}>
       <div className="pb-16">
         <button
           onClick={() => setScreen('welcome')}
@@ -101,33 +141,18 @@ export function Reference() {
         >
           ← home
         </button>
-        <header className="rise-in flex items-start justify-between gap-4 pb-2">
-          <div className="space-y-2">
-            <Eyebrow>Quick guide</Eyebrow>
-            <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">
-              The six blessings, in order
-            </h2>
-            <p className="max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">
-              When different foods share the table, say the blessings in this order. Tap any card
-              for the full text.
-            </p>
-          </div>
-        </header>
-
-        {/* text-mode toggle for the expanded texts */}
-        <div className="rise-in rise-in-1 mb-5 flex w-max rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
-          {MODES.map((m) => (
-            <button
-              key={m}
-              onClick={() => setTextMode(m)}
-              className={`rounded-full px-3.5 py-1.5 text-[11px] font-semibold capitalize transition-[background-color,color,transform] duration-150 ease-out ${
-                textMode === m ? 'bg-espresso text-cream' : 'text-espresso-soft'
-              }`}
-            >
-              {m === 'translit' ? 'transliteration' : m}
-            </button>
-          ))}
-        </div>
+        {/* phone-only from here to the cards: the Duo shows them on the left
+            page. Kept as slots so the cards below never shift position. */}
+        {!split && (
+          <header className="rise-in flex items-start justify-between gap-4 pb-2">
+            <div className="space-y-2">
+              <Eyebrow>Quick guide</Eyebrow>
+              <h2 className="font-display text-[32px] font-bold leading-tight text-espresso">{TITLE}</h2>
+              <p className="max-w-[320px] text-[12.5px] leading-relaxed text-espresso-soft">{INTRO}</p>
+            </div>
+          </header>
+        )}
+        {!split && modeToggle}
 
         <div className="flex flex-col gap-3">
           {GROUPS.map((g, idx) => {
@@ -329,9 +354,11 @@ export function Reference() {
           </Bezel>
         </div>
 
-        <div className="flex flex-col items-center gap-1 pt-8">
-          <Rimon pose="idle" size={92} say="Same foods every day? This page is your shortcut. New plate? Photograph it!" />
-        </div>
+        {!split && (
+          <div className="flex flex-col items-center gap-1 pt-8">
+            <Rimon pose="idle" size={92} say={RIMON_SAY} />
+          </div>
+        )}
       </div>
     </ScreenShell>
   );

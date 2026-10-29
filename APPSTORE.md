@@ -4,12 +4,13 @@ The repo is App Store-ready: the `ios/` Xcode project is committed (iPhone-only,
 portrait-only), reminders use native iOS local notifications, in-app account
 deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
-generated. Version 1.0 (build 35) is LIVE on the App Store since 2026-09-12.
-Next submission: **version 1.0.1** — build 37 is in TestFlight, and the tree
-now carries **build 38** (`MARKETING_VERSION` 1.0.1 and
-`CURRENT_PROJECT_VERSION` 38 in `ios/App/App.xcodeproj/project.pbxproj`). A
+generated. Version 1.0 (build 35) went LIVE on the App Store on 2026-09-12;
+version 1.0.1 (build 37) was released on 2026-10-11 (build 38, iOS-identical
+to 37, stayed in TestFlight). Next submission: **version 1.0.2** — the tree
+now carries **build 39** (`MARKETING_VERSION` 1.0.2 and
+`CURRENT_PROJECT_VERSION` 39 in `ios/App/App.xcodeproj/project.pbxproj`). A
 released version cannot take new builds, so every build from here goes to a
-new version; 1.0.1 is not released yet, so 37 or 38 can be attached to it.
+new version: 39 can only be attached to 1.0.2 (or later).
 
 Review history:
 
@@ -58,8 +59,25 @@ Review history:
 - **Build 38** — 2026-10-11, still **version 1.0.1**: 37 plus the Android,
   Google Play and PWA icons regenerated from the iOS App Store icon (they still
   showed the old line-art). The iOS AppIcon is the master and is unchanged, so
-  nothing iOS-visible differs from 37. Once 38 has been synced, bump to 39
-  before the next sync-master.
+  nothing iOS-visible differs from 37.
+- **Build 39** — 2026-10-29, **version 1.0.2**: iPhone Duo support, and the
+  FIRST build made with Xcode 27.1 / the iOS 27 SDK (Codemagic `xcode: 27.1`).
+  On the Duo every screen opens as two pages that meet at the hinge, nothing
+  you can tap sits on the fold, and the tab bar stands in the Duo's right-hand
+  status column; upright phones look exactly as before. Native change that
+  affects EVERY iPhone: the app now uses the UIScene life cycle
+  (`SceneDelegate` at the bottom of AppDelegate.swift +
+  `UIApplicationSceneManifest` in Info.plist) — required by the iOS 27 SDK,
+  which otherwise crashes the app at launch. Before submitting, test it on
+  TestFlight on a regular iPhone as well as a Duo: cold launch, leaving and
+  returning to the app, a mealtime reminder tap, a chat push, the camera /
+  photo picker, Sign in with Apple, and opening the app right after
+  restarting the phone (the onboarding progress bar must sit below the clock
+  — in the simulator, launching the app while the simulator is still booting
+  leaves the page under the status bar until the first scroll; launching
+  after the home screen is up is correct). (No custom URL scheme or universal
+  link exists yet; the SceneDelegate forwards them to Capacitor for when one
+  does.)
 
 What remains needs your Apple account. Two paths — pick one.
 

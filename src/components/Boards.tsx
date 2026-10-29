@@ -340,8 +340,10 @@ export function Boards() {
       <div className="flex flex-col gap-3">
         {boards?.map((b) => (
           <Bezel key={b.id} className="rise-in" innerClassName="px-5 py-4">
-            <div className="flex items-start justify-between gap-3 pb-3">
-              <div className="min-w-0">
+            {/* open wide, the Duo's right page is narrower than a phone: the
+                chips drop under the title instead of squeezing it to "Co…" */}
+            <div className="flex items-start justify-between gap-3 pb-3 split:flex-col split:gap-2.5">
+              <div className="min-w-0 split:self-stretch">
                 <p className="truncate text-[15px] font-bold text-espresso">{b.title}</p>
                 <p className="text-[10.5px] font-semibold uppercase tracking-wider text-mocha">
                   {b.members} {b.members === 1 ? 'member' : 'members'} · code {b.code}

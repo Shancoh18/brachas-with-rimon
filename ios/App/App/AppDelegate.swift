@@ -58,3 +58,47 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
 }
+
+// UIScene life cycle (2026-10-29). Apps built with the iOS 27 SDK must adopt
+// it: without a scene manifest UIKit stops the launch (EXC_BREAKPOINT in
+// _UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption — reproduced
+// on the iPhone Duo simulator, Xcode 27.1 / iOS 27.1), and Xcode 27.1 is what
+// gives the app the Duo's full inner display instead of a letterbox.
+// Info.plist UIApplicationSceneManifest points here and at Main.storyboard, so
+// UIKit still builds the window + CAPBridgeViewController exactly as before.
+// With scenes, link opens arrive on the scene, not the AppDelegate methods
+// above — they are forwarded to Capacitor the same way. (Lives in this file so
+// the Xcode project needs no new file reference.)
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        // a cold launch from a link or Universal Link lands here
+        if let context = connectionOptions.urlContexts.first {
+            openURL(context)
+        }
+        if let activity = connectionOptions.userActivities.first {
+            _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+        }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        URLContexts.forEach(openURL)
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
+    }
+
+    private func openURL(_ context: UIOpenURLContext) {
+        var options: [UIApplication.OpenURLOptionsKey: Any] = [.openInPlace: context.options.openInPlace]
+        if let source = context.options.sourceApplication {
+            options[.sourceApplication] = source
+        }
+        if let annotation = context.options.annotation {
+            options[.annotation] = annotation
+        }
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: context.url, options: options)
+    }
+}

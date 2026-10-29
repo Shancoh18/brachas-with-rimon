@@ -104,10 +104,9 @@ export function TabBar() {
   }, []);
   if (keyboardUp) return null;
   return (
-    <nav
-      className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-6"
-      style={{ bottom: 'calc(16px + env(safe-area-inset-bottom))' }}
-    >
+    // .tab-dock (index.css) places it: bottom island inside the safe width on
+    // phones and the closed Duo; a left rail when the Duo is open wide
+    <nav className="tab-dock pointer-events-none fixed z-30 flex justify-center px-6">
       {/* SOLID bg — no backdrop-blur (WKWebView scroll-flicker) and no alpha:
           at 95% the disclaimer used to ghost through the pill when a page was
           scrolled to the bottom (owner-reported 2026-08-06). */}

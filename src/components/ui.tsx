@@ -5,6 +5,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import type { WhyEntry } from '../data/why';
+import { useSplit } from '../lib/duo';
 
 const EASE = 'transition-[background-color,color,transform,box-shadow] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]';
 
@@ -172,19 +173,81 @@ export function Disclaimer() {
   );
 }
 
+/**
+ * Every screen's frame, with the required disclaimer.
+ *
+ * `aside` = the facing page for an open iPhone Duo — the web cousin of
+ * SwiftUI's ArrangementView (iOS 27.1, split style). When useSplit() is true
+ * the screen becomes two equal pages that meet at the hinge: `aside` on the
+ * left, sticky, so the meal photo or Rimon stays in view; the screen's own
+ * content scrolls on the right. Otherwise `aside` is not rendered at all
+ * (no hidden Rimon video loading on phones); screens render their phone-only
+ * bits behind `!useSplit()`, so the phone layout is unchanged.
+ *
+ * Safety net: open wide, EVERY screen is two pages. A screen that has no
+ * `aside` of its own still keeps its content on the right page (left page
+ * empty) — no button may ever sit in the crease (owner, 2026-10-29).
+ *
+ * ONE element tree in both modes (the aside slot is null, not missing):
+ * opening or closing the Duo must not remount the screen — Apple asks apps
+ * to keep state across fold changes, and a remount would cut off a playing
+ * Hear-it clip, reset the Why panel and lose focus mid-search.
+ */
 export function ScreenShell({
   children,
   wide = false,
+  aside,
 }: {
   children: ReactNode;
   wide?: boolean;
+  aside?: ReactNode;
 }) {
+  const split = useSplit();
   return (
-    <div className="grain flex min-h-[100dvh] flex-col">
-      <main className={`mx-auto flex w-full flex-1 flex-col px-5 pt-8 ${wide ? 'max-w-2xl' : 'max-w-md'}`}>
-        {children}
-      </main>
-      <Disclaimer />
+    <div
+      className={
+        split
+          ? // columns meet at exactly 50vw — the hinge — whatever the side insets
+            'grain grid min-h-[100dvh] grid-cols-[calc(50vw_-_var(--safe-left))_minmax(0,1fr)]'
+          : 'grain flex min-h-[100dvh] flex-col'
+      }
+    >
+      {split ? (
+        // my-auto centres the page when it fits and lets it scroll from the
+        // top when the window is short — never clipped. No overscroll-contain:
+        // a swipe on the left page must still scroll the screen (review
+        // 2026-10-29 — contain swallowed it whenever the page fit).
+        // a plain <div>, not <aside>: the left page holds the screen's title
+        // and instructions — not "complementary" content a screen reader may
+        // skip (review 2026-10-29)
+        <div
+          data-duo-aside={aside != null ? '' : 'empty'}
+          aria-hidden={aside != null ? undefined : true}
+          className="sticky top-0 flex h-[100dvh] flex-col overflow-y-auto pl-6 pr-10 text-center"
+        >
+          {aside != null ? <div className="my-auto flex flex-col items-center gap-5 py-8">{aside}</div> : null}
+        </div>
+      ) : null}
+      {/* right page: a fold gutter on the left; on the right at least 16px, or
+          the tab rail's width (--rail-w, .rail-gutter in index.css) when the
+          rail floats on the page instead of standing in the Duo's column.
+          On phones this wrapper is display:contents — it keeps the element
+          tree stable across a fold without adding a box, so <main> and the
+          disclaimer lay out exactly as they always have. */}
+      <div
+        className={
+          split ? 'flex min-h-[100dvh] min-w-0 flex-col pl-5 pr-[calc(max(var(--rail-w,0px),16px)_+_4px)]' : 'contents'
+        }
+      >
+        <main
+          className={`mx-auto flex w-full flex-1 flex-col ${
+            split ? 'max-w-md px-4 pt-10' : `px-5 pt-8 ${wide ? 'max-w-2xl' : 'max-w-md'}`
+          }`}
+        >
+          {children}
+        </main>
+        <Disclaimer />
+      </div>
     </div>
   );
 }

@@ -91,13 +91,17 @@ export function ReminderNudge() {
       </button>
 
       {open && (
+        // iPhone Duo open wide: the scrim still dims both pages, but the card
+        // sits on the right page — the page's 28px fold gutter on its left,
+        // 20px clear of the tab rail (--rail-w) on its right — so no field
+        // or button lands in the crease
         <div
           data-reminder-sheet
-          className="fixed inset-0 z-50 flex items-end justify-center bg-espresso/25 backdrop-blur-[2px] sm:items-center"
+          className="safe-x fixed inset-0 z-50 flex items-end justify-center bg-espresso/25 backdrop-blur-[2px] sm:items-center split:justify-end"
           onClick={() => setOpen(false)}
         >
           <div
-            className="sheet-rise max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[2rem] bg-cream px-6 pb-8 pt-6 shadow-[0_-18px_60px_-20px_rgba(43,33,26,0.35)] sm:rounded-[2rem]"
+            className="sheet-rise max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[2rem] bg-cream px-6 pb-8 pt-6 shadow-[0_-18px_60px_-20px_rgba(43,33,26,0.35)] sm:rounded-[2rem] split:mr-[calc(var(--rail-w,20px)_+_20px)] split:max-w-[calc(50vw_-_var(--safe-right)_-_var(--rail-w,20px)_-_48px)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-espresso/15 sm:hidden" />

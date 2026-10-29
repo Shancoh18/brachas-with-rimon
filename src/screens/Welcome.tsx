@@ -12,6 +12,7 @@ import { analyzePhoto, demoMeal, photoFailReason, resizeImage, type AnalyzeResul
 import { apiSync } from '../lib/api';
 import { toMealItems } from '../lib/classify';
 import { isAndroid } from '../lib/native';
+import { useSplit } from '../lib/duo';
 
 /** epoch ms → "just now" / "25m ago" / "2h ago" / "yesterday" / "3 days ago" */
 function savedAgo(ts: number): string {
@@ -103,89 +104,117 @@ export function Welcome() {
     }
   };
 
+  // iPhone Duo open wide: Rimon + the title move to the left page, the
+  // actions stay on the right (ScreenShell aside)
+  const split = useSplit();
+  const greeting = (
+    <>
+      <div className="rise-in">
+        <Rimon pose="idle" say="Shalom! I’m Rimon — show me your meal." size={split ? 140 : 96} />
+      </div>
+
+      <header className="rise-in rise-in-1 space-y-3">
+        <Eyebrow>Blessings, beautifully guided</Eyebrow>
+        {/* short: = a compact screen under 720pt (closed iPhone Duo, iPhone
+            SE) — the description steps aside and the title tightens so the
+            camera CTA stays above the tab bar on first paint */}
+        <h1 className="font-display text-[44px] font-black leading-[1.05] tracking-tight text-espresso short:text-[38px]">
+          Brachas <span className="text-rimon">with Rimon</span>
+        </h1>
+        <p className="mx-auto max-w-[300px] text-[14px] leading-relaxed text-espresso-soft short:hidden">
+          Photograph your food. Learn the right blessing for each item — in the right order —
+          and what to say after.
+        </p>
+      </header>
+    </>
+  );
+
+  // today's streak + the nusach choice: under the title on the left page when
+  // the Duo is open wide (the right page is narrowed by the status column, and
+  // these are context, not actions); in their usual place on phones
+  const todayAndNusach = (
+    <>
+      {/* home widget bar — streak tracker + today's bracha check, one glance.
+          Sits ABOVE the nusach selector (owner order 2026-08-11). Compact ON
+          PURPOSE: a taller block would push the primary CTA under the tab
+          bar on first paint (blind-QA blocker). */}
+      <div
+        className="rise-in rise-in-2 flex w-full max-w-[330px] items-center gap-3.5 rounded-[1.25rem] border border-hairline bg-white/60 px-4 py-3 text-left shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
+        data-home-widgets
+      >
+        <div className="flex shrink-0 items-baseline gap-1">
+          <span className="font-display text-[24px] font-black leading-none text-rimon">
+            {alive ? progress.streakCurrent : 0}
+          </span>
+          <span className="text-[13px]">🔥</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex gap-1" aria-label="last seven days">
+            {week.map((d) => (
+              <span
+                key={d.day}
+                className={`h-1.5 flex-1 rounded-full ${d.active ? 'bg-gold' : 'bg-espresso/10'}`}
+              />
+            ))}
+          </div>
+          <p className={`mt-1.5 text-[10.5px] font-semibold leading-tight ${blessedToday ? 'text-sage-deep' : 'text-espresso'}`}>
+            {blessedToday
+              ? `Bracha said today ✓ ${brachosToday > 0 ? `· ${brachosToday} so far` : ''}`
+              : 'Have you said your bracha today?'}
+          </p>
+        </div>
+      </div>
+
+      {/* nusach selector */}
+      <div className="rise-in rise-in-2 flex rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
+        {(Object.keys(NUSACHIM) as NusachId[]).map((id) => (
+          <button
+            key={id}
+            onClick={() => {
+              setNusach(id);
+              // save the choice on the account now, so another device / a
+              // reinstall picks it up. It stays pending until the server has
+              // it (offline: the next boot sync sends it)
+              const { serverToken, progress: p, markNusachSynced } = useBracha.getState();
+              if (serverToken)
+                void apiSync(serverToken, p, undefined, id)
+                  .then(() => markNusachSynced(id))
+                  .catch(() => undefined);
+            }}
+            className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
+              nusach === id ? 'bg-espresso text-cream shadow-sm' : 'text-espresso-soft'
+            }`}
+          >
+            {NUSACHIM[id].label.replace(' (Chabad)', '')}
+          </button>
+        ))}
+      </div>
+      {!NUSACHIM[nusach].complete && (
+        <p className="rise-in -mt-4 max-w-[300px] text-[10.5px] leading-snug text-mocha">
+          Hebrew shown from the shared (Chabad-published) text; verify wording against your own
+          siddur.
+        </p>
+      )}
+    </>
+  );
+
   return (
-    <ScreenShell>
+    <ScreenShell
+      aside={
+        <>
+          {greeting}
+          {todayAndNusach}
+        </>
+      }
+    >
       {/* rhythm tightened 2026-08-11: the streak widget moved ABOVE the nusach
           selector (owner order), which pushed the manual-add pill under the
           floating tab bar on first paint — smaller Rimon + gap-4 reclaim it
           (the e2e's tap-target check guards this) */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 pb-44 pt-6 text-center">
-        <div className="rise-in">
-          <Rimon pose="idle" say="Shalom! I’m Rimon — show me your meal." size={96} />
-        </div>
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 pb-44 pt-6 text-center split:pb-12 split:pt-0">
+        {!split && greeting}
 
-        <header className="rise-in rise-in-1 space-y-3">
-          <Eyebrow>Blessings, beautifully guided</Eyebrow>
-          <h1 className="font-display text-[44px] font-black leading-[1.05] tracking-tight text-espresso">
-            Brachas <span className="text-rimon">with Rimon</span>
-          </h1>
-          <p className="mx-auto max-w-[300px] text-[14px] leading-relaxed text-espresso-soft">
-            Photograph your food. Learn the right blessing for each item — in the right order —
-            and what to say after.
-          </p>
-        </header>
-
-        {/* home widget bar — streak tracker + today's bracha check, one glance.
-            Sits ABOVE the nusach selector (owner order 2026-08-11). Compact ON
-            PURPOSE: a taller block would push the primary CTA under the tab
-            bar on first paint (blind-QA blocker). */}
-        <div
-          className="rise-in rise-in-2 flex w-full max-w-[330px] items-center gap-3.5 rounded-[1.25rem] border border-hairline bg-white/60 px-4 py-3 text-left shadow-[0_10px_30px_-14px_rgba(43,33,26,0.25)]"
-          data-home-widgets
-        >
-          <div className="flex shrink-0 items-baseline gap-1">
-            <span className="font-display text-[24px] font-black leading-none text-rimon">
-              {alive ? progress.streakCurrent : 0}
-            </span>
-            <span className="text-[13px]">🔥</span>
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex gap-1" aria-label="last seven days">
-              {week.map((d) => (
-                <span
-                  key={d.day}
-                  className={`h-1.5 flex-1 rounded-full ${d.active ? 'bg-gold' : 'bg-espresso/10'}`}
-                />
-              ))}
-            </div>
-            <p className={`mt-1.5 text-[10.5px] font-semibold leading-tight ${blessedToday ? 'text-sage-deep' : 'text-espresso'}`}>
-              {blessedToday
-                ? `Bracha said today ✓ ${brachosToday > 0 ? `· ${brachosToday} so far` : ''}`
-                : 'Have you said your bracha today?'}
-            </p>
-          </div>
-        </div>
-
-        {/* nusach selector */}
-        <div className="rise-in rise-in-2 flex rounded-full bg-espresso/[0.05] p-1 ring-1 ring-espresso/[0.07]">
-          {(Object.keys(NUSACHIM) as NusachId[]).map((id) => (
-            <button
-              key={id}
-              onClick={() => {
-                setNusach(id);
-                // save the choice on the account now, so another device / a
-                // reinstall picks it up. It stays pending until the server has
-                // it (offline: the next boot sync sends it)
-                const { serverToken, progress: p, markNusachSynced } = useBracha.getState();
-                if (serverToken)
-                  void apiSync(serverToken, p, undefined, id)
-                    .then(() => markNusachSynced(id))
-                    .catch(() => undefined);
-              }}
-              className={`rounded-full px-4 py-2 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 ease-out ${
-                nusach === id ? 'bg-espresso text-cream shadow-sm' : 'text-espresso-soft'
-              }`}
-            >
-              {NUSACHIM[id].label.replace(' (Chabad)', '')}
-            </button>
-          ))}
-        </div>
-        {!NUSACHIM[nusach].complete && (
-          <p className="rise-in -mt-4 max-w-[300px] text-[10.5px] leading-snug text-mocha">
-            Hebrew shown from the shared (Chabad-published) text; verify wording against your own
-            siddur.
-          </p>
-        )}
+        {!split && todayAndNusach}
 
         <div className="rise-in rise-in-3 flex flex-col items-center gap-3">
           <PillButton variant="rimon" icon="📷" onClick={() => (android ? cameraRef : fileRef).current?.click()} disabled={busy}>
