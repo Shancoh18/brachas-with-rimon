@@ -101,7 +101,7 @@ export function ReminderNudge() {
           onClick={() => setOpen(false)}
         >
           <div
-            className="sheet-rise max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[2rem] bg-cream px-6 pb-8 pt-6 shadow-[0_-18px_60px_-20px_rgba(43,33,26,0.35)] sm:rounded-[2rem] split:mr-[calc(var(--rail-w,20px)_+_20px)] split:max-w-[calc(50vw_-_var(--safe-right)_-_var(--rail-w,20px)_-_48px)]"
+            className="sheet-rise max-h-[min(92dvh,calc(100dvh_-_var(--safe-top)_-_12px))] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[2rem] bg-cream px-6 pb-[calc(2rem_+_var(--safe-bottom))] pt-6 shadow-[0_-18px_60px_-20px_rgba(43,33,26,0.35)] sm:rounded-[2rem] split:mr-[calc(var(--rail-w,20px)_+_20px)] split:max-w-[calc(50vw_-_var(--safe-right)_-_var(--rail-w,20px)_-_48px)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-espresso/15 sm:hidden" />

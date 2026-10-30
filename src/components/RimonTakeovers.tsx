@@ -15,6 +15,7 @@
  * holds; breath loops keep the hold alive. Reduced-motion lands on the still.
  */
 import { CHALLENGES } from '../lib/progress';
+import { useLightStatusBar } from '../lib/theme';
 import { PillButton } from './ui';
 
 const BASE = import.meta.env.BASE_URL;
@@ -78,6 +79,7 @@ export function ChallengeTakeover({
   points: number;
   onContinue: () => void;
 }) {
+  useLightStatusBar(); // cream in both themes — keep dark status-bar text
   return (
     <div className="tk-root tk-grain" data-takeover="challenge">
       <div className="tk-jolt">
@@ -95,7 +97,7 @@ export function ChallengeTakeover({
           />
         ))}
       </div>
-      <div className="absolute inset-x-0 top-[9%] z-20 px-8 text-center">
+      <div className="absolute inset-x-0 top-[max(9%,calc(var(--safe-top)_+_14px))] z-20 px-8 text-center">
         <Eyebrow td="2.15s">{eyebrow}</Eyebrow>
         <h2
           className="tk-rise mt-3 font-display text-[33px] font-medium leading-tight text-espresso"
@@ -120,7 +122,7 @@ export function ChallengeTakeover({
       </div>
       <div
         className="tk-pop absolute inset-x-0 z-20 flex justify-center"
-        style={{ bottom: 'calc(40px + env(safe-area-inset-bottom))', '--td': '2.85s' } as React.CSSProperties}
+        style={{ bottom: 'calc(40px + var(--safe-bottom))', '--td': '2.85s' } as React.CSSProperties}
       >
         <PillButton variant="rimon" icon="→" onClick={onContinue}>
           Continue
@@ -144,6 +146,7 @@ export function StreakTakeover({
   line: string;
   onContinue: () => void;
 }) {
+  useLightStatusBar();
   return (
     <div className="tk-root tk-grain" data-takeover="streak">
       <div className="tk-cover">
@@ -167,7 +170,7 @@ export function StreakTakeover({
           ))}
         </div>
       </div>
-      <div className="absolute inset-x-0 top-[9%] z-20 px-8 text-center">
+      <div className="absolute inset-x-0 top-[max(9%,calc(var(--safe-top)_+_14px))] z-20 px-8 text-center">
         <Eyebrow td="1.1s">Streak · Day {streak}</Eyebrow>
         <h2
           className="tk-rise mt-3 font-display text-[31px] font-medium leading-tight text-espresso"
@@ -184,7 +187,7 @@ export function StreakTakeover({
       </div>
       <div
         className="absolute inset-x-0 z-20 flex justify-center gap-2 px-4"
-        style={{ bottom: 'calc(96px + env(safe-area-inset-bottom))' }}
+        style={{ bottom: 'calc(96px + var(--safe-bottom))' }}
       >
         <span className="tk-chip rounded-full border border-hairline bg-[#fffdf4] px-3.5 py-2 text-[11.5px] font-semibold text-espresso-soft shadow-[0_6px_18px_rgba(43,33,26,0.07)]" style={{ '--td': '2.9s' } as React.CSSProperties}>
           <b className="font-bold text-gold">{streak}</b> day{streak === 1 ? '' : 's'} in a row
@@ -200,7 +203,7 @@ export function StreakTakeover({
       </div>
       <div
         className="tk-pop absolute inset-x-0 z-20 flex justify-center"
-        style={{ bottom: 'calc(34px + env(safe-area-inset-bottom))', '--td': '3.8s' } as React.CSSProperties}
+        style={{ bottom: 'calc(34px + var(--safe-bottom))', '--td': '3.8s' } as React.CSSProperties}
       >
         <PillButton variant="rimon" icon="→" onClick={onContinue}>
           Keep it going
@@ -220,11 +223,12 @@ export function BadgeTakeover({
   points: number;
   onContinue: () => void;
 }) {
+  useLightStatusBar();
   const first = badges[0];
   const meta = CHALLENGES.find((c) => c.id === first.id);
   return (
     <div className="tk-root tk-grain flex flex-col items-center" data-takeover="badge">
-      <div className="z-20 px-8 pt-[9vh] text-center">
+      <div className="z-20 px-8 pt-[max(9vh,calc(var(--safe-top)_+_14px))] text-center">
         <Eyebrow td="0.35s">Journey</Eyebrow>
         <h2
           className="tk-rise mt-3 font-display text-[31px] font-medium leading-tight text-espresso"
@@ -305,7 +309,7 @@ export function BadgeTakeover({
       </div>
       <div
         className="tk-pop absolute inset-x-0 z-20 flex justify-center"
-        style={{ bottom: 'calc(34px + env(safe-area-inset-bottom))', '--td': '3.9s' } as React.CSSProperties}
+        style={{ bottom: 'calc(34px + var(--safe-bottom))', '--td': '3.9s' } as React.CSSProperties}
       >
         <PillButton variant="rimon" icon="→" onClick={onContinue}>
           Continue

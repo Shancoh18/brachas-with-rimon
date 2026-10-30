@@ -13,9 +13,14 @@ const config: CapacitorConfig = {
   // marker is gated like Safari and Android. BUMP THE NUMBER WITH THE BUILD
   // NUMBER (CLAUDE.md build-number rule) — it is the only way the server can
   // tell one native build from another.
-  appendUserAgent: 'BrachasRimon/39',
+  appendUserAgent: 'BrachasRimon/40',
   ios: {
-    contentInset: 'automatic',
+    // 'never' (Capacitor's default): the WebView fills the screen and the CSS
+    // pads by env(safe-area-inset-*) — src/index.css "iOS insets". 'automatic'
+    // (until build 39) let WKWebView apply the status-bar inset on its own
+    // schedule: pages opened under the clock after navigation, iOS 26 never
+    // applied it at launch. Don't switch back without re-testing every screen.
+    contentInset: 'never',
     backgroundColor: '#faf7e9',
   },
   android: {
@@ -26,10 +31,11 @@ const config: CapacitorConfig = {
     // Android 15+ (targetSdk 35+) is edge-to-edge. Capacitor 8's SystemBars
     // keeps the default `insetsHandling: css`: with viewport-fit=cover
     // (index.html) the WebView receives real env(safe-area-inset-*) values,
-    // which the tab bar, sheets and takeovers already use for the bottom, and
-    // src/index.css pads the top on Android only (iOS insets natively via
-    // contentInset). `style: LIGHT` = light bars, DARK icons — right for the
-    // cream canvas; src/lib/theme.ts flips it when the user picks dark mode.
+    // which the tab bar, sheets and takeovers use (var(--safe-bottom/top)),
+    // and src/index.css pads the page itself on BOTH platforms (Android: body
+    // padding-top; iOS since build 40: --page-top/--page-bottom, see "iOS
+    // insets"). `style: LIGHT` = light bars, DARK icons — right for the cream
+    // canvas; src/lib/theme.ts flips it (Android and iOS) for dark mode.
     SystemBars: {
       style: 'LIGHT',
       insetsHandling: 'css',

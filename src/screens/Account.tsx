@@ -26,12 +26,17 @@ import { Bezel, Eyebrow, PillButton, ScreenShell } from '../components/ui';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PASSWORD_MIN = 8;
 
-/** what a guest gains by creating an account — the pitch, kept honest */
-const ACCOUNT_ADDS = [
-  'Your streaks and points on every device — a new phone picks up where you left off.',
-  'Friends: trade codes, share leaderboards, chat in your boards.',
-  'Sign back in any time with email + password, Apple or Google.',
-];
+/** what a guest gains by creating an account — the pitch, kept honest: it
+ *  names only the sign-ins this build offers (iOS has no Google button) */
+const accountAdds = () => {
+  const ways = ['email + password', ...(appleAvailable() ? ['Apple'] : []), ...(googleAvailable() ? ['Google'] : [])];
+  const waysCopy = ways.length === 1 ? ways[0] : `${ways.slice(0, -1).join(', ')} or ${ways[ways.length - 1]}`;
+  return [
+    'Your streaks and points on every device — a new phone picks up where you left off.',
+    'Friends: trade codes, share leaderboards, chat in your boards.',
+    `Sign back in any time with ${waysCopy}.`,
+  ];
+};
 
 export function Account() {
   const {
@@ -281,7 +286,7 @@ export function Account() {
     <Bezel className="rise-in rise-in-1 split:w-full split:max-w-[340px] split:text-left" innerClassName="px-5 py-4">
       <p className={label}>What an account adds</p>
       <ul data-account-adds className="mt-2 space-y-2">
-        {ACCOUNT_ADDS.map((line) => (
+        {accountAdds().map((line) => (
           <li key={line} className="flex gap-2.5 text-[12.5px] leading-snug text-espresso">
             <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-gold" aria-hidden />
             <span>{line}</span>

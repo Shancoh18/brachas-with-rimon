@@ -45,6 +45,7 @@ function subscribe(onChange: () => void) {
  * in the iOS 27.1 simulator). The tab bar then stands in that column under the
  * status bar, like Apple's own bars (index.css .tab-dock), and the page needs
  * no rail gutter. Reads --safe-right, so QA's override fakes it too.
+ * Also stamps <html data-short> (index.css `short:`), from the same probe.
  * Call once at boot; it follows every resize (the Duo opening or closing).
  */
 export function watchSideColumn(): void {
@@ -53,19 +54,47 @@ export function watchSideColumn(): void {
   probe.setAttribute('aria-hidden', 'true');
   probe.style.cssText =
     'position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
-    'padding-left:var(--safe-left);padding-right:var(--safe-right)';
+    'padding-left:var(--safe-left);padding-right:var(--safe-right);' +
+    'padding-top:var(--page-top);padding-bottom:var(--page-bottom)';
   document.body.appendChild(probe);
   const read = () => {
     const cs = getComputedStyle(probe);
     const left = parseFloat(cs.paddingLeft) || 0;
     const right = parseFloat(cs.paddingRight) || 0;
     document.documentElement.toggleAttribute('data-side-column', right >= 44 && left < 8);
+    // html[data-short] backs the `short:` variant (index.css): phone width and
+    // at most 720pt of USABLE height — the viewport minus what <body> pads on
+    // iOS (--page-top/--page-bottom, 0 elsewhere = the old media query)
+    const usable = window.innerHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    document.documentElement.toggleAttribute('data-short', window.innerWidth < 640 && usable <= 720);
   };
   read();
   window.addEventListener('resize', read);
   splitQuery()?.addEventListener('change', read);
   // the QA override lands on <html style>; re-read when it changes
   new MutationObserver(read).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+  // iOS fills env(safe-area-inset-*) in AFTER the first layout without any
+  // resize when the WebView is full-screen (contentInset 'never', build 40):
+  // the probe's padding — its whole border box — grows then, so watch that
+  // (the closed Duo otherwise kept the bottom pill instead of the column bar)
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(read).observe(probe, { box: 'border-box' });
+  // --vv-top = how far iOS has panned the visual viewport (the keyboard is up):
+  // the status-bar strip (index.css, iOS) rides it so it stays under the clock
+  const vv = window.visualViewport;
+  if (vv) {
+    let last = -1;
+    const pan = () => {
+      const top = Math.max(0, Math.round(vv.offsetTop));
+      if (top === last) return;
+      last = top;
+      // on <body> (the strip is body::before): <html style> is watched above,
+      // and this fires on every keyboard-pan frame
+      document.body.style.setProperty('--vv-top', `${top}px`);
+    };
+    vv.addEventListener('scroll', pan);
+    vv.addEventListener('resize', pan);
+    pan();
+  }
 }
 
 /** Live: flips when the Duo opens/closes or rotates (the WebView resizes). */

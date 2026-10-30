@@ -14,7 +14,7 @@ export function Identify() {
     <>
       {photo && (
         <div className="rise-in overflow-hidden rounded-[2rem] ring-1 ring-espresso/10 split:w-full split:max-w-[360px] split:rounded-[1.75rem] split:shadow-[0_24px_60px_-28px_rgba(43,33,26,0.45)]">
-          <img src={photo} alt="your meal" className="max-h-[38dvh] w-auto object-cover opacity-90 split:max-h-[56dvh] split:w-full" />
+          <img src={photo} alt="your meal" className="max-h-[calc(var(--page-h)*0.38)] w-auto object-cover opacity-90 split:max-h-[calc(var(--page-h)*0.56)] split:w-full" />
         </div>
       )}
       <div className="rise-in rise-in-1 relative">

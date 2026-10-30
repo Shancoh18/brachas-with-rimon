@@ -3,7 +3,7 @@
  * Hebrew (RTL, large), transliteration, English — nusach-aware. Grouped
  * items note what the single recitation covers.
  */
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { BRACHA_LABEL, type Bracha } from '../data/foods';
 import { NUSACHIM } from '../data/texts';
 import { apiSync } from '../lib/api';
@@ -47,6 +47,13 @@ export function Guide() {
     useBracha();
   const pack = NUSACHIM[nusach];
   const split = useSplit(); // before the early return below — hook order
+  // Each blessing starts at the top: App.tsx scrolls only on tab/screen
+  // changes, so after "I said this blessing" the next one opened where the
+  // last was left — usually scrolled to the bottom, its name and text above
+  // the screen and the button right under the thumb (QA 2026-10-29).
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [guideIndex]);
 
   const groups = useMemo(
     () =>
@@ -122,7 +129,10 @@ export function Guide() {
       <header className="rise-in flex items-start justify-between gap-4 pb-4">
         <div className="space-y-2">
           <Eyebrow>
-            Blessing {step + 1} of {groups.length}
+            {/* one line: beside Rimon's bubble it broke as "BLESSING 1 OF / 1" */}
+            <span className="whitespace-nowrap">
+              Blessing {step + 1} of {groups.length}
+            </span>
           </Eyebrow>
           <h2 className="font-display text-[34px] font-bold leading-tight text-espresso">
             {BRACHA_LABEL[group.bracha]}
@@ -164,13 +174,16 @@ export function Guide() {
         {textMode === 'english' && (
           <p className="text-[17px] leading-relaxed text-espresso">{liturgy.english}</p>
         )}
-        <div className="mt-6 flex items-center justify-between gap-3 border-t border-espresso/[0.07] pt-5">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-x-3 gap-y-3 border-t border-espresso/[0.07] pt-5">
           <HearIt src={`${import.meta.env.BASE_URL}audio/${AUDIO_FILE[group.bracha]}.mp3`} />
-          <p className="text-right text-[10.5px] leading-snug text-mocha">{WHY_LINE[group.bracha]}</p>
+          <p className="grow basis-24 text-right text-[10.5px] leading-snug text-mocha">{WHY_LINE[group.bracha]}</p>
         </div>
       </Bezel>
 
       <WhyDropdown
+        // a fresh (closed) panel per blessing — it used to stay open, showing
+        // the next blessing's "why" before its text
+        key={`${step}-${group.bracha}`}
         className="rise-in rise-in-3 mt-3"
         entry={WHY_BRACHA[group.bracha]}
         intro={{

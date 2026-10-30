@@ -328,20 +328,22 @@ export function Friends() {
                 {i + 1}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-semibold text-espresso">
-                  {row.name}
+                {/* only the NAME truncates — the tags stay whole (a long name
+                    used to cut the "you" tag to "Y…") */}
+                <p className="flex min-w-0 items-baseline overflow-hidden text-[14px] font-semibold text-espresso">
+                  <span className="min-w-[3.5rem] truncate">{row.name}</span>
                   {row.you && (
-                    <span className="ml-2 rounded-full bg-rimon/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rimon">
+                    <span className="ml-2 shrink-0 rounded-full bg-rimon/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rimon">
                       you
                     </span>
                   )}
                   {(row.wins ?? 0) > 0 && (
-                    <span className="ml-2 text-[11px] font-semibold text-gold" title="leaderboard wins">
+                    <span className="ml-2 shrink-0 text-[11px] font-semibold text-gold" title="leaderboard wins">
                       🏆{row.wins}
                     </span>
                   )}
                   {row.streak > 0 && row.streak < 999 && (
-                    <span className="ml-2 text-[11px] text-mocha">🔥{row.streak}</span>
+                    <span className="ml-2 shrink-0 text-[11px] text-mocha">🔥{row.streak}</span>
                   )}
                 </p>
               </div>

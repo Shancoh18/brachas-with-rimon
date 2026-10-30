@@ -3,7 +3,7 @@
  * can delete, add from the database, correct state (raw/cooked), and mark a
  * chaviv favorite before any blessing is shown.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BRACHA_LABEL, FOODS } from '../data/foods';
 import type { PhotoFailReason } from '../lib/analyze';
 import { mealItemFromKey, setItemEntry, setItemState, type MealItem, type FoodState } from '../lib/classify';
@@ -99,6 +99,44 @@ export function Confirm() {
   // Hebrew names, regional/spelling aliases, and typo tolerance. Searching
   // FOODS (not a snapshot) keeps server-learned foods findable too.
   const matches = useMemo(() => searchFoods(query, FOODS, 9), [query]);
+  // Keep the search box and its results above the keyboard. The field auto-
+  // focuses, so the keyboard opens at once; when the box sits low (the photo-
+  // fallback screen: photo + notice above it) WebKit only scrolled the input
+  // itself into view and the result list stayed behind the keyboard and its
+  // accessory bar (QA 2026-10-29, iOS 27). Once the visual viewport shrinks
+  // and the box would end below it, bring the box to the top (scroll-mt keeps
+  // it clear of the status bar).
+  // Keep the search box and its results above the keyboard. The field auto-
+  // focuses, so the keyboard opens at once; when the box sits low (the photo-
+  // fallback screen: photo + notice above it) WebKit only scrolled the input
+  // itself into view and the result list stayed behind the keyboard and its
+  // accessory bar (QA 2026-10-29, iOS 27). Once the visual viewport shrinks
+  // and the box would end below it, bring the box to the top (scroll-mt keeps
+  // it clear of the status bar).
+  // KNOWN LIMIT (QA 2026-10-29): typing letter by letter on iOS 27 can still
+  // leave long result lists under the keyboard's accessory bar (as in build
+  // 39). Two web-only follow-ups (a keyboard-height spacer, a list capped at
+  // the visual viewport) tested WORSE on iOS 27 and the Duo — the real fix
+  // needs the keyboard's height from native code (@capacitor/keyboard).
+  const searchBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!adding) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const reveal = () => {
+      const el = searchBox.current;
+      if (!el || vv.height > window.innerHeight - 120) return; // no keyboard up
+      const r = el.getBoundingClientRect();
+      const top = vv.offsetTop;
+      if (r.bottom > top + vv.height - 8 && r.top > top + 48) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    };
+    vv.addEventListener('resize', reveal);
+    const t = window.setTimeout(reveal, 400); // after the keyboard slides up
+    return () => {
+      vv.removeEventListener('resize', reveal);
+      window.clearTimeout(t);
+    };
+  }, [adding, matches.length]);
   // iPhone Duo open wide: the meal photo gets the whole left page (the
   // recipe-photo split from Apple's ArrangementView demos); the list to
   // check stays on the right. On phones the small photo strip is unchanged.
@@ -109,7 +147,7 @@ export function Confirm() {
         <img
           src={photo}
           alt="your meal"
-          className="rise-in max-h-[56dvh] w-full max-w-[360px] rounded-[1.75rem] object-cover shadow-[0_24px_60px_-28px_rgba(43,33,26,0.45)] ring-1 ring-espresso/10"
+          className="rise-in max-h-[calc(var(--page-h)*0.56)] w-full max-w-[360px] rounded-[1.75rem] object-cover shadow-[0_24px_60px_-28px_rgba(43,33,26,0.45)] ring-1 ring-espresso/10"
         />
       ) : null}
       <Rimon
@@ -314,7 +352,7 @@ export function Confirm() {
                 <button
                   onClick={() => updateItem(item.id, { chaviv: !item.chaviv })}
                   title="chaviv — my favorite"
-                  className={`text-[19px] leading-none transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-90 ${item.chaviv ? '' : 'opacity-25 grayscale'}`}
+                  className={`text-[19px] leading-none text-espresso transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-90 ${item.chaviv ? '' : 'opacity-25 grayscale'}`}
                 >
                   ★
                 </button>
@@ -339,7 +377,7 @@ export function Confirm() {
       )}
 
       {/* add-from-database */}
-      <div className="mt-4">
+      <div ref={searchBox} className="mt-4 scroll-mt-[calc(var(--page-top)_+_12px)]">
         {adding ? (
           <Bezel innerClassName="p-3">
             <input

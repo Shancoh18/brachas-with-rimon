@@ -62,7 +62,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
   render() {
     if (!this.state.failed) return this.props.children
     return (
-      <main className="grain min-h-dvh bg-cream px-6 pb-16 pt-20 text-espresso">
+      <main className="grain min-h-[var(--page-h)] bg-cream px-6 pb-16 pt-20 text-espresso">
         <div className="mx-auto max-w-[380px] rounded-[2rem] bg-espresso/[0.045] p-1.5 ring-1 ring-espresso/[0.06]">
           <div className="rounded-[calc(2rem-0.375rem)] bg-white/75 px-6 py-8 text-center">
             <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-gold">Rimon tripped</p>

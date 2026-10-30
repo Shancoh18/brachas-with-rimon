@@ -275,7 +275,7 @@ export function AuthPanel({
               <button
                 onClick={() => void social('apple')}
                 disabled={busy}
-                className="flex w-full items-center justify-center gap-2.5 rounded-full bg-black py-3 text-[13.5px] font-semibold text-white transition-transform duration-150 ease-out active:scale-[0.97]"
+                className="siwa-btn flex w-full items-center justify-center gap-2.5 rounded-full bg-black py-3 text-[13.5px] font-semibold text-white transition-transform duration-150 ease-out active:scale-[0.97]"
               >
                 <svg viewBox="0 0 24 24" className="h-[16px] w-[16px]" fill="currentColor" aria-hidden>
                   <path d="M16.7 12.9c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.9-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3.1 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8 0 0-2.6-1-2.7-3.8ZM14.4 5.6c.7-.8 1.1-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4Z" />

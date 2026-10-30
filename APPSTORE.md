@@ -6,11 +6,12 @@ deletion exists (Apple requires it), the privacy policy is live, board chat
 carries report / block / filter (guideline 1.2), and icons/splash are
 generated. Version 1.0 (build 35) went LIVE on the App Store on 2026-09-12;
 version 1.0.1 (build 37) was released on 2026-10-11 (build 38, iOS-identical
-to 37, stayed in TestFlight). Next submission: **version 1.0.2** — the tree
-now carries **build 39** (`MARKETING_VERSION` 1.0.2 and
-`CURRENT_PROJECT_VERSION` 39 in `ios/App/App.xcodeproj/project.pbxproj`). A
+to 37, stayed in TestFlight). Version 1.0.2 (build 39) was SUBMITTED for
+review on 2026-10-29 (manual release). The tree now carries **build 40**
+(`MARKETING_VERSION` 1.0.3 and `CURRENT_PROJECT_VERSION` 40 in
+`ios/App/App.xcodeproj/project.pbxproj`) for the NEXT version, 1.0.3. A
 released version cannot take new builds, so every build from here goes to a
-new version: 39 can only be attached to 1.0.2 (or later).
+new version: 40 can only be attached to 1.0.3 (or later).
 
 Review history:
 
@@ -77,7 +78,35 @@ Review history:
   leaves the page under the status bar until the first scroll; launching
   after the home screen is up is correct). (No custom URL scheme or universal
   link exists yet; the SceneDelegate forwards them to Capacitor for when one
-  does.)
+  does.) Built by Codemagic #46 on Xcode 27.1 and SUBMITTED for review on
+  2026-10-29 as version 1.0.2 with "Manually release this version"; App
+  Review Information was carried over from 1.0.1 unchanged (it has
+  "Sign-in required" ticked with the reviewer account in the Sign-In fields —
+  how 1.0.1 was approved).
+- **Build 40** — 2026-10-29, **version 1.0.3**: fixes from a hands-on
+  simulator QA of 39 (all pre-existing except the Duo cosmetics). iOS
+  WebView now full-screen (`ios.contentInset: 'never'`) with the page padding
+  itself by the safe areas, so screens no longer open under the clock after
+  navigation (and the iOS 26 onboarding no longer starts under it); in-app
+  Dark mode gets a light status bar and no cream bands; the tab bar no longer
+  hops at the bottom of a page. Guide: every blessing opens at its top with
+  "Why this bracha?" closed; labels no longer wrap. Food search stays above
+  the keyboard on the photo-fallback screen. Rimon's videos re-encoded to
+  standard H.264 (4:2:0) — the 4:4:4 files drew nothing in the simulators.
+  iPhone Duo: tab bar centred in the status column when open; closed-Duo
+  celebrations fit Rimon to the height (no crown under the text, no hard
+  edge). After a simulator re-test and a code review (2026-10-29 evening):
+  Plus-size iPhones keep the compact Home; in-app Dark keeps the cream
+  celebrations readable (dark text, dark status bar) and the tab bar labels
+  and food-card star visible; a frosted strip behind the status bar keeps
+  the clock readable over scrolled content; the guest Account copy no
+  longer promises Google on iOS; the status-bar strip stays under the clock
+  while the keyboard is up; the dark-mode Sign in with Apple button is
+  white. Known (as in 39): typing a food letter by letter can still leave
+  long result lists under the keyboard's bar (and a shrinking list can drop
+  the page back down); in Dark a cream strip can show behind that bar —
+  both need the keyboard height from native code (next build). Re-test on TestFlight like 39, plus every
+  screen's top/bottom spacing and in-app Dark mode.
 
 What remains needs your Apple account. Two paths — pick one.
 

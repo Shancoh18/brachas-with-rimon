@@ -8,14 +8,17 @@
  * theme is stamped on <html data-theme> — every dark style in index.css keys
  * off that attribute, so the OS report alone can never flip the app again.
  */
+import { useEffect } from 'react';
 import { registerPlugin } from '@capacitor/core';
-import { isAndroid } from './native';
+import { isNative } from './native';
 
 export type Appearance = 'light' | 'dark' | 'system';
 
-// Capacitor 8's built-in SystemBars (Android): LIGHT = light bars with dark
-// icons (the cream canvas), DARK = light icons for the dark chrome. iOS keys
-// the status-bar text off the theme automatically; the web has no bars.
+// Capacitor 8's built-in SystemBars (Android AND iOS): LIGHT = dark status-bar
+// text/icons for the cream canvas, DARK = light ones for the dark chrome. iOS
+// does NOT follow the in-app theme by itself — it follows the device setting,
+// so in-app Dark on a Light phone left a black clock on the near-black page
+// (QA 2026-10-29). The web has no bars.
 const SystemBars = registerPlugin<{
   setStyle(opts: { style: 'LIGHT' | 'DARK' | 'DEFAULT'; bar?: 'StatusBar' | 'NavigationBar' }): Promise<void>;
 }>('SystemBars');
@@ -37,7 +40,31 @@ export function applyTheme(pref: Appearance) {
     m.removeAttribute('media'); // one explicit color — never media-forked again
     m.setAttribute('content', color);
   });
-  if (isAndroid()) void SystemBars.setStyle({ style: theme === 'dark' ? 'DARK' : 'LIGHT' }).catch(() => undefined);
+  lastTheme = theme;
+  syncBars();
+}
+
+// The Rimon takeovers are cream in BOTH themes (index.css .tk-root, the renders
+// are baked on it) and full-bleed, so while one is up the status bar must keep
+// dark text even in dark mode — white text on cream was unreadable (review
+// 2026-10-29). Counted, so overlapping takeovers can't release it early.
+let lastTheme: 'light' | 'dark' = 'light';
+let lightHolds = 0;
+function syncBars() {
+  if (!isNative()) return;
+  const style = lightHolds > 0 || lastTheme === 'light' ? 'LIGHT' : 'DARK';
+  void SystemBars.setStyle({ style }).catch(() => undefined);
+}
+/** Keep light-canvas (dark-text) status bars while the calling component is mounted. */
+export function useLightStatusBar() {
+  useEffect(() => {
+    lightHolds++;
+    syncBars();
+    return () => {
+      lightHolds = Math.max(0, lightHolds - 1);
+      syncBars();
+    };
+  }, []);
 }
 
 /** React to OS theme changes ONLY while the preference is 'system'. */

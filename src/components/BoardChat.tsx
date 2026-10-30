@@ -265,7 +265,7 @@ export function BoardChat({
           <div
             data-chat-terms
             className="border-t border-espresso/[0.07] px-5 pt-4"
-            style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom))' }}
+            style={{ paddingBottom: 'calc(12px + var(--safe-bottom))' }}
           >
             <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">Before you post</p>
             <p className="mt-1 text-[12.5px] leading-snug text-espresso">
@@ -286,7 +286,7 @@ export function BoardChat({
         ) : (
         <div
           className="border-t border-espresso/[0.07] px-4 pt-3"
-          style={{ paddingBottom: 'calc(8px + env(safe-area-inset-bottom))' }}
+          style={{ paddingBottom: 'calc(8px + var(--safe-bottom))' }}
         >
           <div className="flex items-center gap-2">
             <input
@@ -322,7 +322,7 @@ export function BoardChat({
             <button aria-label="close message options" onClick={closeMenu} className="min-h-0 flex-1" />
             <div
               className="sheet-rise rounded-t-[1.5rem] bg-cream px-5 pt-4 ring-1 ring-espresso/[0.08]"
-              style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+              style={{ paddingBottom: 'calc(16px + var(--safe-bottom))' }}
             >
               <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-gold">{menuFor.name}</p>
               <p className="mt-1 truncate text-[12.5px] italic text-espresso-soft">“{menuFor.text}”</p>

@@ -208,8 +208,9 @@ export function ScreenShell({
       className={
         split
           ? // columns meet at exactly 50vw — the hinge — whatever the side insets
-            'grain grid min-h-[100dvh] grid-cols-[calc(50vw_-_var(--safe-left))_minmax(0,1fr)]'
-          : 'grain flex min-h-[100dvh] flex-col'
+            'grain grid min-h-[var(--page-h)] grid-cols-[calc(50vw_-_var(--safe-left))_minmax(0,1fr)]'
+          : // --page-h = 100dvh minus what <body> pads on iOS (index.css)
+            'grain flex min-h-[var(--page-h)] flex-col'
       }
     >
       {split ? (
@@ -223,7 +224,7 @@ export function ScreenShell({
         <div
           data-duo-aside={aside != null ? '' : 'empty'}
           aria-hidden={aside != null ? undefined : true}
-          className="sticky top-0 flex h-[100dvh] flex-col overflow-y-auto pl-6 pr-10 text-center"
+          className="sticky top-[var(--page-top)] flex h-[var(--page-h)] flex-col overflow-y-auto pl-6 pr-10 text-center"
         >
           {aside != null ? <div className="my-auto flex flex-col items-center gap-5 py-8">{aside}</div> : null}
         </div>
@@ -236,7 +237,7 @@ export function ScreenShell({
           disclaimer lay out exactly as they always have. */}
       <div
         className={
-          split ? 'flex min-h-[100dvh] min-w-0 flex-col pl-5 pr-[calc(max(var(--rail-w,0px),16px)_+_4px)]' : 'contents'
+          split ? 'flex min-h-[var(--page-h)] min-w-0 flex-col pl-5 pr-[calc(max(var(--rail-w,0px),16px)_+_4px)]' : 'contents'
         }
       >
         <main

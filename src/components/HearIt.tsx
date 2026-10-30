@@ -42,7 +42,7 @@ export function HearIt({ src, label = 'Hear it' }: { src: string; label?: string
     <button
       onClick={toggle}
       data-hear-it={src}
-      className={`group inline-flex items-center gap-2 rounded-full px-4 py-2 text-[12px] font-semibold ring-1 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] ${
+      className={`group inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-[12px] font-semibold ring-1 transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] ${
         playing
           ? 'bg-gold/15 text-gold ring-gold/30'
           : 'bg-transparent text-espresso-soft ring-espresso/15 hover:ring-gold/40 hover:text-gold'

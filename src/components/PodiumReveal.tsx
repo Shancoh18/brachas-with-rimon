@@ -8,6 +8,7 @@
  */
 import type { Board } from '../lib/api';
 import { PillButton } from './ui';
+import { useLightStatusBar } from '../lib/theme';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -21,6 +22,7 @@ const CONFETTI = [
 ];
 
 export function PodiumReveal({ board, onContinue }: { board: Board; onContinue: () => void }) {
+  useLightStatusBar(); // before the early return — hook order
   const result = board.result;
   if (!result?.winnerName) return null;
   const rows = result.standings;
@@ -42,7 +44,7 @@ export function PodiumReveal({ board, onContinue }: { board: Board; onContinue: 
         ))}
       </div>
 
-      <div className="absolute inset-x-0 top-[7%] z-20 px-8 text-center">
+      <div className="absolute inset-x-0 top-[max(7%,calc(var(--safe-top)_+_14px))] z-20 px-8 text-center">
         <p
           className="tk-rise text-[10px] font-bold uppercase tracking-[0.26em] text-gold"
           style={{ '--td': '0.3s' } as React.CSSProperties}
@@ -162,7 +164,7 @@ export function PodiumReveal({ board, onContinue }: { board: Board; onContinue: 
 
       <div
         className="tk-pop absolute inset-x-0 z-20 flex justify-center"
-        style={{ bottom: 'calc(34px + env(safe-area-inset-bottom))', '--td': '5.5s' } as React.CSSProperties}
+        style={{ bottom: 'calc(34px + var(--safe-bottom))', '--td': '5.5s' } as React.CSSProperties}
       >
         <PillButton variant="rimon" icon="→" onClick={onContinue}>
           Continue

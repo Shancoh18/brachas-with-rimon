@@ -243,10 +243,11 @@ code and no advertising-ID permission.
    days.
 
 Every upload needs a NEW `versionCode` in `android/app/build.gradle` — keep
-it equal to the iOS `CURRENT_PROJECT_VERSION` (both are 38 now, still version
-1.0.1: 37 = the 2026-09-22 merge of the Sep-15 fixes onto release 36, on
-Internal testing since 2026-10-01; 38 = 37 + the icons regenerated from the
-iOS icon, 2026-10-11; `versionName` tracks `MARKETING_VERSION`) and bump all
+it equal to the iOS `CURRENT_PROJECT_VERSION` (both are 40 now, version 1.0.3;
+39 = 1.0.2, the iPhone Duo release; 37 = the 2026-09-22 merge of the Sep-15
+fixes onto release 36, on Internal testing since 2026-10-01; 38 = 37 + the
+icons regenerated from the iOS icon, 2026-10-11; `versionName` tracks
+`MARKETING_VERSION` — the current numbers live in CLAUDE.md's build-number rule) and bump all
 THREE places before
 `scripts/sync-master.mjs`: `versionCode`, `CURRENT_PROJECT_VERSION` (both
 pbxproj configs) and `appendUserAgent: 'BrachasRimon/<build>'` in

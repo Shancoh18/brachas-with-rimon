@@ -40,7 +40,13 @@
    < 860 pt wide), so the iPhone layout is untouched.
    SAME QUERY in src/lib/duo.ts (SPLIT_QUERY) and .tab-dock below. */
 @custom-variant split (@media (min-width: 860px) and (min-height: 500px) and (orientation: landscape));
-@custom-variant short (@media (max-width: 639px) and (max-height: 720px));
+/* `short:` = a phone-width screen whose USABLE height (minus what <body> pads
+   on iOS) is 720pt or less — html[data-short], stamped by src/lib/duo.ts.
+   It was a plain (max-height: 720px) query; since build 40 the iOS WebView is
+   full-screen, so a Plus iPhone (414×736, 716 usable) stopped matching and
+   its camera button slid under the tab bar (review 2026-10-29). Web and
+   Android pad nothing, so the result there is the old query's. */
+@custom-variant short (&:where([data-short] *));
 /* `sidecol:` = the closed Duo's trailing status/camera column is present
    (html[data-side-column], stamped by src/lib/duo.ts watchSideColumn) */
 @custom-variant sidecol (&:where([data-side-column] *));
@@ -50,6 +56,15 @@
      browser (env() can't be emulated there) */
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+  /* top/bottom: the status bar / Dynamic Island and the home indicator. Fixed
+     layers (onboarding, takeovers, sheets) pad by these themselves. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* what <body> pads the page FLOW by (iOS only — see "iOS insets" below);
+     page frames subtract it from 100dvh so a short page never scrolls */
+  --page-top: 0px;
+  --page-bottom: 0px;
+  --page-h: calc(100dvh - var(--page-top) - var(--page-bottom));
 }
 
 /* ------------------------------------------------------------- dark mode
@@ -124,12 +139,47 @@ html[data-theme='dark'] .bg-white\/90 * {
   --color-hairline: rgba(43, 33, 26, 0.08);
   --color-cream: #faf7e9;
 }
+/* the floating tab pill is solid cream in both themes (TabBar.tsx), so it
+   keeps dark ink too — its inactive labels went faint beige (QA 2026-10-29) */
+html[data-theme='dark'] .tab-dock > div,
+html[data-theme='dark'] .tab-dock > div * {
+  --color-espresso: #2b211a;
+  --color-espresso-soft: #57493e;
+  --color-cream: #faf7e9;
+}
+/* Sign in with Apple in dark mode: Apple's WHITE style on the dark page (the
+   black button vanished there — QA 2026-10-29); inside a paper card, which
+   stays cream, it keeps the black style. */
+html[data-theme='dark'] .siwa-btn {
+  background-color: #fff;
+  color: #000;
+}
+html[data-theme='dark'] :is(.bg-white\/60, .bg-white\/70, .bg-white\/75, .bg-white\/80, .bg-white\/90) .siwa-btn {
+  background-color: #000;
+  color: #fff;
+}
+/* celebration takeovers stay CREAM in dark mode (.tk-root background — the
+   renders are baked on it), so they keep the LIGHT palette too: their
+   headings, subtitles and chips came out cream-on-cream (QA 2026-10-29).
+   theme.ts useLightStatusBar keeps the status-bar text dark meanwhile. */
+html[data-theme='dark'] .tk-root {
+  --color-cream: #faf7e9;
+  --color-cream-deep: #f2eddc;
+  --color-espresso: #2b211a;
+  --color-espresso-soft: #57493e;
+  --color-mocha: #8a7a6d;
+  --color-gold: #a87e2f;
+  --color-hairline: rgba(43, 33, 26, 0.08);
+  color-scheme: light;
+}
 
 /* ------------------------------------------------------------- base layer */
 html,
-body,
-#root {
+body {
   min-height: 100dvh;
+}
+#root {
+  min-height: var(--page-h);
 }
 
 /* the page keeps clear of side safe areas (the closed Duo's status/camera
@@ -148,9 +198,12 @@ body,
    status bar (owner ruling 2026-10-29: "on the right, like Apple's settings
    in Safari"):
    - html[data-side-column] (src/lib/duo.ts) = the Duo's trailing status
-     column, present closed AND open → the bar stands upright IN that column,
-     at the bottom under the clock; the page keeps its bottom edge and needs
-     no rail gutter (.rail-gutter → 0);
+     column, present closed AND open → the bar stands upright IN that column;
+     the page keeps its bottom edge and needs no rail gutter (.rail-gutter → 0).
+     CLOSED (one hand): at the bottom of the column, under the thumb.
+     OPEN / half-open (two hands): vertically CENTRED in the column, level
+     with the left page's centred content (owner, 2026-10-29: "the settings
+     on the right should be centered on the duo");
    - a wide screen WITHOUT that column (split, e.g. a desktop browser): a right
      rail clear of the hinge; .rail-gutter sets --rail-w so split pages pad
      their right page around it. */
@@ -166,7 +219,7 @@ html[data-side-column] .rail-gutter {
   --rail-w: 0px;
 }
 .tab-dock {
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  bottom: calc(16px + var(--safe-bottom));
   left: var(--safe-left);
   right: var(--safe-right);
 }
@@ -176,7 +229,7 @@ html[data-side-column] .tab-dock {
   left: auto;
   right: 0;
   width: var(--safe-right);
-  padding: 0 0 calc(16px + env(safe-area-inset-bottom));
+  padding: 0 0 calc(16px + var(--safe-bottom));
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
@@ -190,6 +243,12 @@ html[data-side-column] .tab-dock {
     padding: 0;
     flex-direction: column;
     align-items: center;
+  }
+  /* open Duo: centred in its status column (must come after the
+     html[data-side-column] .tab-dock rule above — same specificity) */
+  html[data-side-column] .tab-dock {
+    justify-content: center;
+    padding-bottom: 0;
   }
 }
 html[data-side-column] .tab-dock > div {
@@ -449,6 +508,22 @@ body {
 .tk-root[data-takeover='badge'] {
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+}
+/* SQUAT screens (width/height ≥ 3:5 — the closed iPhone Duo 466×678, the open
+   Duo rotated 669×951; every iPhone, SE and Plus included, is narrower): a
+   width-fitted cover grew Rimon until his crown ran into the subtitle and the
+   points chip, and on the closed Duo the box — centred in the safe width —
+   stopped 42pt short of the right edge, cutting his floor shadow in a hard
+   vertical line (QA 2026-10-29). Fit the render to the HEIGHT instead (like
+   the open Duo) and feather its side edges into the matching cream
+   (.tk-root background), so no edge ever shows. Phones: unchanged. */
+@media (min-aspect-ratio: 3/5) {
+  .tk-cover {
+    width: 56.25vh;
+    height: 100vh;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%);
+    mask-image: linear-gradient(90deg, transparent 0, #000 9%, #000 91%, transparent 100%);
+  }
 }
 /* iPhone Duo open wide (split): the portrait-built takeover becomes two pages
    — the 9:16 render fitted to the height on the left page, the words, chips
@@ -835,9 +910,54 @@ i.tk-confetti,
    Capacitor 8 draws the Android WebView edge-to-edge (targetSdk 35+) and,
    with viewport-fit=cover, hands the system-bar insets to CSS. The bottom
    is already handled everywhere (tab bar, sheets, takeovers use
-   env(safe-area-inset-bottom)); the TOP needs padding only here — iOS insets
-   the WebView natively (contentInset: automatic), so this must never apply
-   there. <html data-platform> is stamped in src/main.tsx. */
+   var(--safe-bottom)); the TOP needs padding only here.
+   <html data-platform> is stamped in src/main.tsx. */
 html[data-platform='android'] body {
   padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* ---------------------------------------------------------------- iOS insets
+   Build 40 (2026-10-29): the iOS WebView is full-screen (capacitor.config.ts
+   ios.contentInset 'never', Capacitor's default) and the page pads itself,
+   exactly like Android. Until build 39 it was 'automatic' — UIKit inset the
+   scroll view natively, but WKWebView applied that inset on its own schedule:
+   on iOS 26 not at all at launch (onboarding under the clock on every
+   start), and on every iOS a window.scrollTo(0,0) on a screen change (App.tsx)
+   landed 62pt too far — "← home" under the Dynamic Island, the first tap
+   swallowed as a status-bar tap. It also left the WebView's cream background
+   showing above/below the page in dark mode and made fixed bars hop 34pt at
+   the page bottom. Measured in the iOS 26.5 / 27.0 / 27.1 simulators: env()
+   always reports the real insets, so CSS can own them deterministically. */
+html[data-platform='ios'] {
+  --page-top: var(--safe-top);
+  --page-bottom: var(--safe-bottom);
+  /* (:root and this are the same <html> element, so :root's --page-h
+     resolves against these values) */
+}
+html[data-platform='ios'] body {
+  padding-top: var(--page-top);
+  padding-bottom: var(--page-bottom);
+}
+/* a frosted strip of the page colour behind the status bar: with the WebView
+   full-screen, scrolled content passed UNDER the clock, and in-app Dark (light
+   status-bar text) put a white clock on any cream card scrolling there (QA
+   2026-10-29). Height 0 where there is no top inset (the iPhone Duo keeps its
+   status bar in a side column). Takeovers and sheets (z-50) cover it. */
+html[data-platform='ios'] body::before {
+  content: '';
+  position: fixed;
+  /* --vv-top (src/lib/duo.ts): with the keyboard up iOS pans the visual
+     viewport inside the layout viewport, so a top:0 strip slid off-screen */
+  top: var(--vv-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--safe-top);
+  z-index: 40;
+  pointer-events: none;
+  background: rgba(250, 247, 233, 0.86);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+html[data-platform='ios'][data-theme='dark'] body::before {
+  background: rgba(28, 22, 17, 0.86);
 }

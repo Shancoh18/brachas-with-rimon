@@ -203,10 +203,10 @@ export function Reference() {
                     {textMode === 'english' && (
                       <p className="text-[14.5px] leading-relaxed text-espresso">{liturgy.english}</p>
                     )}
-                    <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
                       <HearIt src={`${BASE}audio/${g.audio}.mp3`} />
                       {g.note && (
-                        <p className="text-right text-[10.5px] leading-snug text-mocha">{g.note}</p>
+                        <p className="grow basis-24 text-right text-[10.5px] leading-snug text-mocha">{g.note}</p>
                       )}
                     </div>
                   </div>
